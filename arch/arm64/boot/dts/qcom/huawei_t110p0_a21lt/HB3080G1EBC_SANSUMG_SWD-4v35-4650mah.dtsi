@@ -1,0 +1,123 @@
+/* <DTS2014081108877 Sansumg battery module by cwx196302 20140811 Begin */
+/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+qcom,sansumg-4v35-4650mAh-swd-data {
+	qcom,fcc-mah = <4650>;
+	qcom,default-rbatt-mohm = <118>;
+	qcom,rbatt-capacitive-mohm = <50>;
+	qcom,flat-ocv-threshold-uv = <3800000>;
+	qcom,max-voltage-uv = <4350000>;
+	qcom,v-cutoff-uv = <3200000>;
+	qcom,chg-term-ua = <150000>;
+	qcom,batt-id-kohm = <200>;
+	qcom,battery-type = "HB3080G1EBC_SANSUMG_SWD";
+
+	/* < DTS2013120201997 liyuping 20131204 begin */
+	qcom,warm-bat-decidegc = <420>;
+	qcom,warm-bat-mv = <4100>;
+	qcom,ibatmax-warm-ma = <700>;
+
+	qcom,cool-bat-decidegc = <100>;
+	qcom,cool-bat-mv = <4350>;
+	qcom,ibatmax-cool-ma = <600>;
+
+	qcom,hot-bat-decidegc = <520>;
+	qcom,cold-bat-decidegc = <0>;
+	/* DTS2013120201997 liyuping 20131204 end >*/
+	qcom,rbatt-sf-lut {
+		qcom,lut-col-legend = <(-20) 0 25 40 60>;
+		qcom,lut-row-legend =
+		        <100 95 90 85 80>,
+				<75 70 65 60 55>,
+				<50 45 40 35 30>,
+				<25 20 15 10 9>,
+				<8 7 6 5 4>,
+				<3 2 1>;
+		qcom,lut-data =
+		        <1454 417 100 74 67>,
+				<1351 419 99 74 67>,
+				<1250 419 99 74 68>,
+				<1171 419 101 74 68>,
+				<1127 429 104 77 69>,
+				<1023 427 109 79 70>,
+				<1013 372 113 82 72>,
+				<1004 369 123 88 75>,
+				<1006 360 117 90 76>,
+				<1026 355 101 80 71>,
+				<1060 352 96 75 69>,
+				<1106 362 96 76 69>,
+				<1157 390 98 77 70>,
+				<1214 427 99 79 72>,
+				<1277 476 100 79 71>,
+				<1354 531 100 76 69>,
+				<1438 587 101 75 69>,
+				<1542 681 103 75 69>,
+				<2544 631 99 77 70>,
+				<2608 674 100 76 69>,
+				<2795 729 102 77 69>,
+				<2946 783 102 77 70>,
+				<3079 855 104 77 71>,
+				<3239 951 105 77 69>,
+				<3492 990 104 75 69>,
+				<3705 1063 108 78 70>,
+				<4033 1168 114 79 69>,
+				<4729 1376 122 82 71>;
+	};
+
+	qcom,fcc-temp-lut {
+		qcom,lut-col-legend = <(-20) (-10) 0 25 40 60>;
+		qcom,lut-data = <4895 4896 4896 4926 4906 4874>;
+	};
+
+	qcom,pc-temp-ocv-lut {
+		qcom,lut-col-legend = <(-20) 0 25 40 60>;
+		qcom,lut-row-legend =
+	    <100 95 90 85 80>,
+				<75 70 65 60 55>,
+				<50 45 40 35 30>,
+				<25 20 15 10 9>,
+				<8 7 6 5 4>,
+				<3 2 1 0>;
+		qcom,lut-data =
+		        <4316 4311 4308 4299 4292 >,
+				<4230 4251 4263 4258 4253 >,
+				<4163 4191 4207 4202 4197 >,
+				<4101 4137 4153 4147 4143 >,
+				<4050 4090 4101 4096 4092 >,
+				<3961 4037 4051 4046 4043 >,
+				<3918 3964 3999 3999 3999 >,
+				<3878 3922 3961 3962 3959 >,
+				<3844 3884 3918 3918 3916 >,
+				<3821 3850 3871 3872 3871 >,
+				<3803 3821 3840 3840 3839 >,
+				<3788 3801 3817 3817 3816 >,
+				<3774 3788 3798 3799 3797 >,
+				<3761 3777 3783 3784 3782 >,
+				<3747 3766 3770 3769 3763 >,
+				<3734 3751 3758 3753 3740 >,
+				<3718 3731 3741 3734 3719 >,
+				<3700 3712 3712 3706 3691 >,
+				<3668 3691 3689 3682 3669 >,
+				<3655 3686 3688 3681 3668  >,
+				<3646 3682 3686 3680 3667 >,
+				<3635 3675 3684 3678 3666 >,
+				<3618 3665 3681 3675 3662 >,
+				<3594 3653 3669 3664 3647 >,
+				<3568 3626 3635 3634 3612 >,
+				<3526 3582 3581 3583 3560 >,
+				<3467 3514 3506 3513 3490 >,
+				<3376 3407 3393 3411 3388 >,
+				<3200 3200 3200 3200 3200 >;
+	};
+};
+/* DTS2014081108877 Sansumg battery module by cwx196302 20140811 End> */
