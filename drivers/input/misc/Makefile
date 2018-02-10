@@ -77,6 +77,9 @@ obj-$(CONFIG_SENSORS_LIS3DH)		+= lis3dh_acc.o lis3dh_acc_monitor.o
 obj-$(CONFIG_SENSORS_KIONIX)	+= kionix_accel.o kionix_acc_monitor.o
 #/* DTS2014042306752 yangxiaomei 20140424 end > */
 #/* DTS2014072201656 yangzhonghua 20140722 end > */
+#/* < DTS2015072707140 chendong wx241705 begin */
+obj-$(CONFIG_SENSORS_ADUX1050)	+= adux1050.o
+#/* DTS2015072707140 chendong wx241705 end > */
 #/* < DTS2014052206888 yangxiaomei 20140523 begin */
 obj-$(CONFIG_HUAWEI_HALL_AK8789) += ak8789.o
 #/* DTS2014052206888 yangxiaomei 20140523 end > */

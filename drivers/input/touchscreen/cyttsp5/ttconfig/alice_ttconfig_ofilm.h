@@ -1,4 +1,4 @@
-/* < DTS2015013006384 caowei 20150202 begin */
+/* < DTS2015021201243 caowei 20150213 begin */
 //*****************************************************************************
 //*****************************************************************************
 //  FILENAME: Driver.h
@@ -13,7 +13,7 @@
 //-----------------------------------------------------------------------------
 /* Touchscreen Version Information */
 static u8 ttconfig_fw_ver_alice_ofilm[] = {
-	0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, 0xC9, 0xF3, 0x0B, 0x00, 0x11, 0x9B, 0x00, 0x08
+	0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, 0xD9, 0x43, 0x0B, 0x00, 0x11, 0x9B, 0x00, 0x0A
 };
 #ifndef CONFIG_HUAWEI_KERNEL
 /* Touchscreen Parameters Endianess (Endianess: 0:Little; 1:Big)*/
@@ -369,7 +369,7 @@ static const uint8_t cyttsp5_param_regs_alice_ofilm[] = {
 	0x01,  /* LOW_POWER_ENABLE */
 	0x00,  /* Reserved735 */
 	0x0A,  /* ACT_DIST0 */
-	0x00,  /* ACT_DIST2 */
+	0x01,  /* ACT_DIST2 */
 	0x00,  /* ACT_DIST_TOUCHDOWN */
 	0x32,  /* ACT_DIST_LIFTOFF */
 	0x00,  /* ACT_DIST_COUNTER */
@@ -379,7 +379,7 @@ static const uint8_t cyttsp5_param_regs_alice_ofilm[] = {
 	0x01,  /* OBJ_WITHHOLD_CFG */
 	0x00, 0x00, 0x00,  /* Reserved745 */
 	0x04, 0x17, 0x03, 0x00,  /* FINGER_ID_MAX_FINGER_VELOCITY2 */
-	0x30, 0x75, 0x00, 0x00,  /* FINGER_ID_MAX_FINGER_ACCELERATION2 */
+	0x50, 0xC3, 0x00, 0x00,  /* FINGER_ID_MAX_FINGER_ACCELERATION2 */
 	0x00, 0x00,  /* GRIP_XEDG_A */
 	0x00, 0x00,  /* GRIP_XEDG_B */
 	0x00, 0x00,  /* GRIP_XEXC_A */
@@ -690,7 +690,7 @@ static const uint8_t cyttsp5_param_regs_alice_ofilm[] = {
 	0x50, 0x00,  /* SMART_COVER_OFF_THRSH_MUTUAL */
 	0x00,  /* EXT_SYNC */
 	0x00,  /* PWR_CFG */
-	0x08, 0x00,  /* CONFIG_VER */
+	0x0A, 0x00,  /* CONFIG_VER */
 	0x00,  /* SEND_REPORT_AFTER_ACTIVE_INTERVAL_CFG */
 	0x00,  /* PIP_REPORTING_DISABLE */
 	0x00, 0x00,  /* INTERRUPT_PIN_OVERRIDE */
@@ -699,11 +699,13 @@ static const uint8_t cyttsp5_param_regs_alice_ofilm[] = {
 	0x02,  /* PINS_GND_NC */
 	0x05,  /* PINS_NC_GND */
 	0x06,  /* PINS_NC_NC */
-	0x00, 0x00, 0x00,  /* Reserved1229 */
+	0x01,  /* OPTION_SLEEP_FOR_ACTIVE_LFT_LP */
+	0x00,  /* OPTION_SLEEP_FOR_DEEPSLEEP */
+	0x00,  /* Reserved1231 */
 	0x00,  /* SYNC_REPORT_ENABLE */
 	0x00,  /* SYNC_REPORT_BYPASS_TRIGGER_LEVEL */
 	0x00, 0x00,  /* Reserved1234 */
-	0x3C, 0x43,  /* CONFIG_CRC */
+	0x20, 0x9F,  /* CONFIG_CRC */
 };
 
 /* Touchscreen Parameters Field Sizes (Writable: 0:Readonly; 1:Writable) */
@@ -1304,7 +1306,9 @@ static const uint16_t cyttsp5_param_size_alice_ofilm[] = {
 	1, /* PINS_GND_NC */
 	1, /* PINS_NC_GND */
 	1, /* PINS_NC_NC */
-	3, /* Reserved1229 */
+	1, /* OPTION_SLEEP_FOR_ACTIVE_LFT_LP */
+	1, /* OPTION_SLEEP_FOR_DEEPSLEEP */
+	1, /* Reserved1231 */
 	1, /* SYNC_REPORT_ENABLE */
 	1, /* SYNC_REPORT_BYPASS_TRIGGER_LEVEL */
 	2, /* Reserved1234 */
@@ -1881,4 +1885,4 @@ static const uint8_t cyttsp5_param_addr_pid00[] = {
 	0xF5, 0x94, /* CONFIG_CRC */
 };
 #endif
-/* DTS2015013006384 caowei 20150202 end >*/
+/* DTS2015021201243 caowei 20150213 end >*/

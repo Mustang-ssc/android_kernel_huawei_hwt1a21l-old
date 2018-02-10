@@ -79,16 +79,9 @@
             /* DTS2013101800692 anisha 20131021 end> */
 		};
 	};
-	
-	/* DTS2014091104672 xiongxi xwx234328 begin */
-	huawei_sar_info {
-		compatible = "qcom,msm-sar";
-		status = "okay";
-		qcom,sar-detect = <&msm_gpio 21 0>;
-		linux,name = "sargpio";
-		linux,default-trigger = "sargpio-trigger";
-	};
-	/* DTS2014091104672 xiongxi xwx234328 end */
+	/* DTS2015072707140 chendong 20150810 begin> */
+	//delete lines
+	/* DTS2015072707140 chendong 20150810 end> */
 };
 
 &pm8916_gpios {

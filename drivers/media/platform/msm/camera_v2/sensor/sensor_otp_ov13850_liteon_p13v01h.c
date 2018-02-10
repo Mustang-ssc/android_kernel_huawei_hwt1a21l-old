@@ -56,6 +56,17 @@ static  uint32_t bg_ratio_typical = 0x257;   //the average of 4 Golden samples' 
 #define OV13850_OTP_CHECKSUM_ERR      (1 << 5)
 #define OV13850_OTP_FAIL_FLAG             (1 << 6)
 
+/*< DTS2015021200322  jwx206032 20150215 begin */
+typedef enum {
+	SUNNY_MODULE_VENDOR_ID = 1,
+	FOXCONN_MODULE_VENDOR_ID,
+	LITEON_MODULE_VENDOR_ID,
+	SEMCO_MODULE_VENDOR_ID,
+	BYD_MODULE_VENDOR_ID,
+	OFILM_MODULE_VENDOR_ID
+}camera_module_vendor_id;
+/* DTS2015021200322  jwx206032 20150215 end >*/
+
 #define OV1385_MODULE_VENDOR_ID         0x03  //LETION
 #define OV1385_MODULE_HUAWEI_ID        0xA7  //23060167
 #define OV13850_OTP_LSC_SIZE                 360
@@ -219,8 +230,13 @@ static bool ov13850_otp_read_id(struct msm_sensor_ctrl_t *s_ctrl)
 	CMR_LOGD("module info year 20%02d month %d day %d, SNO. 0x%x  vendor id&version 0x%x\n", buf[0],buf[1],buf[2],buf[3],buf[4]);
 	vendor_id = (buf[4]>>4)&0x0F;
 
-	//Liteon 0x03 & huaweiModuleCode is 23060167(0n167 = 0xA7)
+	/*< DTS2015021200322  jwx206032 20150215 begin */
 	if (vendor_id == OV1385_MODULE_VENDOR_ID && buf[3] == OV1385_MODULE_HUAWEI_ID)
+	{
+		ov13850_otp_set_flag(OV13850_OTP_ID_READ);
+		return true;
+	}
+	else if ((vendor_id == OFILM_MODULE_VENDOR_ID) && (buf[3] == OV1385_MODULE_HUAWEI_ID))
 	{
 		ov13850_otp_set_flag(OV13850_OTP_ID_READ);
 		return true;
@@ -230,6 +246,8 @@ static bool ov13850_otp_read_id(struct msm_sensor_ctrl_t *s_ctrl)
 		CMR_LOGE("%s OTP data is worng for with wrong vender id!!!\n",__func__);
 		return false;
 	}
+	/* DTS2015021200322  jwx206032 20150215 end >*/
+
 }
 
 /****************************************************************************
@@ -645,12 +663,12 @@ static int ov13850_module_i2c_opt_interface(struct msm_sensor_ctrl_t * s_ctrl,ui
 	return rc;
 
 }
-
+/*< DTS2015021200322  jwx206032 20150215 begin */
 /******************************************************************************
-Function   :  ov13850_liteon_p13v01h_otp_func
+Function   :  ov13850_otp_func
 Description:  read the otp info
 ******************************************************************************/
-int ov13850_liteon_p13v01h_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
+int ov13850_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
 {
 	 int rc = 0;
 	CMR_LOGD("%s enters!\n",__func__);
@@ -680,6 +698,7 @@ int ov13850_liteon_p13v01h_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index
 	CMR_LOGD("%s, the OTP read and set end.\n", __func__);
 	return rc;
 }
+/* DTS2015021200322  jwx206032 20150215 end >*/
 /* DTS2014072601546 yanhuiwen/00283550 20140723 end > */
 
 /* <DTS2014070903091  jiweifeng/jwx206032 20140708 end */

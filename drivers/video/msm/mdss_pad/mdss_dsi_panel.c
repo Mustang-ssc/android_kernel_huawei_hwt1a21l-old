@@ -23,6 +23,8 @@
 #include <linux/err.h>
 
 #include "mdss_dsi.h"
+
+//#include "mdss_debug.h"
 /*<DTS2014111701156 l00101002 20140924 begin*/
 #include <linux/log_jank.h>
 /*DTS2014111701156 l00101002 20140924 end>*/
@@ -185,12 +187,12 @@ static void mdss_dsi_panel_cmds_send_ex(struct mdss_dsi_ctrl_pdata *ctrl,
 	cmdreq.cb = NULL;
 
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
+
 }
 
-static char led_page0[4] = {0x83, 0x00,0x0,0x0};	
-static char led_page1[4] = {0x84, 0x00,0x0,0x0};	
 static char led_Duty[4] = {0xf5, 0x0,0x0,0x0};	
-static char clamp_Duty[4] = {0x95, 0x06,0x0,0x0};	
+
+static char cabc_Moving[4] = {0x96, 0x0,0x0,0x0};
 
 /*< DTS2014120408666 zhangming 20141113 begin */
 /*< DTS2014120600847 zhangming 20141217 begin */
@@ -199,26 +201,16 @@ static char clamp_Duty[4] = {0x95, 0x06,0x0,0x0};
 /*< DTS2014120600847 zhangming 20141217 end */	
 /*< DTS2014120408666 zhangming 20141113 end */
 
-static struct dsi_cmd_desc backlight_page0 = {
-	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(led_page0)},
-	led_page0
-};
-
-static struct dsi_cmd_desc backlight_page1 = {
-	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(led_page1)},
-	led_page1
-};
 
 static struct dsi_cmd_desc backlight_Duty = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(led_Duty)},
 	led_Duty
 };
 
-static struct dsi_cmd_desc clamp_backlight_Duty = {
-	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(clamp_Duty)},
-	clamp_Duty
+static struct dsi_cmd_desc moving_mode = {
+	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(cabc_Moving)},
+	cabc_Moving
 };
-
 
 /*< DTS2014120408666 zhangming 20141113 begin */
 /*< DTS2014120600847 zhangming 20141217 begin */
@@ -228,11 +220,10 @@ static struct dsi_cmd_desc clamp_backlight_Duty = {
 /*< DTS2014120408666 zhangming 20141113 end */
 #define Max_BacklightDuty			242    //for hardware test order to limite current to 19.8mA
 /*< DTS2015010604669 zhangming 20150106 begin */
-#define Page0_param0			0x00 
-#define Page0_param1			0x00 			
-#define Page3_param0			0x96 
-#define Page3_param1			0x69
+
 /*< DTS2015010604669 zhangming 20150106 end */
+
+/*< DTS2015082707105 zhangming 20151113 begin */
 static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 {
 
@@ -244,22 +235,9 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	if(led_Duty[1]>Max_BacklightDuty)
 		led_Duty[1] =(unsigned char)Max_BacklightDuty;
 
-       // set ALS_Duty in the NT51017 f5 register
-	led_page0[1]=(unsigned char)Page0_param0;
-	led_page1[1]=(unsigned char)Page0_param1;
-	mdss_dsi_panel_cmds_send_ex(ctrl,backlight_page0);
-	mdss_dsi_panel_cmds_send_ex(ctrl,backlight_page1);
 	mdss_dsi_panel_cmds_send_ex(ctrl,backlight_Duty);
 
-     
-	 // change the minimum PWM duty to be clamped
-	led_page0[1]=(unsigned char)Page3_param0;
-	led_page1[1]=(unsigned char)Page3_param1;
-	mdss_dsi_panel_cmds_send_ex(ctrl,backlight_page0);
-	mdss_dsi_panel_cmds_send_ex(ctrl,backlight_page1);
-	mdss_dsi_panel_cmds_send_ex(ctrl,clamp_backlight_Duty);
 
-	
 	/*< DTS2014120408666 zhangming 20141113 begin */
 	/*< DTS2014120600847 zhangming 20141217 begin */
 	/*use default dimming step(4 step) in cabc still mode*/
@@ -274,6 +252,15 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 /* DTS2014042905347 zhaoyuxia 20140429 end >*/
 }
 /*< DTS2014111308787 zhangming 20141113 end */
+
+
+static void mdss_dsi_panel_moving_mode(struct mdss_dsi_ctrl_pdata *ctrl)
+{
+
+	mdss_dsi_panel_cmds_send_ex(ctrl,moving_mode);
+
+}
+/* DTS2015082707105 zhangming 20151113 end > */
 
 /* < DTS2014053009543 zhaoyuxia 20140604 begin */
 /* revert huawei modify */
@@ -484,15 +471,17 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	/*< DTS2014120209435  zhangming 20141203 begin */
 	/*LCD power on/off sequence*/
 	/*< DTS2015010604669 zhangming 20150106 begin */
-	if(0 != bl_level && 0 == ctrl_pdata->hw_led_en_flag)
-		{
-		mdelay(120);
+
+	pr_info("%s,%dbl_level = %d ctrl_pdata->hw_led_en_flag =%d \n",__func__,__LINE__,bl_level,ctrl_pdata->hw_led_en_flag);
+	if(0 != bl_level && 0 == ctrl_pdata->hw_led_en_flag){
+		/*< DTS2015031607624 DTS2015031603595 zhangming 20150320 begin */
+		/*< DTS2015082707105 zhangming 20151113 begin */
+		mdelay(220);
+		/*< DTS2015031607624 DTS2015031603595 zhangming 20150320 end */
 		hw_panel_bias_en(pdata,1);
-		}
-	if(0 == bl_level && 1 == ctrl_pdata->hw_led_en_flag)
-		{
-		hw_panel_bias_en(pdata,0);
-		}
+		mdss_dsi_panel_moving_mode(ctrl_pdata);
+		/*DTS2015082707105 zhangming 20151113 end > */
+	}
 	/*< DTS2015010604669 zhangming 20150106 end */
 	/*< DTS2014120209435  zhangming 20141203 end */
 	/*
@@ -547,7 +536,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 		pr_err("%s: Invalid input data\n", __func__);
 		return -EINVAL;
 	}
-	mdelay(120);
+	//mdelay(120);
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 	mipi  = &pdata->panel_info.mipi;
@@ -635,7 +624,10 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds);
-
+	
+ 	/* < DTS2015011903879  zhangming wx241012 begin */
+ 	//Delete VLED_VCC Function
+ 	/* < DTS2015011903879 zhangming wx241012 end */
 #ifdef CONFIG_HUAWEI_LCD
 	LCD_LOG_INFO("exit %s\n",__func__);
 #endif
@@ -756,59 +748,105 @@ static int mdss_dsi_check_panel_status(struct mdss_panel_data *pdata)
 }
 /* DTS2014050904959 daiyuhong 20140509 end > */
 
+/*< DTS2015011903879 l00278905 20150131 begin > */
+
+
+static char Master[4] = {0x89, 0xa3,0x0,0x0};	
+static char Salve[4] = {0x89, 0x23,0x0,0x0};	
+
+
+static struct dsi_cmd_desc Detect_master = {
+	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(Master)},
+	Master
+};
+
+static struct dsi_cmd_desc Detect_salve = {
+	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(Salve)},
+	Salve
+};
+
+
 /*< DTS2014052207729 renxigang 20140520 begin */
 /*if Panel IC works well, return 1, else return -1 */
 int panel_check_live_status(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	int count = 0;
-	int j = 0;
-	int i = 0;
+
 	/* success on retrun 1,otherwise return 0 or -1 */
 	int ret = 1;
+	char esd_buf_0[3] = {0};
+	char esd_buf_1[3] = {0};
+	char esd_buf_2[3] = {0};
+	int read_length=1;
 	int compare_reg = 0;
-	#define MAX_RETURN_COUNT_ESD 4
+
 	#define REPEAT_COUNT 5
-	char esd_buf[MAX_RETURN_COUNT_ESD]={0};
-	for(j = 0;j < ctrl->esd_cmds.cmd_cnt;j++)
-	{
-		count = 0;
-		do
-		{
-			compare_reg = 0;
-			mdss_dsi_panel_cmd_read(ctrl,ctrl->esd_cmds.cmds[j].payload[0],0x00,NULL,esd_buf,ctrl->esd_cmds.cmds[j].dchdr.dlen - 1);
-			count++;
-			for(i=0;i<(ctrl->esd_cmds.cmds[j].dchdr.dlen-1);i++)
-			{
-				if(ctrl->esd_cmds.cmds[j].payload[0] == 0x0d && ctrl->esd_cmds.cmds[j].dchdr.dlen == 2)
-				{
-					/*if ctrl->inversion_state is 1,ctrl->inversion_state<<5 equal 0x20*/
-					/*if ctrl->inversion_state is 0,ctrl->inversion_state<<5 equal 0x00*/
-					/*ctrl->esd_cmds.cmds[j].payload[1] equal 0x00*/
-					/*when we read the 0x0d register,0x20 means enter color inversion mode when inversion mode on,not esd issue*/
-					ctrl->esd_cmds.cmds[j].payload[1] = ctrl->esd_cmds.cmds[j].payload[1] | (ctrl->inversion_state<<5);					
+	count = 0;
+    
+	if(0 == ctrl->hw_led_en_flag){
+		goto out;        
+	}
+	
+	do{
+		compare_reg = 0;
+		count++;
+
+		mdss_dsi_panel_cmd_read(ctrl,0x0A,0x00,NULL,esd_buf_2,read_length);
+		if(0x11==esd_buf_2[0]){
+			LCD_LOG_INFO("panel ic OK~Test: in %s,  reg 0x0A byte  read data =0x%02x \n",
+						__func__,esd_buf_2[0]);
+							
+			mdss_dsi_panel_cmd_read(ctrl,0x0D,0x00,NULL,esd_buf_0,read_length);
+			LCD_LOG_INFO("panel ic OK~Test: in %s,  reg 0x0D byte  read data =0x%02x \n",
+						__func__,esd_buf_0[0]);
+            /* <DTS20150102705199  feishilin WX295956 20151119  Begin*/
+            /* after display inversion is on, 0x0d[bit5] will set 1 for NT51017 driver ic */
+			if(esd_buf_0[0] == 0x00 || esd_buf_0[0] == 0x20){
+			/* DTS20150102705199  feishilin WX295956 20151119  End>*/
+				mdss_dsi_panel_cmd_read(ctrl,0x89,0x00,NULL,esd_buf_1,read_length);
+
+				LCD_LOG_INFO("panel ic OK~Test: in %s,  reg 0x89 byte  read data =0x%02x\n",
+							__func__,esd_buf_1[0]);
+				if (esd_buf_1[0] == 0xa3){
+					LCD_LOG_INFO("panel ic ~Test~time~0xa3: in %s \n",
+								__func__);
+					mdss_dsi_panel_cmds_send_ex(ctrl,Detect_salve);
+				
+				} else {
+					LCD_LOG_INFO("panel ic ~Test~time~0x23: in %s \n",
+							__func__);
+				 
+				 	mdss_dsi_panel_cmds_send_ex(ctrl,Detect_master);				 
 				}
-				if(esd_buf[i] != ctrl->esd_cmds.cmds[j].payload[i+1])
-				{
-					compare_reg = -1;
-					/* < DTS2014062405194 songliangliang 20140624 begin */
-					/* add for esd error*/
-					lcd_report_dsm_err(DSM_LCD_ESD_STATUS_ERROR_NO,esd_buf[i] , ctrl->esd_cmds.cmds[j].payload[0]);
-					/* < DTS2014062405194 songliangliang 20140624 end */
-					LCD_LOG_ERR("panel ic error: in %s,  reg 0x%02X %d byte should be 0x%02x, but read data =0x%02x \n",
-						__func__,ctrl->esd_cmds.cmds[j].payload[0],i+1,ctrl->esd_cmds.cmds[j].payload[i+1],esd_buf[i]);
-					break;
-				}
+			}else{
+				compare_reg = -1;
+				/* < DTS2014062405194 songliangliang 20140624 begin */
+				/* add for esd error*/
+				lcd_report_dsm_err(DSM_LCD_ESD_STATUS_ERROR_NO,esd_buf_0[0] , 0x0D);
 			}
-		}while((count<REPEAT_COUNT)&&(compare_reg == -1));
-		if(count == REPEAT_COUNT)
-		{
-			/* < DTS2014062405194 songliangliang 20140624 begin */
-			/* add for esd error*/
-			lcd_report_dsm_err(DSM_LCD_ESD_REBOOT_ERROR_NO,esd_buf[i] , ctrl->esd_cmds.cmds[j].payload[0]);
+
+				
+		}else{
+			compare_reg = -1;
+			lcd_report_dsm_err(DSM_LCD_ESD_STATUS_ERROR_NO,esd_buf_2[0] , 0x0A);
 			/* < DTS2014062405194 songliangliang 20140624 end */
-			ret = -1;
-			goto out;
+			LCD_LOG_ERR("panel ic error: in %s,  reg 0x0A byte should be 0x11, but read data =0x%02x \n",
+						__func__,esd_buf_2[0]);
 		}
+	}while((count<REPEAT_COUNT)&&(compare_reg == -1));
+	
+	if(count == REPEAT_COUNT ){
+		/* < DTS2014062405194 songliangliang 20140624 begin */
+		/* add for esd error*/
+		
+		mdss_dsi_panel_cmd_read(ctrl,0x89,0x00,NULL,esd_buf_0,read_length);
+	
+		LCD_LOG_ERR("panel ic error: in %s,  reg 0x89 byte should be 0x23, but read data =0x%02x\n",
+				__func__,esd_buf_0[0]);
+		lcd_report_dsm_err(DSM_LCD_ESD_REBOOT_ERROR_NO,esd_buf_0[0] ,0x89);
+		/* < DTS2014062405194 songliangliang 20140624 end */
+		ret = -1;
+		goto out;
 	}
 out:
 	return ret;

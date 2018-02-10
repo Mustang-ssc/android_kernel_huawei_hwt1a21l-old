@@ -163,5 +163,25 @@
 		gs,accel_g_range = <0>;
 		gs,accel_res = <0>;
 	};
+		/* < DTS2015072707140 chendong wx241705 begin */
+    adux1050@2c {
+        compatible = "adi,adux1050";
+        reg = <0x2c>;
+        interrupt-parent = <&msm_gpio>;
+        interrupts = <69 0x2>;
+        interrupts-name = "adux1050_2c";
+                /*adi,adux1050_reg = [ 000101a3 00028530 000300ee 00050F55 00069909 000700e8 00080200 00090000 000a000C 00798000];*/
+	/* < DTS2015082408564 chendong wx241705 begin */
+	/* < DTS2015090706073 chendong wx241705 begin */
+	/* < DTS2015101304477 chendong wx241705 begin */
+        adi,adux1050_reg = [ 000100a3 00028530 000300ee 00050F55 00069906 000701c2 000801c2 00090000 000a0007 00798000];
+	/* DTS2015101304477 chendong wx241705 end > */
+	/* DTS2015090706073 chendong wx241705 end > */
+	/* DTS2015082408564 chendong wx241705 end > */
+        adi,adux1050_stg0_base = [ 00007D00 ];  /*Signifies the required Baseline for the device*/
+        adi,adux1050_irq_flags = [ 00000002 ];  /* Signifies the irq Flag, If not set it will be set to IRQF_TRIGGER_FALLING*/
+        adi,aerial-detect = <&msm_gpio 21 0x2>;
+		};
+	/* DTS2015072707140 chendong wx241705 end > */
 };
 /* DTS2014102204192 wWX239977 20141022 end > */

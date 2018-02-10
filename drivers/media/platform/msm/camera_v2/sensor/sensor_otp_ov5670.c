@@ -1009,7 +1009,9 @@ int ov5670_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
 		bg_ratio_typical = otp_function_lists[index].bg_ratio_typical;	
 	}
 
-	CMR_LOGD("%s, rg_ratio_typical=%04x,bg_ratio_typical=%04x\n", __func__,rg_ratio_typical,bg_ratio_typical);
+    /* < DTS2015022605541 l00271394 20150226 begin */	
+	CMR_LOGI("%s, rg_ratio_typical=%04x,bg_ratio_typical=%04x\n", __func__,rg_ratio_typical,bg_ratio_typical);
+    /* DTS2015022605541 l00271394 20150226 end > */
 
 	otp_read_flag = ov5670_otp_is_af_module ? OV5670_OTP_AF_READ_ALL_FLAG : OV5670_OTP_FF_READ_ALL_FLAG;
 

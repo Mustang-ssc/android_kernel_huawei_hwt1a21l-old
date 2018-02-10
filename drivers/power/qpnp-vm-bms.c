@@ -442,6 +442,14 @@ static void disable_bms_irq(struct bms_irq *irq)
 	}
 }
 
+static void enable_bms_irq(struct bms_irq *irq)
+{
+	if (__test_and_clear_bit(0, &irq->disabled)) {
+		enable_irq(irq->irq);
+		pr_debug("enable irq %d\n", irq->irq);
+	}
+}
+
 static void bms_stay_awake(struct bms_wakeup_source *source)
 {
 	if (__test_and_clear_bit(0, &source->disabled)) {
@@ -3214,6 +3222,9 @@ static int qpnp_vm_bms_power_get_property(struct power_supply *psy,
 			val->intval = chip->charge_cycles;
 		else
 			val->intval = -EINVAL;
+	/*DTS2015031303039 xiongxi xwx234328 20150313 begin*/
+		break;
+	/*DTS2015031303039 xiongxi xwx234328 20150313 end*/
     /* <DTS2014110409521 caiwei 20141104 begin */
     case POWER_SUPPLY_PROP_HOT_TEMP_TEST_STATUS:
         val->intval = hot_temp_test_flag;
@@ -3871,9 +3882,11 @@ static int calculate_initial_soc(struct qpnp_bms_chip *chip)
 		chip->calculated_soc = lookup_soc_ocv(chip,
 					chip->last_ocv_uv, batt_temp);
 		 /*DTS2014122902899 xiongxi xwx234328 20150110 begin*/
+		 /*DTS2015021501692 xiongxi xwx234328 20150228 begin*/
 		if (!shutdown_soc_invalid &&
 			(abs(chip->shutdown_soc - chip->calculated_soc) <
-				chip->dt.cfg_shutdown_soc_valid_limit) && chip->bms_dev_open) {
+				chip->dt.cfg_shutdown_soc_valid_limit)) {
+		/*DTS2015021501692 xiongxi xwx234328 20150228 end*/
 		/*DTS2014122902899 xiongxi xwx234328 20150110 end*/
 			chip->last_ocv_uv = chip->shutdown_ocv;
 			chip->last_soc = chip->shutdown_soc;
@@ -5301,6 +5314,7 @@ static int bms_suspend(struct device *dev)
 
 	if (chip->apply_suspend_config) {
 		if (chip->dt.cfg_force_s3_on_suspend) {
+			disable_bms_irq(&chip->fifo_update_done_irq);
 			pr_debug("Forcing S3 state\n");
 			mutex_lock(&chip->state_change_mutex);
 			force_fsm_state(chip, S3_STATE);
@@ -5338,6 +5352,7 @@ static int bms_resume(struct device *dev)
 				force_fsm_state(chip, S2_STATE);
 			}
 			mutex_unlock(&chip->state_change_mutex);
+			enable_bms_irq(&chip->fifo_update_done_irq);
 			/*
 			 * if we were charging while suspended, we will
 			 * be woken up by the fifo done interrupt and no

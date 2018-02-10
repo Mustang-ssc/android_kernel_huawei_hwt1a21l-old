@@ -47,3 +47,6 @@
 /*DTS2014101608712 zhaoyong 20141016 begin*/
 #include "huawei-nfc.dtsi"
 /*DTS2014101608712 zhaoyong 20141016 end*/
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#include "huawei-memory.dtsi"
+/*DTS2015012007753 wangyuantao 20150120 end >*/

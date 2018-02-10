@@ -4287,7 +4287,16 @@ static int otg_power_set_property_usb(struct power_supply *psy,
 			motg->chg_type = USB_SDP_CHARGER;
 			break;
 		case POWER_SUPPLY_TYPE_USB_DCP:
+			/* <DTS2015020301250 liyu 20150206 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
+			if(USB_FLOATED_CHARGER != motg->chg_type)
+			{
+				motg->chg_type = USB_DCP_CHARGER;
+			}
+#else
 			motg->chg_type = USB_DCP_CHARGER;
+#endif
+			/* DTS2015020301250 liyu 20150206 end > */
 			break;
 		case POWER_SUPPLY_TYPE_USB_CDP:
 			motg->chg_type = USB_CDP_CHARGER;

@@ -131,6 +131,10 @@ static int cyttsp5_power_off(struct device* dev, struct cyttsp5_core_data *pcore
 static int cyttsp5_power_on(struct device* dev, struct cyttsp5_core_data *pcore_data);
 /* DTS2015012006679 caowei 20150120 end >*/
 
+/* < DTS2014122209378 caowei 20150206 begin */
+static int cyttsp5_read_input(struct cyttsp5_core_data *cd);
+/* DTS2015012006679 caowei 20150206 end >*/
+
 #define SET_CMD_OPCODE(byte, opcode) SET_CMD_LOW(byte, opcode)
 #define SET_CMD_REPORT_TYPE(byte, type) SET_CMD_HIGH(byte, ((type) << 4))
 #define SET_CMD_REPORT_ID(byte, id) SET_CMD_LOW(byte, id)
@@ -828,18 +832,24 @@ static int cyttsp5_hid_send_output_user_and_wait_(struct cyttsp5_core_data *cd,
 	cd->hid_cmd_state = HID_OUTPUT_USER_CMD + 1;
 	mutex_unlock(&cd->system_lock);
 
+	/* < DTS2015020508434 caowei 20150205 begin */
 	rc = cyttsp5_hid_send_output_user_(cd, hid_output);
-	if (rc)
+	if (rc) {
+		tp_log_err("%s: cyttsp5_hid_send_output_user_ error, rc = %d\n", 
+			__func__, rc);
 		goto error;
+	}
 
 	t = wait_event_timeout(cd->wait_q, (cd->hid_cmd_state == 0),
 			msecs_to_jiffies(CY_HID_OUTPUT_USER_TIMEOUT));
 	if (IS_TMO(t)) {
 		tp_log_err( "%s: HID output cmd execution timed out\n",
 			__func__);
+		cyttsp5_read_input(cd);
 		rc = -ETIME;
 		goto error;
 	}
+	/* DTS2015020508434 caowei 20150205 end > */
 
 	cyttsp5_check_command(cd, hid_output, true);
 
@@ -2383,14 +2393,28 @@ static int cyttsp5_hid_output_user_cmd_(struct cyttsp5_core_data *cd,
 	int command_code = 0;
 	int len;
 #endif
+	/* < DTS2015020508434 caowei 20150205 begin */
+	int retry = 2;
+
 	struct cyttsp5_hid_output hid_output = {
 		.length = write_len,
 		.write_buf = write_buf,
 	};
 
+re_send:
+
 	rc = cyttsp5_hid_send_output_user_and_wait_(cd, &hid_output);
-	if (rc)
-		return rc;
+	if (rc) {
+		if (retry) {
+			retry -= 1;
+			goto re_send;
+		} else {
+			tp_log_err("%s:send_output_user_and_wait_error, rc = %d\n", 
+				__func__, rc);
+			return rc;
+		}
+	}
+	/* DTS2015020508434 caowei 20150205 end > */
 
 	size = get_unaligned_le16(&cd->response_buf[0]);
 	if (size == 0)
@@ -5205,6 +5229,18 @@ static ssize_t cyttsp5_drv_debug_store(struct device *dev,
 cyttsp5_drv_debug_store_exit:
 	return size;
 }
+
+/* < DTS2015020508434 caowei 20150205 begin */
+ssize_t hw_cyttsp5_drv_debug_store(struct kobject *dev,
+		struct kobj_attribute *attr,const char *buf,size_t size) {
+	if (NULL == cyttsp5_core_dev) {
+		tp_log_err("%s:core dev is null\n", __func__);
+		return -ENODEV;
+	}
+
+	return cyttsp5_drv_debug_store(cyttsp5_core_dev, NULL, buf, size);
+}
+/* DTS2015020508434 caowei 20150205 end > */
 
 /*
  * Show system status on deep sleep status via sysfs

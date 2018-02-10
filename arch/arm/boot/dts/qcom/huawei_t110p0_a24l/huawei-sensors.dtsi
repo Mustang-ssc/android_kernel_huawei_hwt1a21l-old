@@ -163,5 +163,8 @@
 		gs,accel_g_range = <0>;
 		gs,accel_res = <0>;
 	};
+	/* < DTS2015072707140 chendong wx241705 begin */
+	//delete line
+	/* DTS2015072707140 chendong wx241705 end > */
 };
 /* DTS2014091800127 l00133898 20140918  end > */

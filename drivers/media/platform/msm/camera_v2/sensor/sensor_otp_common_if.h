@@ -64,7 +64,9 @@ extern int s5k5e2_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index);
 
 /*< DTS2014112103803  gwx229921 20141211 begin */
 /*< DTS2014112103818 gwx229921 20141211 begin */
-extern int ov13850_liteon_p13v01h_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index);
+/*< DTS2015021200322  jwx206032 20150215 begin */
+extern int ov13850_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index);
+/* DTS2015021200322  jwx206032 20150215 end >*/
 extern int ov5648_foxconn_132_otp_func(struct msm_sensor_ctrl_t *s_ctrl, int index);
 extern int s5k4e1_sunny_132_otp_func(struct msm_sensor_ctrl_t *s_ctrl, int index);
 /* DTS2014112103803 gwx229921 20141211 end >*/

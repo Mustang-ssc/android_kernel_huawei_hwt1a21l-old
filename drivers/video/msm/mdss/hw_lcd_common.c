@@ -356,10 +356,12 @@ int mdss_record_dsm_err(u32 *dsi_status)
 
 	if (dsi_status[2] & 0x011111)
 		dsm_client_record(lcd_dclient, "DSI_DLN0_PHY_ERR is wrong ,err number :%x\n", dsi_status[2]);
-
+	/* < DTS2015020703391 liujunchao 20150209 begin */
+	//Disable check reg 00c because the register can not show dsi status accurately
 	if (dsi_status[3] & 0xcccc4489) 
-		dsm_client_record(lcd_dclient, "DSI_FIFO_STATUS is wrong ,err number :%x\n", dsi_status[3]);
-
+		return 0;
+		//dsm_client_record(lcd_dclient, "DSI_FIFO_STATUS is wrong ,err number :%x\n", dsi_status[3]);
+	/*DTS2015020703391 liujunchao 20150209 end  > */
 	if (dsi_status[4] & 0x80000000) 
 		dsm_client_record(lcd_dclient, "DSI_STATUS is wrong ,err number :%x\n", dsi_status[4]);
 

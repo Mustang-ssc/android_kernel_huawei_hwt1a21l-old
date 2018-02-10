@@ -1767,6 +1767,9 @@ struct msm_actuator_params_t {
 	enum msm_actuator_data_type i2c_data_type;
 	struct msm_actuator_reg_params_t *reg_tbl_params;
 	struct reg_settings_t *init_settings;
+       /* < DTS2015032610000 l00271394 20150326 begin */
+       char actuator_name[MAX_ACT_MOD_NAME_SIZE];
+       /* DTS2015032610000 l00271394 20150326 end > */
 };
 
 struct msm_actuator_set_info_t {

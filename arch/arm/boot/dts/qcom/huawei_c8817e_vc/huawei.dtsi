@@ -46,4 +46,7 @@
 /* < DTS2014082005817 lizhigang 20140819 begin */
 /* Delete this line, #include "huawei-emmc.dtsi" */
 /* DTS2014082005817 lizhigang 20140819 end > */
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#include "huawei-memory.dtsi"
+/*DTS2015012007753 wangyuantao 20150120 end >*/
 

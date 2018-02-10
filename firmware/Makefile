@@ -138,6 +138,7 @@ fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
 #touchscreen img
 fw-shipped-y += cyttsp5_fw.bin
+fw-shipped-y += cyttsp5_fw_mutto.bin
 fw-shipped-y += cyttsp5_fw_bak.bin
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)

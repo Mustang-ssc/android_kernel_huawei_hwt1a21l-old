@@ -43,3 +43,6 @@
 #include "huawei-sdcard.dtsi"
 /*belong to the OS group, according to the order of sdcard end*/
 /* DTS2014090505039 zhujie 20140905 end > */
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#include "huawei-memory.dtsi"
+/*DTS2015012007753 wangyuantao 20150120 end >*/

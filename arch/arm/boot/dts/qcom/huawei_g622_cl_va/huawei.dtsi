@@ -42,3 +42,6 @@
 /*belong to the OS group, according to the order of battery memery end*/
 /* DTS2014042407105 sunlibin 20140504 end> */
 /* DTS2014050404951 menglingchao 20140504 end > */
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#include "huawei-memory.dtsi"
+/*DTS2015012007753 wangyuantao 20150120 end >*/

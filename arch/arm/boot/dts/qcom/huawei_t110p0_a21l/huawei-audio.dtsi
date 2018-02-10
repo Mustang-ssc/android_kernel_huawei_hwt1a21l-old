@@ -14,7 +14,8 @@
 &spmi_bus {
     qcom,pm8916@1 {
         pm8916_tombak_dig: msm8x16_wcd_codec@f000{
-            qcom,msm-boost-voltage = <4800>;
+            qcom,msm-boost-voltage = <5000>;
+            msm-pwm-mode;
         };
     };
 };

@@ -154,6 +154,9 @@ void ping_unhash(struct sock *sk)
 	if (sk_hashed(sk)) {
 		write_lock_bh(&ping_table.lock);
 		hlist_nulls_del(&sk->sk_nulls_node);
+                /* <DTS2015060806824 chendong cwx241705 begin */
+                sk_nulls_node_init(&sk->sk_nulls_node);
+                /* DTS2015060806824 chendong cwx241705 end >*/
 		sock_put(sk);
 		isk->inet_num = 0;
 		isk->inet_sport = 0;

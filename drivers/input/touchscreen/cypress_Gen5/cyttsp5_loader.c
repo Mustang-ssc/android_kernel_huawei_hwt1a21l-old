@@ -698,7 +698,7 @@ static int upgrade_firmware_from_builtin(struct cyttsp5_device *ttsp)
 
 	TS_LOG_ERR( "%s: panel_id = %d \n", __func__,panel_id);
 
-	if(PANEL_ID_EELYEE == panel_id || 0 == panel_id){
+	if(PANEL_ID_EELYEE == panel_id || 0 == panel_id || 255 == panel_id){
 	    retval = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 				CY_FW_FILE_NAME_EELYEE, dev, GFP_KERNEL, ttsp,
 				_cyttsp5_firmware_cont_builtin);

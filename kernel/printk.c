@@ -314,6 +314,22 @@ static u32 syslog_oops_buf_idx;
 static const char log_oops_end[] = "---end of oops log buffer---";
 #endif
 
+/*< DTS2015012007753 wangyuantao 20150120 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
+void* huawei_get_log_buf_addr(void)
+{
+	return log_buf;
+}
+
+int huawei_get_log_buf_len(void)
+{
+	return log_buf_len;
+}
+EXPORT_SYMBOL(huawei_get_log_buf_addr);
+EXPORT_SYMBOL(huawei_get_log_buf_len);
+#endif
+/*DTS2015012007753 wangyuantao 20150120 end >*/
+
 /* cpu currently holding logbuf_lock */
 static volatile unsigned int logbuf_cpu = UINT_MAX;
 

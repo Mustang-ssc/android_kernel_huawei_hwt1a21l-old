@@ -3590,12 +3590,6 @@ void mmc_rescan(struct work_struct *work)
 	mmc_bus_put(host);
 
 	if (host->ops->get_cd && host->ops->get_cd(host) == 0) {
-		/*< DTS2014112104831 luchao 20141121 begin */
-#ifdef CONFIG_HUAWEI_SDCARD_DSM
-		if(!strcmp(mmc_hostname(host), "mmc1"))
-			DSM_SDCARD_LOG(DMS_SDCARD_GPIO_ERR,"%s:gpio status err.\n",__func__);
-#endif
-		/* DTS2014112104831 luchao 20141121 end>*/
 		mmc_claim_host(host);
 		mmc_power_off(host);
 		mmc_release_host(host);

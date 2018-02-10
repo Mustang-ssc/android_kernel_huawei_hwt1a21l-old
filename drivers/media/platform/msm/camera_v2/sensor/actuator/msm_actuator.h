@@ -101,6 +101,9 @@ struct msm_actuator_ctrl_t {
 	uint32_t subdev_id;
 	enum msm_actuator_state_t actuator_state;
 	struct msm_actuator_vreg vreg_cfg;
+       /* < DTS2015032610000 l00271394 20150326 begin */
+       char actuator_name[MAX_ACT_MOD_NAME_SIZE];
+       /* DTS2015032610000 l00271394 20150326 end > */
 };
 
 #endif

@@ -83,7 +83,9 @@
                 reg = <0x6B>;
                 ti,current-limit = <1000>;
                 ti,weak-battery-voltage = <3200>;
-                ti,battery-regulation-voltage = <4320>;
+                /* <DTS2015020301877 tanyanying 20150209 begin */
+                ti,battery-regulation-voltage = <4340>;
+                /* DTS2015020301877 tanyanying 20150209 end> */
                 ti,charge-current = <1250>;
                 ti,termination-current = <100>;
                 ti,resistor-sense = <68>;

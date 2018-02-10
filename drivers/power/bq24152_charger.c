@@ -88,11 +88,13 @@
 #define STATUS_KEEP 0
 
 /* <DTS2014122601446 zhaoxiaoli 20141227 begin */
+/* <DTS2015020301877 tanyanying 20150209 begin */
 jeita_spec jeita_batt_param =
 {
-	.normal	= {100,420,1250,4320},
+	.normal	= {100,420,1250,4340},
 	.hot.t_high = -1
 };
+/* DTS2015020301877 tanyanying 20150209 end> */
 /* DTS2014122601446 zhaoxiaoli 20141227 end> */
 
 /* < DTS2015012009434  tanyanying 20150120 begin */

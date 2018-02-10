@@ -41,6 +41,7 @@ struct cyttsp5_i2c {
 	char const *id;
 	struct mutex lock;
     struct regulator *vdd;
+    int vbus_gpio;
     int vbus_gpio_en;
 };
 

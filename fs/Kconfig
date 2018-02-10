@@ -273,5 +273,7 @@ endif # NETWORK_FILESYSTEMS
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
-
+#/*Begin DTS2015022803688  Added by lvxinkai/lwx270663 2015/2/28*/
+source "fs/exfat/Kconfig"
+#/*End DTS2015022803688  Added by lvxinkai/lwx270663 2015/2/28*/
 endmenu

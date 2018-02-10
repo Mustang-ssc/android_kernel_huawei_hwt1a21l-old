@@ -74,7 +74,9 @@ struct kmem_cache *blk_requestq_cachep;
 /* < DTS2014061400183 jingbing 20140614 begin */
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
 /* system write protect flag, 0: disable(default) 1:enable */
-static volatile int ro_secure_debuggable = 0;
+/* < DTS2015030403064 wangwenlei 20150304 begin */
+static volatile int *ro_secure_debuggable = NULL;
+/* DTS2015030403064 wangwenlei 20150304 end > */
 /* system partition number is platform dependent, MUST change it according to platform */
 #define PART_SYSTEM "mmcblk0p23"
 #endif
@@ -1952,7 +1954,9 @@ EXPORT_SYMBOL(generic_make_request);
 #ifdef CONFIG_HW_SYSTEM_WR_PROTECT
 int blk_set_ro_secure_debuggable(int state)
 {
-    ro_secure_debuggable = state;
+/* < DTS2015030403064 wangwenlei 20150304 begin */
+    *ro_secure_debuggable = state;
+/* DTS2015030403064 wangwenlei 20150304 end > */
     return 0;
 }
 EXPORT_SYMBOL(blk_set_ro_secure_debuggable);
@@ -2011,7 +2015,9 @@ void submit_bio(int rw, struct bio *bio)
              * root user: send write request to mmc driver.
              */
             if((strstr(devname,PART_SYSTEM)!=NULL) &&
-                    ro_secure_debuggable)
+/* < DTS2015030403064 wangwenlei 20150304 begin */
+                    *ro_secure_debuggable)
+/* DTS2015030403064 wangwenlei 20150304 end > */
             {
 				/* < DTS2014081108133 duanhuan 20140805 begin */
 				/* < DTS2014111306772 duanhuan 20141110 begin */
@@ -2024,7 +2030,9 @@ void submit_bio(int rw, struct bio *bio)
 					(unsigned long long)bio->bi_sector,
 					devname,
 					count,
-					ro_secure_debuggable,
+/* < DTS2015030403064 wangwenlei 20150304 begin */
+					*ro_secure_debuggable,
+/* DTS2015030403064 wangwenlei 20150304 end > */
 					(strstr(saved_command_line,"androidboot.widvine_state=locked") != NULL) ? "locked" : "unlock");
 #else
                 printk(KERN_DEBUG "[HW]:EXT4_ERR_CAPS:%s(%d)[Parent: %s(%d)]: %s block %Lu on %s (%u sectors) %d %s.\n",
@@ -2033,7 +2041,9 @@ void submit_bio(int rw, struct bio *bio)
                         (unsigned long long)bio->bi_sector,
                         devname,
                         count,
-                        ro_secure_debuggable,
+/* < DTS2015030403064 wangwenlei 20150304 begin */
+                        *ro_secure_debuggable,
+/* DTS2015030403064 wangwenlei 20150304 end > */
                         (strstr(saved_command_line,"androidboot.widvine_state=locked") != NULL) ? "locked" : "unlock");
 
 #endif
@@ -3385,3 +3395,20 @@ int __init blk_dev_init(void)
 
 	return 0;
 }
+
+/* < DTS2015030403064 wangwenlei 20150304 begin */
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+int __init ro_secure_debuggable_init(void)
+{
+    static int ro_secure_debuggable_static = 0;
+
+    ro_secure_debuggable = kzalloc(sizeof(int), GFP_KERNEL);
+    if (!ro_secure_debuggable)
+        ro_secure_debuggable = &ro_secure_debuggable_static;
+
+    return 0;
+}
+late_initcall(ro_secure_debuggable_init);
+#endif
+/* DTS2015030403064 wangwenlei 20150304 end > */
+

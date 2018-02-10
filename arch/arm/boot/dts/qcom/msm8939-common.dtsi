@@ -761,7 +761,7 @@
 			qcom,reset-bam-on-connect;
 		};
 	};
-
+/*< DTS2015021106015 zhanggong 20150215 begin */
 	usb_otg: usb@78d9000 {
 		compatible = "qcom,hsusb-otg";
 
@@ -779,7 +779,7 @@
 		qcom,hsusb-otg-phy-type = <2>;
 		qcom,hsusb-otg-mode = <1>;
 		qcom,hsusb-otg-otg-control = <2>;
-		qcom,hsusb-otg-disable-reset;
+		qcom,hsusb-otg-disable-reset = <0>;
 		qcom,dp-manual-pullup;
 
 		qcom,msm-bus,name = "usb2";
@@ -801,7 +801,7 @@
 				"xo";
 		qcom,bus-clk-rate = <331200000 200000000 100000000>;
 	};
-
+/* DTS2015021106015 zhanggong 20150215 end > */
 	android_usb: android_usb@086000c8 {
 		compatible = "qcom,android-usb";
 		reg = <0x086000c8 0xc8>;
@@ -1078,6 +1078,22 @@
                         reg = <0x6b0 32>;
                 };
 
+                /* < DTS2015012007753 wangyuantao 20150120 begin */
+		crash_magic_addr@a94 {
+			compatible = "qcom,msm-imem-crash_magic_addr";
+			reg = <0xa94 4>;
+		};
+
+		crash_len_addr@a98 {
+			compatible = "qcom,msm-imem-crash_len_addr";
+			reg = <0xa98 4>;
+		};
+
+		hw_reset_magic_addr@a9c {
+			compatible = "qcom,msm-imem-hw_reset_magic_addr";
+			reg = <0xa9c 4>;
+		};
+                /* DTS2015012007753 wangyuantao 20150120 end >*/
 	};
 
 	blsp1_uart1: serial@78af000 {

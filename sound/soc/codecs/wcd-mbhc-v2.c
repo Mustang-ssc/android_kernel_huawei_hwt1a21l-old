@@ -1934,7 +1934,7 @@ static void wcd_restore_volume_work(struct work_struct *work)
        return;
     }
     
-    reg = snd_soc_read(codec, MSM8X16_WCD_A_CDC_RX3_VOL_CTL_B2_CTL);;
+    reg = snd_soc_read(codec, MSM8X16_WCD_A_CDC_RX3_VOL_CTL_B2_CTL);
 
     ad_logd("%s: enter,spk_media_case =%s,reg=0x%x\n", __func__,
        msm8x16_wcd->spk_media_case?"true":"false" ,reg);
@@ -1976,7 +1976,8 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 	snd_soc_update_bits(codec, MSM8X16_WCD_A_ANALOG_MBHC_DET_CTL_2,
 			0x01, 0x01);
 
-	snd_soc_write(codec, MSM8X16_WCD_A_ANALOG_MBHC_DBNC_TIMER, 0x98);
+    /* increase the debounce time from 256ms to 768ms in DTS2015012303398 */
+	snd_soc_write(codec, MSM8X16_WCD_A_ANALOG_MBHC_DBNC_TIMER, 0xC8);
 
 	/* enable MBHC clock */
 	snd_soc_update_bits(codec,

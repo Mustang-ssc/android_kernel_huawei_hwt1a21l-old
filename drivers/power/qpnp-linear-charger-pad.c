@@ -40,9 +40,7 @@
 /* DTS2014072806213 by l00220156 for factory interfaces 20140728 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
     #define MAX_SHOW_STRING_LENTH (40)
-/* DTS2015021008429 xiongxi xwx234328 20150210 begin*/
-//delete by xiongxi
-/* DTS2015021008429 xiongxi xwx234328 20150210 end*/
+    #include <linux/equip.h>
 #endif
 /* DTS2014072806213 by l00220156 for factory interfaces 20140728 end */
 /*<DTS2014053001058 jiangfei 20140530 begin */
@@ -1809,9 +1807,41 @@ static int is_usb_ovp(struct qpnp_lbc_chip *chip)
 /* DTS2014062601697 jiangfei 20140626 end> */
 /* DTS2014053001058 jiangfei 20140530 end> */
 /* <DTS2014110409521 caiwei 20141104 begin */
-/* DTS2015021008429 xiongxi xwx234328 20150210 begin*/
-//delete by xiongxi
-/* DTS2015021008429 xiongxi xwx234328 20150210 end*/
+static int equip_hot_temperate_test_get(struct qpnp_lbc_chip *chip)
+{
+    union power_supply_propval ret = {0,};
+
+    if (chip->bms_psy)
+    {
+        chip->bms_psy->get_property(chip->bms_psy,
+                                    POWER_SUPPLY_PROP_HOT_TEMP_TEST_STATUS, &ret);
+        return ret.intval;
+    }
+    else
+    {
+        pr_debug("No BMS supply registered return 0\n");
+    }
+
+    return 0;
+}
+
+static int equip_hot_temperate_test_set(struct qpnp_lbc_chip *chip, int enable)
+{
+    union power_supply_propval ret = {enable,};
+    if (chip->bms_psy)
+    {
+        chip->bms_psy->set_property(chip->bms_psy,
+                                    POWER_SUPPLY_PROP_HOT_TEMP_TEST_STATUS, &ret);
+        return ret.intval;
+    }
+    else
+    {
+        pr_debug("No BMS supply registered return 0\n");
+    }
+
+    return 0;
+
+}
 /* DTS2014110409521 caiwei 20141104 end> */
 static int get_prop_batt_present(struct qpnp_lbc_chip *chip)
 {
@@ -5213,9 +5243,223 @@ static enum alarmtimer_restart vddtrim_callback(struct alarm *alarm,
 
 	return ALARMTIMER_NORESTART;
 }
-/* DTS2015021008429 xiongxi xwx234328 20150210 begin*/
-//delete by xiongxi
-/* DTS2015021008429 xiongxi xwx234328 20150210 end*/
+/* DTS2014072806213 by l00220156 for factory interfaces 20140728 begin */
+static ssize_t equip_at_batt_present_get_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, batt_present = 0;
+
+    if (NULL == arg){
+        pr_err("%s: NULL arg\n", __func__);
+        return -EINVAL;
+    }
+    
+    batt_present = get_prop_batt_present(global_chip);
+    ret = snprintf(arg->str_out, MAX_SHOW_STRING_LENTH, "%d\n", batt_present);
+    pr_err("%s: batt_present =%s\n", __func__,arg->str_out);
+    
+    return ret;
+}
+
+static ssize_t equip_at_batt_voltage_get_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, batt_volt = 0;
+
+    if (NULL == arg){
+        pr_err("%s: NULL arg\n", __func__);
+        return -EINVAL;
+    }
+
+    batt_volt = get_prop_battery_voltage_now(global_chip);
+    ret = snprintf(arg->str_out, MAX_SHOW_STRING_LENTH, "%d\n", batt_volt);
+    pr_err("%s: batt_present =%s\n", __func__,arg->str_out);
+    
+    return ret;
+}
+
+static ssize_t equip_at_batt_temp_get_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, batt_temp = 0;
+
+    if (NULL == arg){
+        pr_err("%s: NULL arg\n", __func__);
+        return -EINVAL;
+    }
+
+    batt_temp = get_prop_batt_temp(global_chip);
+    ret = snprintf(arg->str_out, MAX_SHOW_STRING_LENTH, "%d\n", batt_temp);
+    pr_err("%s: batt_present =%s\n", __func__,arg->str_out);
+    
+    return ret;
+}
+
+static ssize_t equip_at_batt_capacity_get_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, batt_cap = 0;
+
+    if (NULL == arg){
+        pr_err("%s: NULL arg\n", __func__);
+        return -EINVAL;
+    }
+
+    batt_cap = get_prop_capacity(global_chip);
+    ret = snprintf(arg->str_out, MAX_SHOW_STRING_LENTH, "%d\n", batt_cap);
+    pr_err("%s: batt_present =%s\n", __func__,arg->str_out);
+    
+    return ret;
+}
+
+static ssize_t equip_at_batt_current_get_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, batt_curr = 0;
+
+    if (NULL == arg){
+        pr_err("%s: NULL arg\n", __func__);
+        return -EINVAL;
+    }
+
+    batt_curr = get_prop_current_now(global_chip);
+    ret = snprintf(arg->str_out, MAX_SHOW_STRING_LENTH, "%d\n", batt_curr);
+    pr_err("%s: batt_curr =%s\n", __func__,arg->str_out);
+    
+    return ret;
+}
+
+static ssize_t equip_at_batt_charge_enable_set_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, val = 0;
+
+    if (NULL == arg){
+        pr_err("%s: NULL arg\n", __func__);
+        return -EINVAL;
+    }
+    
+    if ((strict_strtol(arg->str_in, 10, (long*)&val) < 0) || (val < 0) || (val > 1))
+    {   
+        pr_err("%s: arg->str_in err\n", __func__);
+        return -EINVAL;
+    }
+    
+    ret = bq2419x_equip_at_batt_charge_enable(val);
+    pr_err("%s: ret =%d \n", __func__, ret);
+    
+    return ret;
+}
+/* <DTS2014110409521 caiwei 20141104 begin */
+static ssize_t equip_at_hot_temperate_test_set_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, val = 0;
+
+    if (NULL == arg)
+    {
+        pr_err("%s NULL arg\n", __func__);
+        return -EINVAL;
+    }
+
+    if ((strict_strtol(arg->str_in, 10, (long*)&val) < 0) || (val < 0) || (val > 1))
+    {
+        pr_err("%s: arg->str_in err\n", __func__);
+        return -EINVAL;
+    }
+
+    ret = equip_hot_temperate_test_set(global_chip, val);
+    pr_err("%s: ret =%d \n", __func__, ret);
+
+    return ret;
+}
+
+static ssize_t equip_at_hot_temperate_test_get_cdcval(struct EQUIP_PARAM* arg)
+{
+    int ret = 0, val = 0;
+
+    if (NULL == arg)
+    {
+        pr_err("%s NULL arg\n", __func__);
+        return -EINVAL;
+    }
+
+    if ((strict_strtol(arg->str_in, 10, (long*)&val) < 0) || (val < 0) || (val > 1))
+    {
+        pr_err("%s: arg->str_in err\n", __func__);
+        return -EINVAL;
+    }
+
+    ret = equip_hot_temperate_test_get(global_chip);
+    pr_err("%s: ret =%d \n", __func__, ret);
+
+    return ret;
+}
+/* DTS2014110409521 caiwei 20141104 end> */
+static void huawei_psy_register_equip(void)
+{
+    enum EQUIP_DEVICE equip_dev = 0;
+    enum EQUIP_OPS ops = 0;
+
+    /****************************** 产线AT命令归一化接口 *************************/
+    equip_dev = COULOMETER;
+    ops = EP_READ;
+    register_equip_func(equip_dev, ops, (void *)equip_at_batt_present_get_cdcval);
+    ops = EP_WRITE;
+    register_equip_func(equip_dev, ops, NULL);
+
+    /***** 获取电池电压，单位uV *****/
+    equip_dev = BATT_VOLTAGE;
+    ops = EP_READ;
+    register_equip_func(equip_dev, ops, (void *)equip_at_batt_voltage_get_cdcval);
+    ops = EP_WRITE;
+    register_equip_func(equip_dev, ops, NULL);
+
+    /***** 获取电池电压，单位uV *****/
+
+    /***** 获取电池温度 ，单位0.1摄氏度*****/
+    equip_dev = BATT_TEMP;
+    ops = EP_READ;
+    register_equip_func(equip_dev, ops, (void *)equip_at_batt_temp_get_cdcval);
+    ops = EP_WRITE;
+    register_equip_func(equip_dev, ops, NULL);
+
+    /***** 获取电池温度 ，单位0.1摄氏度*****/
+
+    /***** 获取电池当前电量百分比 *****/
+    equip_dev = BATT_CAPACITY;
+    ops = EP_READ;
+    register_equip_func(equip_dev, ops, (void *)equip_at_batt_capacity_get_cdcval);
+    ops = EP_WRITE;
+    register_equip_func(equip_dev, ops, NULL);
+
+    /***** 获取电池当前电量百分比 *****/
+
+    /***** 获取流经电池电流，单位mA *****/
+    equip_dev = BATT_CURRENT;
+    ops = EP_READ;
+    register_equip_func(equip_dev, ops, (void *)equip_at_batt_current_get_cdcval);
+    ops = EP_WRITE;
+    register_equip_func(equip_dev, ops, NULL);
+
+    /***** 获取流经电池电流，单位mA *****/
+
+    /***** 充电使能接口 *****/
+    equip_dev = BATT_CHARGE_ENABLE;
+    ops = EP_READ;
+
+    /* 查询 */
+    register_equip_func(equip_dev, ops, NULL);
+    ops = EP_WRITE;
+
+    /* 设置 */
+    register_equip_func(equip_dev, ops, (void *)equip_at_batt_charge_enable_set_cdcval);
+
+    /***** 充电使能接口 *****/
+    /* <DTS2014110409521 caiwei 20141104 begin */
+    /***** 高温测试使能接口*****/
+    equip_dev = HOT_TEMP_TEST;
+    ops = EP_WRITE;
+    register_equip_func(equip_dev, ops, (void*)equip_at_hot_temperate_test_set_cdcval);
+    ops = EP_READ;
+    register_equip_func(equip_dev, ops, (void*)equip_at_hot_temperate_test_get_cdcval);
+    /* DTS2014110409521 caiwei 20141104 end> */
+    /****************************** 产线AT命令归一化接口 *************************/
+}
+/* DTS2014072806213 by l00220156 for factory interfaces 20140728 end */
 
 static int qpnp_lbc_probe(struct spmi_device *spmi)
 {
@@ -5523,9 +5767,7 @@ static int qpnp_lbc_probe(struct spmi_device *spmi)
 			get_prop_battery_voltage_now(chip),
 			get_prop_capacity(chip));
             /* DTS2014072806213 by l00220156 for factory interfaces 20140728 begin */
-	    /* DTS2015021008429 xiongxi xwx234328 20150210 begin*/
-		//delete by xiongxi
-	    /* DTS2015021008429 xiongxi xwx234328 20150210 end*/
+            huawei_psy_register_equip();
             /* DTS2014072806213 by l00220156 for factory interfaces 20140728 end */
     /* < DTS2014052901670 zhaoxiaoli 20140529 begin */
 #ifdef CONFIG_HUAWEI_KERNEL

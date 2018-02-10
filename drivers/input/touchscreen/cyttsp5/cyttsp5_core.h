@@ -283,6 +283,11 @@ static inline struct cyttsp5_platform_data *cyttsp5_get_platform_data(struct dev
 	return (struct cyttsp5_platform_data *)dev->platform_data;
 }
 
+/* < DTS2015020508434 caowei 20150205 begin */
+ssize_t hw_cyttsp5_drv_debug_store(struct kobject *dev,
+	struct kobj_attribute *attr,const char *buf,size_t size);
+/* DTS2015020508434 caowei 20150205 end > */
+
 #ifdef CONFIG_HUAWEI_KERNEL
 #define TP_ERR  	1
 #define TP_WARNING 	2

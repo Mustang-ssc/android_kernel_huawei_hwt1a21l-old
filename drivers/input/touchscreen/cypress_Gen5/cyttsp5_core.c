@@ -829,11 +829,14 @@ static int cyttsp5_hid_send_output_and_wait_(struct cyttsp5_core_data *cd,
 	if (rc)
 		goto error;
 
-    if (hid_output->command_code == HID_OUTPUT_BL_LAUNCH_APP) {
+	/* Workaround for FW defect, CDT165308-	 * bl_launch app creates a glitch in IRQ line */
+   /*
+	if (hid_output->command_code == HID_OUTPUT_BL_LAUNCH_APP) {
         disable_irq(cd->irq);
         msleep(200);
         enable_irq(cd->irq);
     }
+	*/
 
 	t = wait_event_timeout(cd->wait_q, (cd->hid_cmd_state == 0),
 			msecs_to_jiffies(timeout_ms));
@@ -4182,12 +4185,37 @@ static int cyttsp5_read_input(struct cyttsp5_core_data *cd)
 	return rc;
 }
 
+static bool cyttsp5_check_irq_asserted(struct cyttsp5_core_data *cd)
+{
+#ifdef ENABLE_WORKAROUND_FOR_GLITCH_AFTER_BL_LAUNCH_APP
+	/* Workaround for FW defect, CDT165308
+	* bl_launch app creates a glitch in IRQ line */
+	if (cd->hid_cmd_state == HID_OUTPUT_BL_LAUNCH_APP + 1
+		&& cd->pdata->irq_stat) {
+		/*
+		in X1S panel and GC1546 panel, the width for the INT 
+		glitch is about 4us,the normal INT width of response
+		will last more than 200us, so use 10us delay
+		for distinguish the glitch the normal INT is enough.
+		*/
+		udelay(20);
+		if (cd->pdata->irq_stat(cd->pdata, cd->dev)
+			!= CY_IRQ_ASSERTED_VALUE)
+			return false;
+	}
+#endif
+	return true;
+}
+
 static irqreturn_t cyttsp5_irq(int irq, void *handle)
 {
 	struct cyttsp5_core_data *cd = handle;
 	int rc;
 
 	TS_LOG_DEBUG("Enter %s\n", __func__);
+	if (!cyttsp5_check_irq_asserted(cd))
+		return IRQ_HANDLED;
+
 	rc = cyttsp5_read_input(cd);
 	if (!rc)
 		cyttsp5_parse_input(cd);
@@ -4573,6 +4601,11 @@ static int cyttsp5_check_and_deassert_int(struct cyttsp5_core_data *cd)
 	int rc;
 
 	do {
+		if (cd->pdata->xres) {
+			cd->pdata->xres(cd->pdata, cd->dev);
+			mdelay(1000);
+		}
+
 		rc = cyttsp5_adap_read_default(cd->core->adap, buf, 2);
 		if (rc < 0) {
 			TS_LOG_ERR( "%s: Error on read_i2c r=%d\n",
@@ -4599,42 +4632,31 @@ static int cyttsp5_check_and_deassert_int(struct cyttsp5_core_data *cd)
 		}
 	} while (retry--);
 
-	TS_LOG_ERR( "%s: Error here,then return -EINVAL.\n", __func__);
-	return -EINVAL;
+	return 0;
 }
 extern struct cyttsp5_i2c *g_ts_i2c;
 
-static int cyttsp5_power_on_try(struct cyttsp5_core_data *cd, int retry)
+static int cyttsp5_power_on_try(struct cyttsp5_core_data *cd)
 {
 	int rc = 0;
 	
-	while(retry--) {
-		if(g_ts_i2c != NULL){
-            rc = regulator_disable(g_ts_i2c->vdd);
-            if (rc < 0) {
-		        TS_LOG_ERR("%s: Error,regulator_disable vdd,rc = %d.\n",__func__, rc);
-            }
-            gpio_direction_output(g_ts_i2c->vbus_gpio_en, 0);
-            msleep(100);
-            rc = regulator_enable(g_ts_i2c->vdd);
-            if (rc < 0) {
-		        TS_LOG_ERR("%s: Error,regulator_enable vdd,rc = %d.\n",__func__, rc);
-            }
-            gpio_direction_output(g_ts_i2c->vbus_gpio_en, 1);
-			msleep(300);
-			
-			rc = cyttsp5_check_and_deassert_int(cd);
-			if (rc < 0) {
-				TS_LOG_INFO("tp comminucate fail and try again? %d\n", !!retry);
-				continue;
-			} else {
-				TS_LOG_INFO("tp comminucate ok and init go on\n");
-				return 0;
-			}
+	if(g_ts_i2c != NULL){
+		rc = regulator_disable(g_ts_i2c->vdd);
+		if (rc < 0) {
+			TS_LOG_ERR("%s: Error,regulator_disable vdd,rc = %d.\n",__func__, rc);
 		}
+		gpio_direction_output(g_ts_i2c->vbus_gpio_en, 0);
+		gpio_direction_output(g_ts_i2c->vbus_gpio, 0);
+		mdelay(100);
+		rc = regulator_enable(g_ts_i2c->vdd);
+		if (rc < 0) {
+			TS_LOG_ERR("%s: Error,regulator_enable vdd,rc = %d.\n",__func__, rc);
+		}
+		gpio_direction_output(g_ts_i2c->vbus_gpio_en, 1);
+		gpio_direction_output(g_ts_i2c->vbus_gpio, 1);
+		mdelay(200);
 	}
-	TS_LOG_ERR("tp comminucate fail over %d times and TP driver init should exit\n", retry);
-	return -EIO;
+	return rc;
 }
 #ifdef CONFIG_HUAWEI_KERNEL
 static char * get_sensor_name(int id)
@@ -4684,13 +4706,12 @@ static int cyttsp5_startup_(struct cyttsp5_core_data *cd)
 
 	cyttsp5_stop_wd_timer(cd);
 
-	//rc = cyttsp5_check_and_deassert_int(cd);
-
 	/* reset hardware */
 	rc = cyttsp5_reset_and_wait(cd);
 	if (rc < 0){
 		TS_LOG_ERR( "%s: Error on h/w reset r=%d\n",__func__, rc);
-		rc = cyttsp5_power_on_try(cd, 1);
+		cyttsp5_power_on_try(cd);
+		goto exit;
 	}
 
 	rc = cyttsp5_get_hid_descriptor_(cd, &cd->hid_desc);
@@ -5655,6 +5676,7 @@ static int cyttsp5_core_probe(struct cyttsp5_core *core)
 	enum cyttsp5_atten_type type;
 	unsigned int irq_flags;
 	int rc = 0;
+	int retry = 3;
 
 	if (pdata == NULL) {
 		TS_LOG_ERR( "%s: Missing platform data\n", __func__);
@@ -5767,10 +5789,18 @@ static int cyttsp5_core_probe(struct cyttsp5_core *core)
 	 * is tested before leaving the probe
 	 */
 	rc = cyttsp5_check_and_deassert_int(cd);
-	if (rc) {
+	if (rc < 0) {
 		TS_LOG_INFO( "%s:i2c communication failed and try poweron again= %d\n", __func__, rc);
-		rc = cyttsp5_power_on_try(cd, 3);
-		if (rc < 0) {
+		while (retry-- > 0) {
+			cyttsp5_power_on_try(cd);
+			rc = cyttsp5_check_and_deassert_int(cd);
+			if (rc >= 0) {
+				TS_LOG_INFO( "%s:i2c communication retry ok\n", __func__);
+				break;
+			}
+		}
+		if (retry == 0) {
+			TS_LOG_INFO( "%s:i2c communication failed and probe exit\n", __func__);
 			goto error_check_i2c;
 		}
 	}

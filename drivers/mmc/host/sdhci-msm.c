@@ -198,6 +198,11 @@ enum sdc_mpm_pin_state {
 /*End DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20 */
 /*DTS2014102702713 zhanglei 20141027 end> */	
 
+/* < DTS2015012806509 zhangpeng WX205228 20150209 begin */
+#define CORE_VENDOR_SPEC_FUNC2 0x110
+#define ONE_MID_EN (1 << 25)
+/* DTS2015012806509 zhangpeng WX205228 20150209 end > */
+
 static const u32 tuning_block_64[] = {
 	0x00FF0FFF, 0xCCC3CCFF, 0xFFCC3CC3, 0xEFFEFFFE,
 	0xDDFFDFFF, 0xFBFFFBFF, 0xFF7FFFBF, 0xEFBDF777,
@@ -936,6 +941,7 @@ static void sdhci_msm_set_mmc_drv_type(struct sdhci_host *host, u32 opcode,
 			drv_type);
 }
 
+/* < DTS2015012806509 zhangpeng WX205228 20150209 begin */
 int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 {
 	unsigned long flags;
@@ -1008,6 +1014,7 @@ retry:
 			.data = &data
 		};
 		struct scatterlist sg;
+		writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2) | ONE_MID_EN), host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
 
 		/* set the phase in delay line hw block */
 		rc = msm_config_cm_dll_phase(host, phase);
@@ -1115,9 +1122,11 @@ out:
 	if (!rc)
 		msm_host->tuning_done = true;
 	spin_unlock_irqrestore(&host->lock, flags);
+	writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2) & ~ONE_MID_EN), host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
 	pr_debug("%s: Exit %s, err(%d)\n", mmc_hostname(mmc), __func__, rc);
 	return rc;
 }
+/* DTS2015012806509 zhangpeng WX205228 20150209 end > */
 
 static int sdhci_msm_setup_gpio(struct sdhci_msm_pltfm_data *pdata, bool enable)
 {
@@ -2986,6 +2995,7 @@ static void sdhci_msm_disable_data_xfer(struct sdhci_host *host)
 
 #define MAX_TEST_BUS 20
 
+/* < DTS2015012806509 zhangpeng WX205228 20150209 begin */
 void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -3008,6 +3018,7 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC),
 		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_ADMA_ERR_ADDR0),
 		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_ADMA_ERR_ADDR1));
+	pr_info("Vndr func2: 0x%08x\n", readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2));
 
 	/*
 	 * tbsel indicates [2:0] bits and tbsel2 indicates [7:4] bits
@@ -3038,6 +3049,7 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 	writel_relaxed(~CORE_TESTBUS_ENA, msm_host->core_mem +
 			CORE_TESTBUS_CONFIG);
 }
+/* DTS2015012806509 zhangpeng WX205228 20150209 end > */
 
 static struct sdhci_ops sdhci_msm_ops = {
 	.set_uhs_signaling = sdhci_msm_set_uhs_signaling,

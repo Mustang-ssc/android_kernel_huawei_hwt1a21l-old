@@ -240,7 +240,7 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
     
 	ts_i2c->vdd = vdd;
     
-	rc = regulator_set_voltage(vdd,1800000,1800000);
+	rc = regulator_set_voltage(vdd,1850000,1850000);
 	if(rc < 0){
 		TS_LOG_ERR("%s: failed to set cypress vdd\n", __func__);
 		goto error_free_data;
@@ -262,6 +262,8 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
 		TS_LOG_ERR("%s: Fail request gpio=%d\n", __func__, vbus_gpio);
 		goto error_free_data;
 	}
+
+	ts_i2c->vbus_gpio = vbus_gpio;
 	rc = gpio_direction_output(vbus_gpio, 1);
 	if (rc < 0) {
 		TS_LOG_ERR("%s: Fail set output gpio=%d\n",__func__, vbus_gpio);

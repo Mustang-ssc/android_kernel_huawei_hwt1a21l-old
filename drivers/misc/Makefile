@@ -69,6 +69,9 @@ obj-$(CONFIG_TI_DRV2667) += ti_drv2667.o
 obj-$(CONFIG_QPNP_MISC) += qpnp-misc.o
 obj-$(CONFIG_APQ8084_DOCKING_STATION)	+= apq8084_dock.o
 obj-y				+= qcom/
+#/*< DTS2015012007753 wangyuantao 20150120 begin*/
+obj-$(CONFIG_HUAWEI_APANIC)	+= huawei_apanic/
+#/*DTS2015012007753 wangyuantao 20150120 end >*/
 #/* < DTS2014042900710 shenjinming 20140430 begin */
 obj-y				+= dsm/
 #/* DTS2014042900710 shenjinming 20140430 end > */

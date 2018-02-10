@@ -28,8 +28,11 @@ struct rw_semaphore {
 	struct lockdep_map dep_map;
 #endif
 /*<DTS2015010300107 zhanglei 20150103 begin */
-    void * owner;
-/*DTS2015010300107 zhanglei 20150103 end> */	
+/*<DTS2015031002248 zhanglei 20150311 begin */
+//    void * owner;
+/*DTS2015031002248 zhanglei 20150311 end> */
+/*DTS2015010300107 zhanglei 20150103 end> */
+	
 };
 
 #define RWSEM_UNLOCKED_VALUE		0x00000000

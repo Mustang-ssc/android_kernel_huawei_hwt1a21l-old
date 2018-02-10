@@ -3164,8 +3164,10 @@ int mdss_mdp_get_ctl_mixers(u32 fb_num, u32 *mixer_id)
 	mdata = mdss_mdp_get_mdata();
 	for (i = 0; i < mdata->nctl; i++) {
 		ctl = mdata->ctl_off + i;
-		if ((ctl->power_on) && (ctl->mfd) &&
-			(ctl->mfd->index == fb_num)) {
+		
+	    	/*< DTS2015020209284 zhangmingwx241012 20150303 begin*/
+			if ((ctl->mfd) && (ctl->mfd->index == fb_num)){
+			/*< DTS2015020209284 zhangmingwx241012 20150303 end*/
 			if (ctl->mixer_left) {
 				mixer_id[mixer_cnt] = ctl->mixer_left->num;
 				mixer_cnt++;

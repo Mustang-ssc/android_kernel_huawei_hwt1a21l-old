@@ -61,8 +61,9 @@
 #define CY_FW_FILE_PREFIX	"cyttsp5_fw"
 #define CY_FW_FILE_SUFFIX	".bin"
 #define CY_FW_FILE_NAME		"cyttsp5_fw.bin"
-//#define CYTTSP5_DETECT_HW    1
-
+/* < DTS2015021201243 caowei 20150213 begin */
+#define CYTTSP5_DETECT_HW    1
+/* DTS2015021201243 caowei 20150213 end > */
 /* < DTS2015011900593 caowei 20150119 begin */
 /* open tthe function to support firmware debug */
 #define TTHE_TUNER_SUPPORT 1

@@ -127,6 +127,20 @@ void mdss_dsi_ctrl_init(struct mdss_dsi_ctrl_pdata *ctrl)
 	}
 }
 
+/*< DTS2015011903879 l00278905 20150131 begin > */
+ static void mdss_dsi_set_reg(struct mdss_dsi_ctrl_pdata *ctrl, int off,u32 mask, u32 val)
+{
+ 	u32 data;
+	off &= ~0x03;
+	val &= mask;	/* set bits indicated at mask only */
+	data = MIPI_INP(ctrl->ctrl_base + off);
+	data &= ~mask;
+	data |= val;
+	pr_debug("%s: ndx=%d off=%x data=%x\n", __func__,
+	ctrl->ndx, off, data);
+	MIPI_OUTP(ctrl->ctrl_base + off, data);
+}
+/*< DTS2015011903879 l00278905 20150131 end > */
 void mdss_dsi_clk_req(struct mdss_dsi_ctrl_pdata *ctrl, int enable)
 {
 	MDSS_XLOG(ctrl->ndx, enable, ctrl->mdp_busy, current->pid);
@@ -1333,6 +1347,8 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	int rg_address;
 #endif
 
+	int ignored = 0;	
+
 	bp = tp->data;
 
 	len = ALIGN(tp->len, 4);
@@ -1362,16 +1378,28 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 
 	INIT_COMPLETION(ctrl->dma_comp);
 
+	if (ctrl->panel_mode == DSI_VIDEO_MODE)
+		ignored = 1;
+
 	/* Ensure that for slave controller, master is also configured */
 	if (mdss_dsi_is_slave_ctrl(ctrl)) {
 		mctrl = mdss_dsi_get_master_ctrl();
 		if (mctrl) {
+			if (ignored) {
+				/* mask out overflow isr */
+				mdss_dsi_set_reg(mctrl, 0x10c,0x0f0000, 0x0f0000);
+			}
 			MIPI_OUTP(mctrl->ctrl_base + 0x048, addr);
 			MIPI_OUTP(mctrl->ctrl_base + 0x04c, len);
 		} else {
 			pr_warn("%s: Unable to get master control\n",
 				__func__);
 		}
+	}
+
+	if (ignored) {
+		/* mask out overflow isr */
+		mdss_dsi_set_reg(ctrl, 0x10c, 0x0f0000, 0x0f0000);
 	}
 
 	MIPI_OUTP((ctrl->ctrl_base) + 0x048, addr);
@@ -1405,6 +1433,19 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 #endif
 		msm_iommu_unmap_contig_buffer(addr,
 			mdss_get_iommu_domain(domain), 0, size);
+
+	if (mctrl && ignored) {
+		/* clear pending overflow status */
+		mdss_dsi_set_reg(mctrl, 0xc, 0xffffffff, 0x44440000);
+		/* restore overflow isr */
+		mdss_dsi_set_reg(mctrl, 0x10c, 0x0f0000, 0);
+	}
+	if (ignored) {
+		/* clear pending overflow status */
+		mdss_dsi_set_reg(ctrl, 0xc, 0xffffffff, 0x44440000);
+		/* restore overflow isr */
+		mdss_dsi_set_reg(ctrl, 0x10c, 0x0f0000, 0);
+	}
 
 	return ret;
 }
@@ -1657,7 +1698,7 @@ static int dsi_event_thread(void *data)
 	struct mdss_dsi_ctrl_pdata *ctrl;
 	unsigned long flag;
 	struct sched_param param;
-	u32 todo = 0, ln_status;
+	u32 todo = 0, ln_status, force_clk_ln_hs;
 	int ret;
 
 	param.sched_priority = 16;
@@ -1708,11 +1749,15 @@ static int dsi_event_thread(void *data)
 			 * clock lane is not in Stop State.
 			 */
 			ln_status = MIPI_INP(ctrl->ctrl_base + 0x00a8);
+			
+			force_clk_ln_hs = (MIPI_INP(ctrl->ctrl_base + 0x00ac)& BIT(28)); 
+			
 			pr_debug("%s: lane_status: 0x%x\n",
 				       __func__, ln_status);
 			if (ctrl->recovery
 					&& (ln_status
 						& DSI_DATA_LANES_STOP_STATE)
+					&& !(force_clk_ln_hs) 
 					&& !(ln_status
 						& DSI_CLK_LANE_STOP_STATE)) {
 				pr_debug("%s: Handling overflow event.\n",
@@ -1910,7 +1955,9 @@ irqreturn_t mdss_dsi_isr(int irq, void *ptr)
 
 	if (isr & DSI_INTR_ERROR) {
 		MDSS_XLOG(ctrl->ndx, ctrl->mdp_busy, isr, 0x97);
-		pr_err("%s: ndx=%d isr=%x\n", __func__, ctrl->ndx, isr);
+		/*< DTS2015011903879 l00278905 20150131 begin > */
+		//pr_err("%s: ndx=%d isr=%x\n", __func__, ctrl->ndx, isr);
+		/*< DTS2015011903879 l00278905 20150131 end > */
 #ifdef CONFIG_HUAWEI_LCD
 		dsi_status[0] = MIPI_INP(ctrl->ctrl_base + 0x0068);/* DSI_ACK_ERR_STATUS */
 		dsi_status[1] = MIPI_INP(ctrl->ctrl_base + 0x00c0);/* DSI_TIMEOUT_STATUS */

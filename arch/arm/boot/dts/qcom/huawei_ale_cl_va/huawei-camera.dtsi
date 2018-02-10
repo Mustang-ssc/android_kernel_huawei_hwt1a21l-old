@@ -1,5 +1,6 @@
 /* < DTS2014111203130 tanyanying 20141113 begin */
 /*< DTS2014120804958  gwx229921 20141209 begin */
+/*< DTS2015021200322  jwx206032 20150215 begin */
 /*
  * Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
@@ -87,22 +88,25 @@
 				<&msm_gpio 121 0>,//core vreg
 				<&msm_gpio 110 0>,
 				<&msm_gpio 114 0>,
-				<&msm_gpio 120 0>;
+				<&msm_gpio 120 0>,
+				<&msm_gpio 51 0>;
 		qcom,gpio-reset = <1>;
 		qcom,gpio-standby = <2>;
 		qcom,gpio-vdig = <3>;
 		qcom,gpio-vana = <4>;
 		qcom,gpio-vio = <5>;
 		qcom,gpio-af-pwdm = <6>;
-		qcom,gpio-req-tbl-num = <0 1 2 3 4 5 6>;
-		qcom,gpio-req-tbl-flags = <1 0 0 0 0 0 0>;
+		qcom,gpio-cam-id = <7>;
+		qcom,gpio-req-tbl-num = <0 1 2 3 4 5 6 7>;
+		qcom,gpio-req-tbl-flags = <1 0 0 0 0 0 0 1>;
 		qcom,gpio-req-tbl-label = "CAMIF_MCLK",
 				"CAM_RESET1",
 				"CAM_STANDBY",
 				"CAM_VDIG",
 				"CAM_VANA",
 				"CAM_VIO",
-				"CAM_AF_PWDM";
+				"CAM_AF_PWDM",
+				"CAM_CAM_ID";
 		qcom,sensor-position = <0>;
 		qcom,sensor-mode = <0>;
 		qcom,cci-master = <0>;
@@ -155,5 +159,6 @@
 		clock-names = "cam_src_clk", "cam_clk";
 	};
 };
+/* DTS2015021200322  jwx206032 20150215 end >*/
 /* DTS2014120804958  gwx229921 20141209 end >*/
 /* DTS2014111203130 tanyanying 20141113 end > */

@@ -99,7 +99,7 @@ int cyttsp5_xres(struct cyttsp5_core_platform_data *pdata,
 	gpio_set_value(rst_gpio, 0);
 	msleep(40);
 	gpio_set_value(rst_gpio, 1);
-	msleep(100);
+	msleep(200);
 	TS_LOG_DEBUG(
 		"%s: RESET CYTTSP gpio=%d r=%d\n", __func__,
 		pdata->rst_gpio, rc);

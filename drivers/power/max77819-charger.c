@@ -2839,16 +2839,17 @@ static void max77819_charger_timer_work(struct work_struct *work)
 
 /* < DTS2014100804605 taohanwen 20141008 begin */
 /* < DTS2014123001491 taohanwen 20141230 begin */
+/* < DTS2015021008962 taohanwen 20150212 begin */
 static void max77819_charger_otg_control(struct max77819_charger* me, bool enable)
 {
     int rc;
 
-    __lock(me);
+    /* delete the mutex lock */
     if (me->dev_otg_mode == enable)
     {
         log_dbg("otg mode(dev_otg_mode = %s) do not change, do nothing!!\n",
                 enable ? "enabled" : "disabled");
-        goto unlock_out;
+        return;
     }
     log_dbg("%s\n", enable ? "enabling otg" : "disabling otg");
     if(enable){
@@ -2894,9 +2895,8 @@ out:
         /* DTS2014112905428 jiangfei 20141201 end> */
         log_err("failed to enable/disable max77819 OTG [%d]\n", rc);
     }
-unlock_out:
-    __unlock(me);
 }
+/* DTS2015021008962 taohanwen 20150212 end > */
 
 static void max77819_charger_set_otg_by_dcin_type(struct max77819_charger* me)
 {
@@ -3022,14 +3022,14 @@ EXPORT_SYMBOL(get_max77819_cable_max_current_ua);
 /* DTS2014112105529 taohanwen 20141220 end > */
 
 /* < DTS2014110707434 taohanwen 20141107 begin */
+/* < DTS2015021008962 taohanwen 20150212 begin */
 static int max77819_charger_get_property (struct power_supply *psy,
         enum power_supply_property psp, union power_supply_propval *val)
 {
     struct max77819_charger *me =
         container_of(psy, struct max77819_charger, psy);
     int rc = 0;
-
-    __lock(me);
+    /* delete the mutex lock */
 
     rc = max77819_charger_update(me);
     if (unlikely(IS_ERR_VALUE(rc))) {
@@ -3138,9 +3138,9 @@ static int max77819_charger_get_property (struct power_supply *psy,
 
 out:
     log_vdbg("<get_property> psp %d val %d [%d]\n", psp, val->intval, rc);
-    __unlock(me);
     return rc;
 }
+/* DTS2015021008962 taohanwen 20150212 end > */
 /* DTS2014110707434 taohanwen 20141107 end > */
 
 /* < DTS2014100804605 taohanwen 20141008 begin */
@@ -3553,16 +3553,14 @@ static void max77819_charger_external_power_changed (struct power_supply *psy)
     struct power_supply *supplicant;
     int i;
 
-    __lock(me);
-
+    /* < DTS2015021008962 taohanwen 20150212 begin */
     for (i = 0; i < me->pdata->num_supplicants; i++) {
         supplicant = power_supply_get_by_name(me->pdata->supplied_to[i]);
         if (likely(supplicant)) {
             power_supply_changed(supplicant);
         }
     }
-
-    __unlock(me);
+    /* DTS2015021008962 taohanwen 20150212 end > */
 
     /* < DTS2014102201176 taohanwen 20141024 begin */
     /* set the max current by current of dcin type */
@@ -3972,11 +3970,10 @@ static void max77819_charger_shutdown(struct platform_device *pdev)
 /* DTS2014123001491 taohanwen 20141230 end > */
 
 #ifdef CONFIG_PM_SLEEP
+/* < DTS2015021008962 taohanwen 20150212 begin */
 static int max77819_charger_suspend (struct device *dev)
 {
     struct max77819_charger *me = dev_get_drvdata(dev);
-
-    __lock(me);
 
     log_vdbg("suspending\n");
     /* < DTS2014112200363 taohanwen 20141122 begin */
@@ -3987,15 +3984,12 @@ static int max77819_charger_suspend (struct device *dev)
     /* DTS2014121907866 chengkai/wx209700 20141219 end > */
     /* DTS2014112200363 taohanwen 20141122 end >*/
 
-    __unlock(me);
     return 0;
 }
 
 static int max77819_charger_resume (struct device *dev)
 {
     struct max77819_charger *me = dev_get_drvdata(dev);
-
-    __lock(me);
 
     log_vdbg("resuming\n");
     /* < DTS2014112200363 taohanwen 20141122 begin */
@@ -4006,9 +4000,9 @@ static int max77819_charger_resume (struct device *dev)
     /* DTS2014121907866 chengkai/wx209700 20141219 end > */
     /* DTS2014112200363 taohanwen 20141122 end >*/
 
-    __unlock(me);
     return 0;
 }
+/* DTS2015021008962 taohanwen 20150212 end > */
 #endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(max77819_charger_pm, max77819_charger_suspend,

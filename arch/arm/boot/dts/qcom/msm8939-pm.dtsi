@@ -423,7 +423,7 @@
 
 	qcom,lpm-workarounds {
 		compatible = "qcom,lpm-workarounds";
-
+		qcom,lpm-wa-skip-l2-spm;
 		lpm-cx-supply = <&pm8916_s2_corner>;
 		qcom,lpm-wa-cx-turbo-unvote;
 	};

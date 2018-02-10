@@ -367,6 +367,15 @@ static struct kobj_attribute hw_command = {
 	.show = NULL,
 	.store = hw_cyttsp5_command_store,
 };
+
+/* < DTS2015020508434 caowei 20150205 begin */
+static struct kobj_attribute hw_drv_debug = {
+	.attr = {.name = "drv_debug", .mode = (S_IWUSR)},
+	.show = NULL,
+	.store = hw_cyttsp5_drv_debug_store,
+};
+/* DTS2015020508434 caowei 20150205 end > */
+
 /* DTS2014112904195 yuanbo 20141129 end > */
 /*
  * Suspend scan command
@@ -1353,51 +1362,66 @@ static int cyttsp5_setup_sysfs(struct device *dev)
 	int rc;
 	/* < DTS2014112904195 yuanbo 20141129 begin */
 	//   touch_screen_kobject_ts = kobject_create_and_add("touch_screen", NULL);//add touch_screen dir
+	/* < DTS2015020508434 caowei 20150205 begin */
 	touch_screen_kobject_ts=tp_get_touch_screen_obj();
 	if (!touch_screen_kobject_ts)
 	{
-	tp_log_err("%s %d: touch_screen_kobject created fail!\n", __func__, __LINE__);		
+		tp_log_err("%s %d: touch_screen_kobject created fail!\n", __func__, __LINE__);		
 		rc=-EIO;
-		goto unregister_touch_screen;
+		goto exit;
 	}
+
 	cyttsp5_kobject=kobject_create_and_add("cyttsp5", touch_screen_kobject_ts);
 	if (!cyttsp5_kobject)
 	{
 		tp_log_err("%s %d: cyttsp5_kobject created fail!\n", __func__, __LINE__);		
 		rc=-EIO;
-		goto unregister_cyttsp5;
+		goto unregister_touch_screen;
 	}
+
 	rc=sysfs_create_file(cyttsp5_kobject,&hw_command.attr);
 	if (rc) {
 		tp_log_err( "%s: Error, could not create hw_command\n",
 				__func__);
-		goto unregister_hw_command;
+		goto unregister_cyttsp5;
 	}
-    rc=sysfs_create_file(cyttsp5_kobject,&hw_status_node.attr);
+
+	rc = sysfs_create_file(cyttsp5_kobject,&hw_status_node.attr);
 	if (rc) {
 		tp_log_err( "%s: Error, could not create status\n",
 				__func__);
+		goto unregister_hw_command;
+	}
+
+	rc = sysfs_create_file(cyttsp5_kobject,&hw_response.attr);
+	if (rc) {
+		tp_log_err( "%s: Error, could not create response\n",
+				__func__);
 		goto unregister_hw_status;
 	}
-	rc=sysfs_create_file(cyttsp5_kobject,&hw_response.attr);
+
+	rc = sysfs_create_file(cyttsp5_kobject,&hw_calibrate.attr);
 	if (rc) {
 		tp_log_err( "%s: Error, could not create response\n",
 				__func__);
 		goto unregister_hw_response;
 	}
-    rc=sysfs_create_file(cyttsp5_kobject,&hw_calibrate.attr);
+	/* DTS2014112904195 yuanbo 20141129 end > */
+
+	rc = sysfs_create_file(cyttsp5_kobject, &hw_drv_debug.attr);
 	if (rc) {
 		tp_log_err( "%s: Error, could not create response\n",
 				__func__);
 		goto unregister_hw_calibrate;
 	}
-	/* DTS2014112904195 yuanbo 20141129 end > */	
+
 	rc = device_create_file(dev, &dev_attr_command);
 	if (rc) {
 		tp_log_err( "%s: Error, could not create command\n",
 				__func__);
-		goto exit;
+		goto unregister_hw_drv_debug;
 	}
+	/* DTS2015020508434 caowei 20150205 end > */
 
 	rc = device_create_file(dev, &dev_attr_status);
 	if (rc) {
@@ -1499,6 +1523,10 @@ unregister_status:
 	device_remove_file(dev, &dev_attr_status);
 unregister_command:
 	device_remove_file(dev, &dev_attr_command);
+/* < DTS2015020508434 caowei 20150205 begin */
+unregister_hw_drv_debug:
+	sysfs_remove_file(cyttsp5_kobject, &hw_calibrate.attr);
+/* DTS2015020508434 caowei 20150205 end > */
 /* < DTS2014112904195 yuanbo 20141129 begin */
 unregister_hw_calibrate:
 	sysfs_remove_file(cyttsp5_kobject, &hw_calibrate.attr);

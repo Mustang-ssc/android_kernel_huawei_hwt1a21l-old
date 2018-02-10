@@ -219,13 +219,15 @@ static int proc_pid_cmdline(struct task_struct *task, char * buffer)
  	len = mm->arg_end - mm->arg_start;
  
 	if (len > PAGE_SIZE)
-		len = PAGE_SIZE;
-/*<DTS2015010300107 zhanglei 20150103 begin */		
-    if(!strcmp(current->comm,"ActivityManager")){ 
-        printk("[ActivityManager]task = 0x%p, task_name = %s,pid = %d\n", task,task->comm,task->pid); 
-    } 
+		len = PAGE_SIZE;			
+/*<DTS2015010300107 zhanglei 20150103 begin */
+/*<DTS2015031002248 zhanglei 20150311 begin */		
+//    if(!strcmp(current->comm,"ActivityManager")){ 
+//        printk("[ActivityManager]task = 0x%p, task_name = %s,pid = %d\n", task,task->comm,task->pid); 
+//    } 
+/*DTS2015031002248 zhanglei 20150311 end> */
 /*DTS2015010300107 zhanglei 20150103 end> */	 
-	 
+	 	 
 	res = access_process_vm(task, mm->arg_start, buffer, len, 0);
 
 	// If the nul at the end of args has been overwritten, then

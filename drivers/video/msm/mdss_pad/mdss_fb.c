@@ -1172,13 +1172,19 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
         /*add backlight log when phone resume*/
 	#ifdef CONFIG_HUAWEI_LCD
 		/* < DTS2014080106240 renxigang 20140801 begin */
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
 		if ( mfd->bl_level_scaled == 0 )
 		{
 			LCD_LOG_INFO("%s: set backlight to %d\n",__func__,temp);	
+			#ifdef CONFIG_HUAWEI_DSM
 			lcd_pwr_status.lcd_dcm_pwr_status |= BIT(3);
 			do_gettimeofday(&lcd_pwr_status.tvl_backlight);
 			time_to_tm(lcd_pwr_status.tvl_backlight.tv_sec, 0, &lcd_pwr_status.tm_backlight);
+			#endif
+
 		}
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 		/* DTS2014080106240 renxigang 20140801 end > */
 	#endif
 		/*< DTS2014062405194 songliangliang 20140611 end */
@@ -1191,6 +1197,10 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 			LCD_LOG_INFO("%s: level = %d, set backlight time = %u,offlinecpu = %d,curfreq = %d\n",
 			__func__,temp,jiffies_to_msecs(jiffies-timeout+HZ/10),get_offline_cpu(),cpufreq_get(0));
 		}
+/* DTS2015012002645 songliangliang 20150120 begin >*/
+		if(temp==0)
+			lcd_pwr_status.lcd_dcm_pwr_status &= (BIT(0)|BIT(1)|BIT(2));
+/* DTS2015012002645 songliangliang 20150120 end >*/
 /*DTS2014101301850 zhoujian 20141013 end */
 /*<DTS2014111701156 l00101002 20140924 begin*/
 #ifdef CONFIG_LOG_JANK
@@ -1245,9 +1255,15 @@ void mdss_fb_update_backlight_wq_handler(struct work_struct *work)
 			mfd->bl_level_scaled = mfd->unset_bl_level;
 			mfd->unset_bl_level = 0;
 /* < DTS2014080106240 renxigang 20140801 begin */
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
 			lcd_pwr_status.lcd_dcm_pwr_status |= BIT(3);
 			do_gettimeofday(&lcd_pwr_status.tvl_backlight);
 			time_to_tm(lcd_pwr_status.tvl_backlight.tv_sec, 0, &lcd_pwr_status.tm_backlight);
+#endif
+
+/*DTS2015012205825 tianye/293347 20150122 end >*/
                     /* DTS2014080106240 renxigang 20140801 end > */
 /*DTS2014101301850 zhoujian 20141013 begin */
                      LCD_LOG_INFO("%s: level = %d,  set backlight time = %u,offlinecpu = %d,curfreq = %d\n",
@@ -1352,11 +1368,14 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 			return ret;
 	}
 /* < DTS2014080106240 renxigang 20140801 begin */
-#ifdef CONFIG_HUAWEI_LCD
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
 		lcd_pwr_status.lcd_dcm_pwr_status |= BIT(0);
 		do_gettimeofday(&lcd_pwr_status.tvl_unblank);
 		time_to_tm(lcd_pwr_status.tvl_unblank.tv_sec, 0, &lcd_pwr_status.tm_unblank);
 #endif
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 /* DTS2014080106240 renxigang 20140801 end > */
 		if (!mfd->panel_power_on && mfd->mdp.on_fnc) {
 /*< DTS2014091701123 huangli 20140917 begin */
@@ -1453,9 +1472,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 		#endif
 			mutex_lock(&mfd->bl_lock);
 /* < DTS2014072802182 zhaoyuxia 20140728 begin */
-/*< DTS2014120209435  zhangming 20141203 begin */
-#ifdef CONFIG_HUAWEI_LCD
-/*< DTS2014120209435  zhangming 20141203 end */
+#ifndef CONFIG_HUAWEI_LCD
 			mdss_fb_set_backlight(mfd, 0);
 #endif
 /* DTS2014072802182 zhaoyuxia 20140728 end > */
@@ -1488,6 +1505,9 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 /* DTS2014071502043 zhaoyuxia 20140715 end >*/
 			complete(&mfd->power_off_comp);
 		/* DTS2014062504641 zhaoyuxia 20140625 end > */
+/* DTS2015012002645 songliangliang 20150120 begin >*/
+			lcd_pwr_status.lcd_dcm_pwr_status &=BIT(3);
+/* DTS2015012002645 songliangliang 20150120 end >*/
 		}
 		break;
 	}
@@ -2651,9 +2671,14 @@ static int __mdss_fb_perform_commit(struct msm_fb_data_type *mfd)
 	if(!mfd->frame_updated){
 		mfd->frame_updated = 1;
 /* < DTS2014080106240 renxigang 20140801 begin */
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
 		lcd_pwr_status.lcd_dcm_pwr_status |= BIT(2);
 		do_gettimeofday(&lcd_pwr_status.tvl_set_frame);
 		time_to_tm(lcd_pwr_status.tvl_set_frame.tv_sec, 0, &lcd_pwr_status.tm_set_frame);
+#endif
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 /* DTS2014080106240 renxigang 20140801 end > */
 		LCD_LOG_INFO("%s:begin to display the first frame.\n",__func__);
         /*<DTS2014111701156 l00101002 20140924 begin*/

@@ -24,6 +24,10 @@
 #include "msm_camera_dsm.h"
 #endif
 /* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
+/* DTS2015031202743 shaohongyuan 20150312 Begin*/
+#include <linux/delay.h>
+#define ACTUATOR_DRIVER_IC_I2C_MDELAY 13
+/* DTS2015031202743 shaohongyuan 20150312 End*/
 
 DEFINE_MSM_MUTEX(msm_actuator_mutex);
 
@@ -80,6 +84,34 @@ static int32_t msm_actuator_piezo_set_default_focus(
 	return rc;
 }
 
+/* < DTS2015032610000 l00271394 20150326 begin */
+/*===========================================================================
+ * FUNCTION    - actuator_wait_fg-
+ *
+ * DESCRIPTION: wait for I2C IC done : if Flag register 0x10 bit is 1 , IC is busy 
+ *==========================================================================*/
+void actuator_wait_fg(struct msm_actuator_ctrl_t *a_ctrl){
+
+	int i,rc;
+	uint16_t flag;
+
+	for(i=13;i>0;i--){
+
+		rc = a_ctrl->i2c_client.i2c_func_tbl->i2c_read(&a_ctrl->i2c_client,0x10,&flag,MSM_CAMERA_I2C_BYTE_DATA);
+		if(rc < 0){
+			pr_err("%s %d i2c_read failed\n",__func__, __LINE__);
+		}
+
+		if(!(flag & 0x01)){
+			break;
+		}
+		mdelay(1);
+	}
+
+
+}
+/* DTS2015032610000 l00271394 20150326 end > */
+
 static void msm_actuator_parse_i2c_params(struct msm_actuator_ctrl_t *a_ctrl,
 	int16_t next_lens_position, uint32_t hw_params, uint16_t delay)
 {
@@ -89,7 +121,15 @@ static void msm_actuator_parse_i2c_params(struct msm_actuator_ctrl_t *a_ctrl,
 	uint16_t value = 0;
 	uint32_t size = a_ctrl->reg_tbl_size, i = 0;
 	struct msm_camera_i2c_reg_array *i2c_tbl = a_ctrl->i2c_reg_tbl;
+
 	CDBG("Enter\n");
+
+       /* < DTS2015032610000 l00271394 20150326 begin */
+       if(a_ctrl->actuator_name && !strncmp(a_ctrl->actuator_name,"dw9718s",sizeof("dw9718s")-1)){
+		actuator_wait_fg(a_ctrl);
+	}
+       /* DTS2015032610000 l00271394 20150326 end > */
+       
 	/*< DTS2014112200999 tangying/205982 20141122 begin*/
 	/*add NULL point check and remove packet_num_work in msm_csid.h*/
 	if(!write_arr || !i2c_tbl)
@@ -617,6 +657,10 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 		pr_err("MAX_ACTUATOR_REGION is exceeded.\n");
 		return -EFAULT;
 	}
+
+       /* < DTS2015032610000 l00271394 20150326 begin */
+       memcpy(a_ctrl->actuator_name,set_info->actuator_params.actuator_name,sizeof(set_info->actuator_params.actuator_name));
+       /* DTS2015032610000 l00271394 20150326 end > */
 
 	a_ctrl->region_size = set_info->af_tuning_params.region_size;
 	a_ctrl->pwd_step = set_info->af_tuning_params.pwd_step;

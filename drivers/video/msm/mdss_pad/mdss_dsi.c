@@ -492,7 +492,10 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 
 	pdata->panel_info.panel_power_on = 0;
 /* < DTS2014080106240 renxigang 20140801 begin */
-#ifdef CONFIG_HUAWEI_LCD
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 	lcd_pwr_status.panel_power_on = pdata->panel_info.panel_power_on;
 #endif
 /* DTS2014080106240 renxigang 20140801 end > */
@@ -911,17 +914,18 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 			}
 			pdata->panel_info.panel_power_on = 0;
 /* < DTS2014080106240 renxigang 20140801 begin */
-#ifdef CONFIG_HUAWEI_LCD
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 		lcd_pwr_status.panel_power_on |= pdata->panel_info.panel_power_on;
 #endif
 /* DTS2014080106240 renxigang 20140801 end > */
 			return ret;
 		}
-/* < DTS2014080106240 renxigang 20140801 begin */
-#ifdef CONFIG_HUAWEI_LCD
-	lcd_pwr_status.panel_power_on |= pdata->panel_info.panel_power_on;
-#endif
-/* DTS2014080106240 renxigang 20140801 end > */
+/* DTS2015012002645 songliangliang 20150120 begin >*/
+/*delete set lcd_pwr_status.panel_power_on here*/
+/* DTS2015012002645 songliangliang 20150120 end >*/
 		mdss_dsi_phy_sw_reset((ctrl_pdata->ctrl_base));
 		mdss_dsi_phy_init(pdata);
 		mdss_dsi_clk_ctrl(ctrl_pdata, DSI_BUS_CLKS, 0);
@@ -965,7 +969,15 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 		mdss_dsi_panel_reset(pdata, 1);
 	}
 	pdata->panel_info.panel_power_on = 1;
-
+/* DTS2015012002645 songliangliang 20150120 begin >*/
+/*set lcd_pwr_status.panel_power_on state*/
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
+/*DTS2015012205825 tianye/293347 20150122 end >*/
+	lcd_pwr_status.panel_power_on |= pdata->panel_info.panel_power_on;
+#endif
+/* DTS2015012002645 songliangliang 20150120 end >*/
 	if (mipi->init_delay)
 		usleep(mipi->init_delay);
 
@@ -1377,6 +1389,31 @@ int mdss_dsi_register_recovery_handler(struct mdss_dsi_ctrl_pdata *ctrl,
 	return 0;
 }
 
+static void hw_panel_bias_en(struct mdss_panel_data *pdata, int enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return;
+	}
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+  
+	if (gpio_is_valid(ctrl_pdata->vled_en_gpio))
+	{
+		gpio_set_value((ctrl_pdata->vled_en_gpio), enable);
+		pr_info("%s,%d set en vled_en_gpio = %d \n",__func__,__LINE__,enable);
+	}
+
+	if(enable){
+		ctrl_pdata->hw_led_en_flag = 1;      
+	}else {
+		ctrl_pdata->hw_led_en_flag = 0;      
+	}
+	
+}
+
 static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 				  int event, void *arg)
 {
@@ -1407,6 +1444,11 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 			rc = mdss_dsi_unblank(pdata);
 		break;
 	case MDSS_EVENT_BLANK:
+		/* < DTS2015011903879  zhangming wx241012 begin */
+		/*change interval between data and backlight because of ESD issue*/
+		hw_panel_bias_en(pdata,0);
+		mdelay(200);
+		/* < DTS2015011903879  zhangming wx241012 end */
 		if (ctrl_pdata->off_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_blank(pdata);
 		break;

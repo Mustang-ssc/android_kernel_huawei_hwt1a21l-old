@@ -622,6 +622,9 @@ source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
 source "drivers/misc/vmw_vmci/Kconfig"
 source "drivers/misc/qcom/Kconfig"
+#/*< DTS2015012007753 wangyuantao 20150120 begin*/
+source "drivers/misc/huawei_apanic/Kconfig"
+#/*DTS2015012007753 wangyuantao 20150120 end >*/
 #/* < DTS2014042900710 shenjinming 20140430 begin */
 source "drivers/misc/dsm/Kconfig"
 #/* DTS2014042900710 shenjinming 20140430 end > */

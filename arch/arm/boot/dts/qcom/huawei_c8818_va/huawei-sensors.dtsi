@@ -147,11 +147,26 @@
 		rpr521,irq-gpio = <&msm_gpio 113 0x2>;
 		rpr521,ps_threshold = <600>;
 		/* < DTS2014092001161  zhangyonggang 20140920 begin */
-		rpr521,window = <52>;
-		rpr521,wave = <37>;
-		rpr521,data0_array = <9290 7711 2079 1810>; 
-		rpr521,data1_array = <5303 4367 685 580>;   
-		rpr521,judge_array = <1000 1422 1700 3100>;
+		/* < DTS2015021303998  zhangyonggang 20150215 begin */
+		rpr521,window = <30>;
+		rpr521,wave = <20>;
+		rpr521,diff_tp = <1>;
+		rpr521,data0_array = <7562 3766 2756 1810>;
+		rpr521,data1_array = <5220 1926 1232 580>;
+		rpr521,judge_array = <900 1350 2416 3100>;
+		//ofilm
+		rpr521,data0_array_of = <9033 4222 2776 1810>;
+		rpr521,data1_array_of = <6342 2140 1194 580>;
+		rpr521,judge_array_of = <900 1340 2333 3100>;
+		//lensone
+		rpr521,data0_array_le = <10843 9754 3779 1810>;
+		rpr521,data1_array_le = <6417 5571 1629 580>;
+		rpr521,judge_array_le = <1000 1520 2300 3100>;
+		//truly
+		rpr521,data0_array_tr = <7562 3766 2756 1810>;
+		rpr521,data1_array_tr = <5220 1926 1232 580>;
+		rpr521,judge_array_tr = <900 1350 2416 3100>;
+		/*DTS2015021303998  zhangyonggang 20150215 end> */
 		/* < DTS2014092001161  zhangyonggang 20140920 end > */
 	};
 
@@ -202,4 +217,12 @@
 		gs,accel_res = <0>;
 	};
 };
+/* < DTS2015021204356 zhangyonggang 20150213 begin */
+ / {
+	huawei_sensor_info {
+		compatible = "huawei,hw_sensor_info";
+		product_name = "CHM_CL00";
+	};
+};
+/* DTS2015021204356 zhangyonggang 20150213 end >*/
 /* DTS2014121706484 liyu 20141217 end > */

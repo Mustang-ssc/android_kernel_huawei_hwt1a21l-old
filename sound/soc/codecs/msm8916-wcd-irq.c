@@ -38,7 +38,7 @@
 #define NUM_IRQ_REGS 2
 /* < DTS2015010709696 caiying/00214377 20150108 begin */
 /* < DTS2015012602681 caiying/00214377 20150126 begin */
-#define WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS 700
+#define WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS 1000
 /* DTS2015012602681 caiying/00214377 20150126 end > */
 /* DTS2015010709696 caiying/00214377 20150108 end > */
 
@@ -167,14 +167,24 @@ int wcd9xxx_spmi_request_irq(int irq, irq_handler_t handler,
 			const char *name, void *priv)
 {
 	int rc;
+	unsigned long irq_flags;
+
 	map.linuxirq[irq] =
 		spmi_get_irq_byname(map.spmi[BIT_BYTE(irq)], NULL,
 				    irq_names[irq]);
+
+	if (strcmp(name, "mbhc sw intr"))
+		irq_flags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+			IRQF_ONESHOT;
+	else
+		irq_flags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+			IRQF_ONESHOT | IRQF_NO_SUSPEND;
+	ad_logd("%s: %s irq_flags = %lx\n", __func__, name, irq_flags);
+
 	rc = devm_request_threaded_irq(&map.spmi[BIT_BYTE(irq)]->dev,
 				map.linuxirq[irq], NULL,
 				wcd9xxx_spmi_irq_handler,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
-				| IRQF_ONESHOT,
+				irq_flags,
 				name, priv);
 		if (rc < 0) {
 			ad_dev_loge(&map.spmi[BIT_BYTE(irq)]->dev,

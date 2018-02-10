@@ -31,6 +31,12 @@
 #include <soc/qcom/scm.h>
 #include <soc/qcom/restart.h>
 
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/huawei_apanic.h>
+#endif
+/*DTS2015012007753 wangyuantao 20150120 end >*/
+
 /* < DTS2014060408745 roopesh 20140604 begin */
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
 #include <linux/huawei_boot_log.h>
@@ -95,11 +101,13 @@ static bool scm_dload_supported;
 
 static int dload_set(const char *val, struct kernel_param *kp);
 /* < DTS2014091604882  zengwei 20140917 begin */
+/* < DTS2015031002248  zhanglei 20150311 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-static int download_mode = 1;
-#else
 static int download_mode = 0;
+#else
+static int download_mode = 1;
 #endif
+/* DTS2015031002248  zhanglei 20150311 end > */
 /* DTS2014091604882  zengwei 20140917 end > */
 
 module_param_call(download_mode, dload_set, param_get_int,
@@ -279,6 +287,19 @@ static void msm_restart_prepare(const char *cmd)
 	set_dload_mode(download_mode &&
 			(in_panic || restart_mode == RESTART_DLOAD));
 #endif
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#ifdef CONFIG_HUAWEI_KERNEL
+	/*clear hardware reset magic number to imem*/
+	if (in_panic || get_dload_mode())
+	{
+	}
+	else
+	{
+		__raw_writel(0, hw_reset_magic_addr);
+		pr_info("clear hardware reset magic number when reboot\n");
+	}
+#endif
+/*DTS2015012007753 wangyuantao 20150120 end >*/
 /* < DTS2014060909145 mapengfei 20140609 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 /* < DTS2014062406259  mapengfei 20140624 begin */
@@ -298,8 +319,18 @@ static void msm_restart_prepare(const char *cmd)
 	/* Hard reset the PMIC unless memory contents must be maintained. */
 	if (in_panic || get_dload_mode() || (cmd != NULL && cmd[0] != '\0'))
     {
-        pr_err("It is a warm reset, not clean the memory info \n ");
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+	    /* < DTS20150312031639 l00133898 20150312 begin */
+        if((!download_mode) && (!strncmp(cmd, "emergency_restart", 17))) 
+		{
+            pr_err("It is a cold reset, clean the memory info \n ");
+            qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
+        }
+        else
+        {
+            pr_err("It is a warm reset, nclean the memory info \n ");
+            qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+	    }
+		/* DTS2015031203163 l00133898 20150312 end > */
     }
 	else
     {
@@ -334,6 +365,12 @@ static void msm_restart_prepare(const char *cmd)
 			__raw_writel(USBUPDATE_FLAG_MAGIC_NUM, restart_reason);
 #endif
 		/* DTS2014041607756 zhaoyingchun 20140416 end > */
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#ifdef CONFIG_HUAWEI_KERNEL
+		}  else if (!strncmp(cmd, "emergency_restart", 17)) {
+            pr_info("do nothing\n");
+#endif
+/*DTS2015012007753 wangyuantao 20150120 end >*/
 /* < DTS2014042500397 shiguojun 20140425 begin */
 #ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
 		} else if (!strncmp(cmd, "mountfail", strlen("mountfail"))) {
@@ -400,7 +437,13 @@ static void do_msm_poweroff(void)
 /* < DTS2014102804861 youqi 20141028 begin */
 /* Revert DTS2014080600748 to slove handset reboot function issue */
 /* DTS2014102804861 youqi 20141028 end > */
-
+/*< DTS2015012007753 wangyuantao 20150120 begin*/
+#ifdef CONFIG_HUAWEI_KERNEL
+    /*clear hardware reset magic number to imem*/
+    __raw_writel(0, hw_reset_magic_addr);
+	pr_info("clear hardware reset magic number when power off\n");
+#endif
+/*DTS2015012007753 wangyuantao 20150120 end >*/
 	qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
 	/* Needed to bypass debug image on some chips */
 	ret = scm_call_atomic2(SCM_SVC_BOOT,

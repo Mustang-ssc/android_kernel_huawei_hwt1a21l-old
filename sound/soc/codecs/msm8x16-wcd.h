@@ -212,9 +212,16 @@ struct msm8x16_wcd_priv {
 	/* < DTS2014101600765 weiqiang 20141016 begin */
 	u32 boost_voltage;
 	/* DTS2014101600765 weiqiang 20141016 end > */
+	/* < DTS2015030404853 weiqiang 20150318 begin */
+	bool pwm_mode;
+	/* DTS2015030404853 weiqiang 20150318 end > */
 	bool mclk_enabled;
 	bool clock_active;
 	bool config_mode_active;
+/* < DTS2015021103442 huangwei/hwx223581 20150213 begin */
+/* put boost in bypass mode when CODEC is active (output VPH_PWR): CR#787391 */
+	u16 boost_option;
+/* DTS2015021103442 huangwei/hwx223581 20150213 end > */
 	bool spk_boost_set;
 	bool ear_pa_boost_set;
     /*begin:DTS2014121706741 by  y00188172 20141217*/

@@ -28,7 +28,7 @@
 #include <asm/unaligned.h>
 
 #define CY_FW_FILE_NAME_EELYEE		"cyttsp5_fw.bin"
-#define CY_FW_FILE_NAME_MUTTO		"cyttsp5_fw.bin"
+#define CY_FW_FILE_NAME_MUTTO		"cyttsp5_fw_mutto.bin"
 #define CY_FW_FILE_NAME				"cyttsp5_fw.bin"
 
 #define PANEL_ID_EELYEE		3
@@ -39,6 +39,8 @@
 
 #define CY_DEFAULT_CORE_ID          "main_ttsp_core"
 #define CY_MAX_NUM_CORE_DEVS        5
+#define CY_IRQ_ASSERTED_VALUE		0
+#define ENABLE_WORKAROUND_FOR_GLITCH_AFTER_BL_LAUNCH_APP
 
 #define HID_CYVENDOR                0xff010000
 

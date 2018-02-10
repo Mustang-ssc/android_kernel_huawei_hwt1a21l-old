@@ -26,6 +26,9 @@
 #define SENSORS_GYROSCOPE_HANDLE		5
 #define SENSORS_PRESSURE_HANDLE			6
 #define SENSORS_HALL_HANDLE			7
+/* < DTS2015072707140 chendong wx241705 begin */
+#define SENSORS_PROX_HANDLE			8
+/* DTS2015072707140 chendong wx241705 end > */
 
 #define SENSOR_TYPE_ACCELEROMETER		1
 #define SENSOR_TYPE_GEOMAGNETIC_FIELD		2
@@ -49,6 +52,9 @@
 #define SENSOR_TYPE_STEP_COUNTER		19
 #define SENSOR_TYPE_GEOMAGNETIC_ROTATION_VECTOR	20
 #define SENSOR_TYPE_HALL	10002
+/* < DTS2015072707140 chendong wx241705 begin */
+#define SENSOR_TYPE_CAP_PROX			(10005)
+/* DTS2015072707140 chendong wx241705 end > */
 /**
  * struct sensors_classdev - hold the sensor general parameters and APIs
  * @dev:		The device to register.

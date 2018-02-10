@@ -1,4 +1,5 @@
 /* < DTS2014112902702 zhaoxiaoli 20141201 begin */
+/* <DTS2015020301877 tanyanying 20150209 begin */
 /* Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -107,7 +108,7 @@ qcom,qrd-4v35-2550mAh-scud-data {
 				<3667 3720 3737 3730 3717>,
 				<3644 3708 3714 3707 3693>,
 				<3624 3697 3694 3688 3676>,
-				<3607 3688 3686 3680 3668>,
+				<3607 3688 3688 3680 3670>,
 				<3598 3684 3686 3679 3668>,
 				<3590 3678 3684 3678 3666>,
 				<3578 3670 3682 3676 3664>,
@@ -129,4 +130,5 @@ qcom,qrd-4v35-2550mAh-scud-data {
 				<31 1618 2453>;
     };
 };
+/* DTS2015020301877 tanyanying 20150209 end> */
 /* DTS2014112902702 zhaoxiaoli 20141201 end > */

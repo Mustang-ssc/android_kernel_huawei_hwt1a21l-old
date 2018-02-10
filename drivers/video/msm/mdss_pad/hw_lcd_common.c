@@ -356,10 +356,12 @@ int mdss_record_dsm_err(u32 *dsi_status)
 
 	if (dsi_status[2] & 0x011111)
 		dsm_client_record(lcd_dclient, "DSI_DLN0_PHY_ERR is wrong ,err number :%x\n", dsi_status[2]);
-
+	/* < DTS2015020703391 liujunchao 20150209 begin */
+	//Disable check reg 00c because the register can not show dsi status accurately
 	if (dsi_status[3] & 0xcccc4489) 
-		dsm_client_record(lcd_dclient, "DSI_FIFO_STATUS is wrong ,err number :%x\n", dsi_status[3]);
-
+		return 0;
+		//dsm_client_record(lcd_dclient, "DSI_FIFO_STATUS is wrong ,err number :%x\n", dsi_status[3]);
+	/*DTS2015020703391 liujunchao 20150209 end  > */
 	if (dsi_status[4] & 0x80000000) 
 		dsm_client_record(lcd_dclient, "DSI_STATUS is wrong ,err number :%x\n", dsi_status[4]);
 
@@ -367,7 +369,10 @@ int mdss_record_dsm_err(u32 *dsi_status)
 
 	return 0;
 }
-
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 int lcd_report_dsm_err(int type, int err_value,int add_value)
 {
     
@@ -452,6 +457,15 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 
 	return 0;
 }
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#else
+int lcd_report_dsm_err(int type, int err_value,int add_value)
+{
+	return 0;
+}
+#endif
+
 /* DTS2014051603610 zhaoyuxia 20140516 end > */
 /* < DTS2014080106240 renxigang 20140801 begin */
 /*
@@ -462,6 +476,8 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 *bit 3  set backlgiht
 */
 /*if did the operation the bit will be set to 1 or the bit is 0*/
+#ifdef CONFIG_HUAWEI_DSM
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 void lcd_dcm_pwr_status_handler(unsigned long data)
 {
 	if(lcd_pwr_status.lcd_dcm_pwr_status != LCD_PWR_STAT_GOOD)
@@ -487,9 +503,21 @@ void lcd_dcm_pwr_status_handler(unsigned long data)
 		dsm_client_notify(lcd_dclient, DSM_LCD_POWER_STATUS_ERROR_NO);
 	}
 }
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#else
+void lcd_dcm_pwr_status_handler(unsigned long data)
+{
+
+}
+#endif
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 /* DTS2014111001776 zhaoyuxia 20141114 end > */
 /* DTS2014080106240 renxigang 20140801 end > */
 /* < DTS2014101301850 zhoujian 20141013 begin */
+/*< DTS2015012205825  tianye/293347 20150122 begin*/
+/* remove APR web LCD report log information  */
+#ifdef CONFIG_HUAWEI_DSM
 void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt,int cpu_freq,unsigned long mdp_clk_rate,unsigned long clk_axi,unsigned long clk_ahb)
 {
 	/* try to get permission to use the buffer */
@@ -505,5 +533,12 @@ void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt,int cp
 	/* DTS2014102207427 zhoujian 20141023 end >*/
 	dsm_client_notify(lcd_dclient, DSM_LCD_MDSS_UNDERRUN_ERROR_NO);
 }
+#else
+void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt,int cpu_freq,unsigned long mdp_clk_rate,unsigned long clk_axi,unsigned long clk_ahb)
+{
+
+}
+#endif
+/*DTS2015012205825 tianye/293347 20150122 end >*/
 /* DTS2014101301850 zhoujian 20141013 end > */
 /* DTS2014050808504 daiyuhong 20140508 end > */
