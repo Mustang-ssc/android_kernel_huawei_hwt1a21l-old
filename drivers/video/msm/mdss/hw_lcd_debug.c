@@ -1,4 +1,3 @@
-/*< DTS2014042905347 zhaoyuxia 20140429 begin */
 /* kernel\drivers\video\msm\mdss\lcd_hw_debug.c
  * this file is used by the driver team to change the 
  * LCD init parameters by putting a config file in the mobile,
@@ -262,4 +261,3 @@ bool hw_free_dsi_cmds(struct dsi_panel_cmds *pcmds)
 	LCD_LOG_INFO("The new LCD config region has been freed\n");
 	return TRUE;
 }
-/* DTS2014042905347 zhaoyuxia 20140429 end >*/

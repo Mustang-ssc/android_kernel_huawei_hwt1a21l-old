@@ -459,9 +459,8 @@ struct fb_info {
 	struct fb_cmap cmap;		/* Current cmap */
 	struct list_head modelist;      /* mode list */
 	struct fb_videomode *mode;	/* current mode */
-/* <DTS2014110604375  zhoujian wx221429 20141107 begin */
 	struct file *file;		/* current file node */
-/* DTS2014110604375   zhoujian wx221429 20141107 end > */
+
 #ifdef CONFIG_FB_DEFERRED_IO
 	struct delayed_work deferred_work;
 	struct fb_deferred_io *fbdefio;

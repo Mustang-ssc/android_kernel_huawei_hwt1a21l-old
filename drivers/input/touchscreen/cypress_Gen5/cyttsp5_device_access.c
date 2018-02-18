@@ -1382,6 +1382,10 @@ static ssize_t tthe_get_panel_data_debugfs_write(struct file *filp,
 	u8 *buf_in = dad->tthe_get_panel_data_buf;
 	int ret;
 
+        if (TTHE_TUNER_MAX_BUF - *ppos < count) {
+                TS_LOG_ERR("%s:buf_in full\n", __func__);
+                return count;
+        }
 	mutex_lock(&dad->debugfs_lock);
 	ret = copy_from_user(buf_in + (*ppos), buf, count);
 	if (ret)

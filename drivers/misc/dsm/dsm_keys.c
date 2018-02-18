@@ -1,4 +1,3 @@
-/* < DTS2014121803938 yangzhonghua 20141218 begin */
 
 #include <linux/platform_device.h>
 #include <linux/kernel.h>
@@ -17,10 +16,7 @@
 static struct platform_device *dsm_keys_pdev;
 static struct dsm_client *dsm_keys_dclient = NULL;
 
-/* <DTS2014122604564  chenyang/wx206652 20141226 begin */
-#define PRESS_KEY_INTERVAL	(85)   //the minimum press interval
-#define PRESS_HALL_INTERVAL (55)   //the minimum hall interval
-/* DTS2014122604564  chenyang/wx206652 20141226 end> */
+#define PRESS_KEY_INTERVAL	(165)   //the minimum press interval
 #define STATISTIC_INTERVAL	(60) 	//the statistic interval for key event
 #define MAX_PRESS_KEY_COUNT	(120)   //the default press count for a normal use
 
@@ -183,17 +179,14 @@ static void dsm_keys_excep_work_func(struct work_struct *work)
 	int type = ddata->type;
 	unsigned long last_pressd_time;
 	unsigned long min_inv = msecs_to_jiffies(PRESS_KEY_INTERVAL);
-/* <DTS2014122604564  chenyang/wx206652 20141226 begin */
-	unsigned long min_hall =msecs_to_jiffies(PRESS_HALL_INTERVAL);
 
 	switch (type) {
 		case DSM_VOL_UP_KEY:
 			last_pressd_time = pkeys_data->vol_up_last_pressed;
 			pkeys_data->vol_up_inv =
 					calc_interval(&pkeys_data->vol_up_last_pressed, tmp_jiffies);
-			if ((time_after(last_pressd_time + min_inv, tmp_jiffies))&&(last_pressd_time!=0)) {
+			if (time_after(last_pressd_time + min_inv, tmp_jiffies)) {
 				dsm_keys_report(DSM_VOL_KEY_PRESS_INTERVAL_ERR,DSM_VOL_KEY);
-				printk("DSM_VOL_UP_KEY err! interval time = %d\n", jiffies_to_msecs(tmp_jiffies -last_pressd_time));
 			}
 			break;
 
@@ -201,9 +194,8 @@ static void dsm_keys_excep_work_func(struct work_struct *work)
 			last_pressd_time = pkeys_data->vol_down_last_pressed;
 			pkeys_data->vol_down_inv =
 					calc_interval(&pkeys_data->vol_down_last_pressed, tmp_jiffies);
-			if ((time_after(last_pressd_time + min_inv, tmp_jiffies))&&(last_pressd_time!=0)) {
+			if (time_after(last_pressd_time + min_inv, tmp_jiffies)) {
 				dsm_keys_report(DSM_VOL_KEY_PRESS_INTERVAL_ERR,DSM_VOL_KEY);
-				printk("DSM_VOL_DOWN_KEY err! interval time = %d\n", jiffies_to_msecs(tmp_jiffies -last_pressd_time));
 			}
 			break;
 
@@ -211,9 +203,8 @@ static void dsm_keys_excep_work_func(struct work_struct *work)
 			last_pressd_time = pkeys_data->power_key_last_pressed;
 			pkeys_data->power_inv =
 				calc_interval(&pkeys_data->power_key_last_pressed, tmp_jiffies);
-			if ((time_after(last_pressd_time + min_inv, tmp_jiffies))&&(last_pressd_time!=0)) {
+			if (time_after(last_pressd_time + min_inv, tmp_jiffies)) {
 				dsm_keys_report(DSM_POWER_KEY_PRESS_INTERVAL_ERR,DSM_POW_KEY);
-				printk("DSM_POW_KEY err! interval time = %d\n", jiffies_to_msecs(tmp_jiffies -last_pressd_time));
 			}
 
 			break;
@@ -222,11 +213,9 @@ static void dsm_keys_excep_work_func(struct work_struct *work)
 			last_pressd_time = pkeys_data->hall_irq_last;
 			pkeys_data->hall_irq_inv =
 				calc_interval(&pkeys_data->hall_irq_last, tmp_jiffies);
-			if ((time_after(last_pressd_time + min_hall, tmp_jiffies))&&(last_pressd_time!=0)) {
+			if (time_after(last_pressd_time + min_inv, tmp_jiffies)) {
 				dsm_keys_report(DSM_HS_IRQ_INTERVAL_ERR,DSM_HALL_IRQ);
-				printk("DSM_HALL_IRQ err! interval time = %d\n", jiffies_to_msecs(tmp_jiffies -last_pressd_time));
 			}
-/* DTS2014122604564  chenyang/wx206652 20141226 end> */
 
 			break;
 		default:
@@ -385,4 +374,3 @@ MODULE_LICENSE("GPL");
 module_init(hw_dsm_keys_init);
 module_exit(hw_dsm_keys_exit);
 
-/* DTS2014121803938 yangzhonghua 20141218 end > */

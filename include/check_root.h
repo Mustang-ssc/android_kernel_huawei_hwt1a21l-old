@@ -1,6 +1,5 @@
 #ifndef _CHECK_ROOT_H_
 #define _CHECK_ROOT_H_
-/*< DTS2014091203249 yangpanfei 20140915 begin*/
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -23,4 +22,3 @@ int checkroot_setresuid(uid_t uid);
 int checkroot_setresgid(gid_t gid);
 
 #endif
-/*DTS2014091203249 yangpanfei 20140915 end >*/

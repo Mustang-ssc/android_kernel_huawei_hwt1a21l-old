@@ -1,4 +1,3 @@
-/*<DTS2014071602538 wuliuzhen 20140716 begin*/
 /*
  *  ate.c - Linux kernel modules for huawei automatic test engine
  *
@@ -198,7 +197,7 @@ static void store_touchbutton_event_data(unsigned short dev_no, unsigned short t
 #endif
 
 #ifdef CONFIG_HUAWEI_KERNEL
-extern int is_usb_chg_exist(void);
+#include <linux/power/huawei_charger.h>
 #endif
 
 #ifdef TI_OMAP_PLATFORM
@@ -552,19 +551,19 @@ static int inputevent_data_save(void)
     snprintf(buf, IE_SIZE ,"%u", ate_dt->ie_times);
     iwrite = vfs_write(fp, (const char __user *)buf, sizeof(buf), &pos);
     if (iwrite < 1) {
-        printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, sizeof(buf));
+        printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, (int)(sizeof(buf)));
     }
     memset(buf, 0, IE_SIZE);
     snprintf(buf, IE_SIZE, "%u", ate_dt->playback_continuance_ms);
     iwrite = vfs_write(fp, (const char __user *)buf, sizeof(buf), &pos);
     if (iwrite < 1) {
-        printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, sizeof(buf));
+        printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, (int)(sizeof(buf)));
     }
 
     strncpy(buf_name, RECORD_PHONE, strlen(RECORD_PHONE)+1);
     iwrite = vfs_write(fp, (const char __user *)buf_name, 2*IE_SIZE, &pos);
     if (iwrite < 1) {
-        printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, sizeof(buf));
+        printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, (int)(sizeof(buf)));
     }
 
     for (i = 0; i < ate_dt->ie_times; i++) {
@@ -573,7 +572,7 @@ static int inputevent_data_save(void)
         tp_data = tp_data + sizeof(struct input_event_data);
         iwrite = vfs_write(fp, (const char __user *)buf, IE_SIZE, &pos);
         if (iwrite < 1) {
-            printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, sizeof(buf));
+            printk(KERN_ERR "ate[E]%s: can not write all %d/%d\n", __func__, iwrite, (int)(sizeof(buf)));
         }
     }
     filp_close(fp, NULL);
@@ -1206,7 +1205,6 @@ static void clean_input_device_filter_array(void)
 
 static void default_set_input_device_filter_array(void )
 {
-/*<DTS2014071602538 wuliuzhen 20140716 begin*/
 #ifdef MSM_8960_PLATFORM
 #ifdef MSM_8960_PLATFORM_C8869L
     strcpy(ate_dt->idf.dev_name[0], "synaptics");
@@ -1275,7 +1273,6 @@ static void default_set_input_device_filter_array(void )
     ate_dt->idf.input_event_type[3] = SOUND_KEY_EVENT;
     ate_dt->idf.filer_total = SOUND_KEY_EVENT+1;
 #endif
-/*DTS2014071602538 wuliuzhen 20140716 end >*/
 }
 
 static void set_input_device_filter_array(void )
@@ -1325,9 +1322,7 @@ static void set_input_device_filter_array(void )
 
         for(i = 0; i < ate_dt->idf.filer_total; i++) {
             for(j = 0; j< sizeof(ate_dt->idf.dev_name[i]) - 1; j++) {
-                /*< DTS2013071005976 zhongming 20130710 begin >*/
                 if((' ' == ate_dt->idf.dev_name[i][j])&&((ate_dt->idf.dev_name[i][j+1] - '0')>=0 && (ate_dt->idf.dev_name[i][j+1] - '0')<= 9)&&(' ' != ate_dt->idf.dev_name[i][j+2])) {
-                /*DTS2013071005976 zhongming 20130710 end >*/
                     ate_dt->idf.dev_name[i][j] = '\0';
                     ate_dt->idf.input_event_type[i] = ( unsigned int ) (ate_dt->idf.dev_name[i][j+1] - '0');
                     if(ate_dt->idf.input_event_type[i] >= MAX_EVENT_TYPE) {
@@ -1556,7 +1551,6 @@ static ssize_t get_virtualkey_config(void)
 return 0;
 }
 #endif
-/* <DTS2012122006593 sunwenyong 20130315 begin */
 static bool ate_enable = false;
 static int __init early_parse_ate_enable_cmdline(char * p)
 {
@@ -1570,17 +1564,14 @@ static int __init early_parse_ate_enable_cmdline(char * p)
     return 0;
 }
 early_param("ate_enable",early_parse_ate_enable_cmdline);
-/* DTS2012122006593 sunwenyong 20130315 end> */
 
 static int __init ate_init(void)
 {
     int ret;
-    /* <DTS2012122006593 sunwenyong 20130315 begin */
     if(true != ate_enable)
     {
         return 0;
     }
-    /* DTS2012122006593 sunwenyong 20130315 end> */
     ate_dt = kmalloc(sizeof(struct ate_data), GFP_KERNEL);
     if(ate_dt == NULL) {
         ret = -ENOMEM;
@@ -1692,9 +1683,7 @@ exit_sysfs_remove_inputevents_count:
 exit_kobject_del:
     kobject_del(hw_ate_kobj);
 exit_kfree_ie_dt:
-    /* < DTS2013030407089 yuanzhen 20130305 begin */
     vfree(ate_dt->ie_dt);
-    /* DTS2013030407089 yuanzhen 20130305 end > */
 exit_kfree_ate_dt:
     wake_lock_destroy(&ate_dt->wake_lock);
     kfree(ate_dt);
@@ -1715,9 +1704,7 @@ static void __exit ate_exit(void)
     kobject_del(hw_ate_kobj);
     wake_unlock(&ate_dt->wake_lock);
     wake_lock_destroy(&ate_dt->wake_lock);
-    /* < DTS2013030407089 yuanzhen 20130305 begin */
     vfree(ate_dt->ie_dt);
-    /* DTS2013030407089 yuanzhen 20130305 end > */
     kfree(ate_dt);
 
     input_unregister_handler(&ate_handler);
@@ -1729,4 +1716,3 @@ MODULE_LICENSE("GPL");
 
 module_init(ate_init);
 module_exit(ate_exit);
-/*DTS2014071602538 wuliuzhen 20140716 end >*/

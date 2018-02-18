@@ -1,4 +1,3 @@
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifndef __MSM_CAMERA_VID_DSM_H__
 #define __MSM_CAMERA_VID_DSM_H__
 
@@ -13,4 +12,3 @@ extern int camera_vid_report_dsm_err( int type, int err_num , const char* str);
 extern void camera_vid_report_dsm_err_vidc(int type, int err_num , const char* str);
 #endif
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */

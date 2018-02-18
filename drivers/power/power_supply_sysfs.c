@@ -106,7 +106,10 @@ static ssize_t power_supply_show_property(struct device *dev,
 	else if (off >= POWER_SUPPLY_PROP_MODEL_NAME)
 		return sprintf(buf, "%s\n", value.strval);
 
-	return sprintf(buf, "%d\n", value.intval);
+	if (off == POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT)
+		return sprintf(buf, "%lld\n", value.int64val);
+	else
+		return sprintf(buf, "%d\n", value.intval);
 }
 
 static ssize_t power_supply_store_property(struct device *dev,
@@ -142,18 +145,10 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(online),
 	POWER_SUPPLY_ATTR(authentic),
 	POWER_SUPPLY_ATTR(charging_enabled),
-    /* DTS2014072806213 by l00220156 for factory interfaces 20140728 begin */
-    POWER_SUPPLY_ATTR(current_realtime),
-    /* DTS2014072806213 by l00220156 for factory interfaces 20140728 end */
-	/* <DTS2014052400953 chenyuanquan 20140524 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	POWER_SUPPLY_ATTR(factory_diag),
 	POWER_SUPPLY_ATTR(hot_current_limit),
-   /* <DTS2014110409521 caiwei 20141104 begin */
-	POWER_SUPPLY_ATTR(hot_temp_test_status),
-   /* DTS2014110409521 caiwei 20141104 end> */
 #endif
-	/* DTS2014052400953 chenyuanquan 20140524 end> */
 	POWER_SUPPLY_ATTR(technology),
 	POWER_SUPPLY_ATTR(cycle_count),
 	POWER_SUPPLY_ATTR(voltage_max),
@@ -168,6 +163,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(input_current_max),
 	POWER_SUPPLY_ATTR(input_current_trim),
 	POWER_SUPPLY_ATTR(input_current_settled),
+	POWER_SUPPLY_ATTR(bypass_vchg_loop_debouncer),
 	POWER_SUPPLY_ATTR(current_now),
 	POWER_SUPPLY_ATTR(current_avg),
 	POWER_SUPPLY_ATTR(power_now),
@@ -213,32 +209,30 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(type),
 	POWER_SUPPLY_ATTR(scope),
 	POWER_SUPPLY_ATTR(system_temp_level),
-/* <DTS2014051601896 jiangfei 20140516 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	POWER_SUPPLY_ATTR(running_test_status),
 #endif
-/* DTS2014051601896 jiangfei 20140516 end> */
 	POWER_SUPPLY_ATTR(resistance),
 	POWER_SUPPLY_ATTR(resistance_capacitive),
+	POWER_SUPPLY_ATTR(resistance_id),
 	/* Local extensions */
 	POWER_SUPPLY_ATTR(usb_hc),
 	POWER_SUPPLY_ATTR(usb_otg),
 	POWER_SUPPLY_ATTR(charge_enabled),
-	/* <DTS2014071002612  mapengfei 20140710 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	POWER_SUPPLY_ATTR(resume_charging),
 #endif
-     /* DTS2014071002612  mapengfei 20140710 end> */
+	POWER_SUPPLY_ATTR(flash_current_max),
+	/* Local extensions of type int64_t */
+	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),
 	POWER_SUPPLY_ATTR(serial_number),
 	POWER_SUPPLY_ATTR(battery_type),
-	/* <DTS2014061002202 jiangfei 20140610 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	POWER_SUPPLY_ATTR(charge_log),
 #endif
-	/* DTS2014061002202 jiangfei 20140610 end> */
 };
 
 static struct attribute *

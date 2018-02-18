@@ -797,19 +797,12 @@ static void do_emergency_remount(struct work_struct *work)
 	printk("Emergency Remount complete\n");
 }
 
-/* < DTS2014061400183 jingbing 20140614 begin */
-#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
-extern int blk_set_ro_secure_debuggable(int state);
-#endif
-/* DTS2014061400183 jingbing 20140614 end > */
 void emergency_remount(void)
 {
 	struct work_struct *work;
-    /* < DTS2014061400183 jingbing 20140614 begin */
-#ifdef CONFIG_HW_SYSTEM_WR_PROTECT	
-    blk_set_ro_secure_debuggable(0);
-#endif	
-    /* DTS2014061400183 jingbing 20140614 end > */
+
+    /* delete 3 lines */
+
 	work = kmalloc(sizeof(*work), GFP_ATOMIC);
 	if (work) {
 		INIT_WORK(work, do_emergency_remount);

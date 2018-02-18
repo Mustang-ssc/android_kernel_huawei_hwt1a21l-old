@@ -1,4 +1,3 @@
-/* < DTS2014050808504 daiyuhong 20140508 begin */
 /* add cmi lcd driver */
 /* Copyright (c) 2009, Code HUAWEI. All rights reserved.
  *
@@ -71,20 +70,29 @@
 #include <linux/hw_lcd_common.h>
 #include <mdss_dsi.h>
 #include <linux/of.h>
-/* < DTS2014051603610 zhaoyuxia 20140516 begin */
 #include "mdss_panel.h"
-/* < DTS2014111001776 zhaoyuxia 20141114 begin */
 #include <linux/sched.h>
-/* DTS2014111001776 zhaoyuxia 20141114 end > */
+#include <asm/setup.h>
 struct dsm_client *lcd_dclient = NULL;
-/* DTS2014051603610 zhaoyuxia 20140516 end > */
 
 
 #ifdef CONFIG_DEBUG_FS
 /* whether print log or not */
 #define LCD_MIPI_DEBUG_ON    (1)
-
+static int g_tp_gesture_enable_status = false;
 static struct mdss_dsi_ctrl_pdata *g_lcd_dbg_dsi_ctrl_pdata = NULL;    // global mdss_dsi_ctrl_pdata
+
+/* get tp_gesture_enable or not */
+int get_tp_gesture_enable_status(void)
+{
+	return g_tp_gesture_enable_status;
+}
+/*tp_gesture_enable:drivers use to set tp_gesture_enable*/
+void set_tp_gesture_enable_status(int type)
+{
+	g_tp_gesture_enable_status = type;
+	LCD_LOG_INFO("%s:tp_type=%d\n",__func__,type);
+}
 
 /* set global ctrl_pdata pointer */
 void lcd_dbg_set_dsi_ctrl_pdata(struct mdss_dsi_ctrl_pdata *ctrl)
@@ -329,8 +337,7 @@ int lcd_dbg_mipi_prcess_ic_reg(int op_type,int reg, int cmd_type, int param_num,
 	return 0;
 }
 #endif
-/* < DTS2014051603610 zhaoyuxia 20140516 begin */
-/* < DTS2014111001776 zhaoyuxia 20141114 begin */
+#ifdef CONFIG_HUAWEI_DSM
 int mdss_record_dsm_err(u32 *dsi_status)
 {
 	if( NULL == lcd_dclient )
@@ -356,12 +363,10 @@ int mdss_record_dsm_err(u32 *dsi_status)
 
 	if (dsi_status[2] & 0x011111)
 		dsm_client_record(lcd_dclient, "DSI_DLN0_PHY_ERR is wrong ,err number :%x\n", dsi_status[2]);
-	/* < DTS2015020703391 liujunchao 20150209 begin */
-	//Disable check reg 00c because the register can not show dsi status accurately
+
 	if (dsi_status[3] & 0xcccc4489) 
-		return 0;
-		//dsm_client_record(lcd_dclient, "DSI_FIFO_STATUS is wrong ,err number :%x\n", dsi_status[3]);
-	/*DTS2015020703391 liujunchao 20150209 end  > */
+		dsm_client_record(lcd_dclient, "DSI_FIFO_STATUS is wrong ,err number :%x\n", dsi_status[3]);
+
 	if (dsi_status[4] & 0x80000000) 
 		dsm_client_record(lcd_dclient, "DSI_STATUS is wrong ,err number :%x\n", dsi_status[4]);
 
@@ -369,20 +374,14 @@ int mdss_record_dsm_err(u32 *dsi_status)
 
 	return 0;
 }
-/*< DTS2015012205825  tianye/293347 20150122 begin*/
-/* remove APR web LCD report log information  */
-#ifdef CONFIG_HUAWEI_DSM
-/*DTS2015012205825 tianye/293347 20150122 end >*/
+
 int lcd_report_dsm_err(int type, int err_value,int add_value)
 {
     
-	/* < DTS2014101301850 zhoujian 20141013 begin */
-	/* delete DTS2014081601803, we will ignore lcd error 20100 for 0x51 */
 	if ((DSM_LCD_MIPI_ERROR_NO == type && 0x51 == add_value)|| DSM_LCD_MDSS_DSI_ISR_ERROR_NO == type)
 	{
 		return 0;
 	}
-	/* DTS2014101301850 zhoujian 20141013 end > */
 
 	LCD_LOG_INFO("%s: entry! type:%d\n", __func__, type);
 
@@ -410,7 +409,6 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 		case DSM_LCD_MIPI_ERROR_NO:
 			dsm_client_record(lcd_dclient, "mipi transmit register %x time out ,err number :%x\n", add_value, err_value );
 			break;
-		/* < DTS2014062405194 songliangliang 20140624 begin */
 		/* add for lcd esd */
 		case DSM_LCD_ESD_STATUS_ERROR_NO:
 			dsm_client_record(lcd_dclient, "LCD STATUS ERROR %x read data = %x\n", add_value, err_value );
@@ -418,7 +416,6 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 		case DSM_LCD_ESD_REBOOT_ERROR_NO:
 			dsm_client_record(lcd_dclient, "LCD RESET register %x read data =%x\n", add_value, err_value );
 			break;
-		/* < DTS2014062405194 songliangliang 20140624 end */
 		case DSM_LCD_MDSS_IOMMU_ERROR_NO:
 			dsm_client_record(lcd_dclient, "mdss iommu attach/detach or map memory fail (%d)\n", err_value);
 			break;
@@ -428,7 +425,7 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 		case DSM_LCD_MDSS_PINGPONG_ERROR_NO:
 			dsm_client_record(lcd_dclient, "mdss wait pingpong time out (%d)\n",err_value);
 			break;
-		case DSM_LCD_MDSS_BIAS_ERROR_NO:
+		case DSM_LCD_MDSS_VSP_ERROR_NO:
 			dsm_client_record(lcd_dclient, "get vsp/vsn(%d) register fail (%d) \n", add_value, err_value);
 			break;
 		case DSM_LCD_MDSS_ROTATOR_ERROR_NO:
@@ -457,17 +454,6 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 
 	return 0;
 }
-/*< DTS2015012205825  tianye/293347 20150122 begin*/
-/* remove APR web LCD report log information  */
-#else
-int lcd_report_dsm_err(int type, int err_value,int add_value)
-{
-	return 0;
-}
-#endif
-
-/* DTS2014051603610 zhaoyuxia 20140516 end > */
-/* < DTS2014080106240 renxigang 20140801 begin */
 /*
 *
 *bit 0  do unblank
@@ -476,49 +462,44 @@ int lcd_report_dsm_err(int type, int err_value,int add_value)
 *bit 3  set backlgiht
 */
 /*if did the operation the bit will be set to 1 or the bit is 0*/
-#ifdef CONFIG_HUAWEI_DSM
-/*DTS2015012205825 tianye/293347 20150122 end >*/
+/*add power status error judge,avoid red screen*/
 void lcd_dcm_pwr_status_handler(unsigned long data)
 {
-	if(lcd_pwr_status.lcd_dcm_pwr_status != LCD_PWR_STAT_GOOD)
-	{
-		show_state_filter(TASK_UNINTERRUPTIBLE);
-		dsm_client_record(lcd_dclient, "lcd power status wrong, value :%x\n",lcd_pwr_status.lcd_dcm_pwr_status);
-		
-		dsm_client_record(lcd_dclient, "lcd power status :bit 0  do unblank\n");
-		dsm_client_record(lcd_dclient, "lcd power status :bit 1  lcd on\n");
-		dsm_client_record(lcd_dclient, "lcd power status :bit 2  set frame\n");
-		dsm_client_record(lcd_dclient, "lcd power status :bit 3  set backlgiht\n");
-		
-		dsm_client_record(lcd_dclient, "lcd power status :if did the operation the bit will be set to 1 or the bit is 0\n");
-		dsm_client_record(lcd_dclient,"unblank at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_unblank.tm_year + 1900,lcd_pwr_status.tm_unblank.tm_mon+1,
-						lcd_pwr_status.tm_unblank.tm_mday,lcd_pwr_status.tm_unblank.tm_hour,lcd_pwr_status.tm_unblank.tm_min,lcd_pwr_status.tm_unblank.tm_sec,lcd_pwr_status.tvl_unblank.tv_usec%1000);
-		dsm_client_record(lcd_dclient,"lcd on at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_lcd_on.tm_year + 1900,lcd_pwr_status.tm_lcd_on.tm_mon+1,
-						lcd_pwr_status.tm_lcd_on.tm_mday,lcd_pwr_status.tm_lcd_on.tm_hour,lcd_pwr_status.tm_lcd_on.tm_min,lcd_pwr_status.tm_lcd_on.tm_sec,lcd_pwr_status.tvl_lcd_on.tv_usec%1000);
-		dsm_client_record(lcd_dclient,"set frame at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_set_frame.tm_year + 1900,lcd_pwr_status.tm_set_frame.tm_mon+1,
-						lcd_pwr_status.tm_set_frame.tm_mday,lcd_pwr_status.tm_set_frame.tm_hour,lcd_pwr_status.tm_set_frame.tm_min,lcd_pwr_status.tm_set_frame.tm_sec,lcd_pwr_status.tvl_set_frame.tv_usec%1000);
-		dsm_client_record(lcd_dclient,"set backlight at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_backlight.tm_year + 1900,lcd_pwr_status.tm_backlight.tm_mon+1,
-						lcd_pwr_status.tm_backlight.tm_mday,lcd_pwr_status.tm_backlight.tm_hour,lcd_pwr_status.tm_backlight.tm_min,lcd_pwr_status.tm_backlight.tm_sec,lcd_pwr_status.tvl_backlight.tv_usec%1000);
-		
-		dsm_client_notify(lcd_dclient, DSM_LCD_POWER_STATUS_ERROR_NO);
-	}
-}
-/*< DTS2015012205825  tianye/293347 20150122 begin*/
-/* remove APR web LCD report log information  */
-#else
-void lcd_dcm_pwr_status_handler(unsigned long data)
-{
+	/*Not in factory mode will report this dsm log*/
+	if( !is_runmode_factory() ) {
+	/*optimize 20110 report strategy for device monitor.*/
+		if((lcd_pwr_status.lcd_dcm_pwr_status != LCD_PWR_STAT_GOOD)&&(lcd_pwr_status.lcd_dcm_pwr_status != LCD_PWR_STAT_IS_GOOD))
+		{
+			dsm_client_record(lcd_dclient, "lcd power status wrong, value :%x\n",lcd_pwr_status.lcd_dcm_pwr_status);
+			
+			dsm_client_record(lcd_dclient, "lcd power status :bit 0  do unblank\n");
+			dsm_client_record(lcd_dclient, "lcd power status :bit 1  lcd on\n");
+			dsm_client_record(lcd_dclient, "lcd power status :bit 2  set frame\n");
+			dsm_client_record(lcd_dclient, "lcd power status :bit 3  set backlgiht\n");
+			
+			dsm_client_record(lcd_dclient, "lcd power status :if did the operation the bit will be set to 1 or the bit is 0\n");
+			dsm_client_record(lcd_dclient,"unblank at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_unblank.tm_year + 1900,lcd_pwr_status.tm_unblank.tm_mon+1,
+							lcd_pwr_status.tm_unblank.tm_mday,lcd_pwr_status.tm_unblank.tm_hour,lcd_pwr_status.tm_unblank.tm_min,lcd_pwr_status.tm_unblank.tm_sec,lcd_pwr_status.tvl_unblank.tv_usec%1000);
+			dsm_client_record(lcd_dclient,"lcd on at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_lcd_on.tm_year + 1900,lcd_pwr_status.tm_lcd_on.tm_mon+1,
+							lcd_pwr_status.tm_lcd_on.tm_mday,lcd_pwr_status.tm_lcd_on.tm_hour,lcd_pwr_status.tm_lcd_on.tm_min,lcd_pwr_status.tm_lcd_on.tm_sec,lcd_pwr_status.tvl_lcd_on.tv_usec%1000);
+			dsm_client_record(lcd_dclient,"set frame at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_set_frame.tm_year + 1900,lcd_pwr_status.tm_set_frame.tm_mon+1,
+							lcd_pwr_status.tm_set_frame.tm_mday,lcd_pwr_status.tm_set_frame.tm_hour,lcd_pwr_status.tm_set_frame.tm_min,lcd_pwr_status.tm_set_frame.tm_sec,lcd_pwr_status.tvl_set_frame.tv_usec%1000);
+			dsm_client_record(lcd_dclient,"set backlight at [%d-%d-%d]%d:%d:%d:%d\n",lcd_pwr_status.tm_backlight.tm_year + 1900,lcd_pwr_status.tm_backlight.tm_mon+1,
+							lcd_pwr_status.tm_backlight.tm_mday,lcd_pwr_status.tm_backlight.tm_hour,lcd_pwr_status.tm_backlight.tm_min,lcd_pwr_status.tm_backlight.tm_sec,lcd_pwr_status.tvl_backlight.tv_usec%1000);
+			
+			dsm_client_notify(lcd_dclient, DSM_LCD_POWER_STATUS_ERROR_NO);
 
+			show_state_filter(TASK_UNINTERRUPTIBLE);
+		}
+	} else {
+		/*in factory mode do not report this dsm log,just print a log for locate*/
+		LCD_LOG_INFO("[%s] in factory mode ignore log of 20110\n",__func__);
+	}
+	lcd_pwr_status.lcd_dcm_pwr_status = 0;
 }
-#endif
-/*DTS2015012205825 tianye/293347 20150122 end >*/
-/* DTS2014111001776 zhaoyuxia 20141114 end > */
-/* DTS2014080106240 renxigang 20140801 end > */
-/* < DTS2014101301850 zhoujian 20141013 begin */
-/*< DTS2015012205825  tianye/293347 20150122 begin*/
-/* remove APR web LCD report log information  */
-#ifdef CONFIG_HUAWEI_DSM
-void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt,int cpu_freq,unsigned long mdp_clk_rate,unsigned long clk_axi,unsigned long clk_ahb)
+/*reomve cpufreq_get() call to avoid crash as schedule in irq */
+/*delete mdss_mdp_get_clk_rate() to avoid panic*/
+void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt)
 {
 	/* try to get permission to use the buffer */
 	if(dsm_client_ocuppy(lcd_dclient))
@@ -527,18 +508,24 @@ void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt,int cp
 		LCD_LOG_ERR("%s: buffer is busy!\n", __func__);
 		return;
 	}
-	/*< DTS2014102207427 zhoujian 20141023 begin */
-	dsm_client_record(lcd_dclient, "Lcd underrun detected for ctl=%d,count=%d,cpu0_freq=%d,mdp_clk_rate=%d,clk_axi=%d,clk_ahb=%d \n"      \
-		,num,underrun_cnt,cpu_freq,(unsigned int)mdp_clk_rate,(unsigned int)clk_axi,(unsigned int)clk_ahb);
-	/* DTS2014102207427 zhoujian 20141023 end >*/
+	dsm_client_record(lcd_dclient, "Lcd underrun detected for ctl=%d,count=%d\n",num,underrun_cnt);
 	dsm_client_notify(lcd_dclient, DSM_LCD_MDSS_UNDERRUN_ERROR_NO);
 }
 #else
-void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt,int cpu_freq,unsigned long mdp_clk_rate,unsigned long clk_axi,unsigned long clk_ahb)
+int mdss_record_dsm_err(u32 *dsi_status)
+{
+	return 0;
+}
+int lcd_report_dsm_err(int type, int err_value,int add_value)
+{
+	return 0;
+}
+void lcd_dcm_pwr_status_handler(unsigned long data)
+{
+
+}
+void mdp_underrun_dsm_report(unsigned long num,unsigned long underrun_cnt)
 {
 
 }
 #endif
-/*DTS2015012205825 tianye/293347 20150122 end >*/
-/* DTS2014101301850 zhoujian 20141013 end > */
-/* DTS2014050808504 daiyuhong 20140508 end > */

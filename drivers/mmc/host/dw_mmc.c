@@ -688,19 +688,7 @@ static void __dw_mci_start_request(struct dw_mci *host,
 	mrq = slot->mrq;
 	if (host->pdata->select_slot)
 		host->pdata->select_slot(slot->id);
-	/*<DTS2014102702713 zhanglei 20141027 begin */	
-	/* DTS2014092304615 modified by zhaominjie zwx234339 for broken sd card problems 2014.09.26 start */
-	if (cmd->data)
-	{
-		cmdflags = cmd->data->timeout_ns / 1000000;
-		mod_timer(&host->timer, jiffies + msecs_to_jiffies(cmdflags));
-	}
-	else
-	{
-		mod_timer(&host->timer, jiffies + msecs_to_jiffies(10000));
-	}
-	/* DTS2014092304615 modified by zhaominjie zwx234339 for broken sd card problems 2014.09.26 end */
-	/*DTS2014102702713 zhanglei 20141027 end> */
+
 	host->cur_slot = slot;
 	host->mrq = mrq;
 
@@ -2452,17 +2440,8 @@ int dw_mci_suspend(struct dw_mci *host)
 		struct dw_mci_slot *slot = host->slot[i];
 		if (!slot)
 			continue;
-		/*<DTS2014102702713 zhanglei 20141027 begin */
-		/* DTS2014092304615 modified by zhaominjie zwx234339 for broken sd card problems 2014.09.26 start */
-		if (host->hw_mmc_id == DWMMC_SD_ID)
-		    slot->mmc->pm_flags |= (1<<30);
 		ret = mmc_suspend_host(slot->mmc);
-		slot->mmc->pm_flags &= ~(1<<30);
 		if (ret < 0) {
-			if (host->hw_mmc_id == DWMMC_SD_ID  && ret == -ENOTRECOVERABLE)
-				return ret;
-		/* DTS2014092304615 modified by zhaominjie zwx234339 for broken sd card problems 2014.09.26 end */
-        /*DTS2014102702713 zhanglei 20141027 end> */		
 			while (--i >= 0) {
 				slot = host->slot[i];
 				if (slot)

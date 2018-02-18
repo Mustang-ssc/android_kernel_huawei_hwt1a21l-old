@@ -1,5 +1,3 @@
-/* <DTS2014080900552 chenyuanquan 20140825 begin */
-/* < DTS2014100804605 taohanwen 20141008 begin */
 /*
  *  max17048_battery.c
  *  fuel-gauge systems for lithium-ion (Li+) batteries
@@ -23,20 +21,18 @@
 #include <linux/irqreturn.h>
 #include <linux/of_gpio.h>
 #include <linux/of_batterydata.h>
-/* < DTS2014101003732 taohanwen 20141010 begin */
 #include <linux/mfd/max77819.h>
-/* DTS2014101003732 taohanwen 20141010 end > */
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#include <linux/interrupt.h>
+#ifdef CONFIG_HUAWEI_PMU_DSM
 #include <linux/dsm_pub.h>
 #include <linux/rtc.h>
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
-/* < DTS2014101003732 taohanwen 20141010 begin */
-/* < DTS2014111003502 taohanwen 20141112 begin */
+#include <linux/power/huawei_dsm_charger.h>
+#include <linux/power/huawei_charger.h>
+#include <linux/charger_core.h>
 /*******************************************************************************/
 /* Debugging log maco defines */
-#define log_level 1
+#define log_level 0
 
 #undef pr_err
 #undef pr_info
@@ -49,8 +45,6 @@
 #define pr_vdebug							log_vdbg
 #define log_fmt(format)						"Maxim:%s:%d: " format, __func__, __LINE__
 /******************************************************************************/
-/* DTS2014111003502 taohanwen 20141112 end > */
-/* DTS2014101003732 taohanwen 20141010 end > */
 
 /* registor address */
 #define MAX17048_VCELL_REG					0x02
@@ -73,8 +67,6 @@
 #define MAX17048_MODEL_DATA_REG_ADRR		0x40
 #define MAX17048_MODEL_RCOMSEG_ADDR			0x80
 
-/* < DTS2014111003502 taohanwen 20141112 begin */
-/* < DTS2014112101292 taohanwen 20141201 begin */
 #define MAX17048_MODEL_ACCESS_UNLOCK		0x4A57
 #define MAX17048_MODEL_ACCESS_LOCK			0x0
 #define MAX17048_MODEL_DATA_SIZE			64 		/*MAX17048_MODEL_DATA_REG_ADRR bytes (0x40 ~ 0x7f)*/
@@ -82,7 +74,6 @@
 #define MAX17048_IC_STATUS_POR				0x0100	/* MAX17048_STATUS_REG por bit */
 #define MAX17048_RCOMP_TEMP_CONST			200		/* 20 du */
 #define MAX17048_RCOMP_TEMP_FACTORIAL		10
-/* DTS2014111003502 taohanwen 20141112 end > */
 #define MAX17048_REG_INVALID_VALUE			0xFF
 #define MAX17048_SOC_FULL					100
 #define MAX17048_ALERT_SOC_LOWEST			1
@@ -106,15 +97,11 @@
 #define MAX17048_POR_WORK_TIME				(1 *MAX17048_TIME_SECOND)	/* 1  sec */
 #define MAX17048_HANDLE_MODEL_DELAY			msecs_to_jiffies(MAX17048_TIME_HOUR) /* one hour */
 #define MAX17048_SOC_ALRM_IRQ_NAME			"battery-alarm"
-#define QCOM_POWR_SUPPLY_CAHRGER_NAME		"battery"
-#define MAXIM_POWR_SUPPLY_CHARGER_NAME		"max77819-charger"
-/* DTS2014112101292 taohanwen 20141201 end > */
+#define POWR_SUPPLY_CHARGER_NAME			"battery"
 
 /* max times to retry to load model data if it is failed */
 #define MAX17048_LOADMODLE_MAXTIMES			3
-/* < DTS2014101506675 taohanwen 20141015 begin */
 #define MAX17048_RCOMP_FACTORIAL			10000
-/* DTS2014101506675 taohanwen 20141015 end > */
 #define MAX17048_VERIFY_FIX_MODEL				1
 #define MAX17048_LOAD_MODEL					(!(MAX17048_VERIFY_FIX_MODEL))
 
@@ -135,18 +122,13 @@
 #define MAX17048_RIGHT_VERSION(ver)\
 	(((u16)(ver) == 0x0011) || ((u16)(ver) == 0x0012))
 
-/* < DTS2014110406059 taohanwen 20141104 begin */
 #define MAXIM_CURRENT_NOW_UV_TO_UA(vichguv)\
 	((int)(vichguv) * 100 / 141)
 
 /* the vichg real value is 0 when the adc read value is less than 50mv */
 #define VADC_VICHG_ZERO_CHECK(vichguv)\
 	((vichguv) = ((vichguv) <= 50000) ? 0 : (vichguv))
-/* DTS2014110406059 taohanwen 20141104 end > */
 
-/* < DTS2014111003502 taohanwen 20141112 begin */
-/* < DTS2014112101292 taohanwen 20141201 begin */
-/* < DTS2015011606316 taohanwen 20150116 begin */
 /* huawei system param define */
 #define HW_VOLTAGE_FACTORIAL				1000
 #define HW_BATT_FULL_SOC					100
@@ -163,24 +145,22 @@
 #define HW_SMOOTH_SOC_FALL_TIME				(3 *MAX17048_TIME_SECOND)
 #define HW_SMOOTH_SOC_RISE_TIME				(6 *MAX17048_TIME_SECOND)
 #define HW_REPORT_SOC_FAST_TIME				(5 *MAX17048_TIME_SECOND)
-#define HW_REPORT_SOC_SLOW_TIME				(30*MAX17048_TIME_SECOND)
+#define HW_REPORT_SOC_MIDL_TIME				(15*MAX17048_TIME_SECOND)
+#define HW_REPORT_SOC_SLOW_TIME				(60*MAX17048_TIME_SECOND)
 #define HW_REPORT_SOC_THRESHOLD				15		/* 15% */
+#define HW_REPORT_LOW_SOC_THRESHOLD			5		/* 5% */
+#define HW_REPROT_SOC_CHANGE_MAX			1
 #define HW_DANGER_USBIN_BATT_MV				3300	/* mv */
 #define HW_DANGER_NOUSB_BATT_MV				3350	/* mv */
-/* DTS2015011606316 taohanwen 20150116 end > */
-/* DTS2014112101292 taohanwen 20141201 end > */
 
 #define HIGH_WORD_VALUE(val)					((u8)((((u16)(val))&(0xFF00))>>8))
 #define LOW_WORD_VALUE(val)					((u8)(((u16)(val))&(0x00FF)))
 #define TWO_U8_TO_U16(high, low)				(((((u16)(high)) << 8)&(0xFF00))|((u16)(low)))
-/* DTS2014111003502 taohanwen 20141112 end >*/
 
 #define __lock(_chip)    mutex_lock(&(_chip)->lock)
 #define __unlock(_chip)  mutex_unlock(&(_chip)->lock)
-/* < DTS2014111003502 taohanwen 20141112 begin */
 #define __lock_register(_chip)			max17048_write_reg((_chip)->client, MAX17048_MODEL_ACCESS_REG, MAX17048_MODEL_ACCESS_LOCK);
 #define __unlock_register(_chip)		max17048_write_reg((_chip)->client, MAX17048_MODEL_ACCESS_REG, MAX17048_MODEL_ACCESS_UNLOCK);
-/* DTS2014111003502 taohanwen 20141112 end >*/
 
 #define loop_schedule_delayed_work(ptr_work, delaytime) \
 		if (likely(!delayed_work_pending(ptr_work))){\
@@ -188,14 +168,10 @@
 		}
 
 static int max17048_write_reg(struct i2c_client *client, u8 reg, u16 value);
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static int max17048_read_reg(struct i2c_client *client, u8 reg, u16* value);
-/* DTS2015012009827 taohanwen 20150120 end > */
 
 extern bool get_max77819_charger_present(void);
 
-/* < DTS2014112101292 taohanwen 20141201 begin */
-/* < DTS2015011606316 taohanwen 20150116 begin */
 enum soc_smooth_type{
 	SOC_SMOOTH_NONE = 0,		/* no rise or fall */
 	SOC_SMOOTH_FALL,			/* soc fall smoothly */
@@ -214,8 +190,6 @@ struct low_soc_check_info{
 	u8 low_soc;					/* the battery low soc threshold */
 	int check_count;			/* > this num, the low soc state changes */
 };
-/* DTS2015011606316 taohanwen 20150116 end > */
-/* DTS2014112101292 taohanwen 20141201 end > */
 
 struct max17048_platform_data{
 	unsigned int			irq_gpio;
@@ -226,7 +200,6 @@ struct max17048_platform_data{
 	u16						bad_batt_mv;
 	struct max17048_batt_data*		pbat_data;
 };
-
 struct max17048_chip {
 	struct mutex						lock;
 	struct i2c_client*					client;
@@ -240,9 +213,7 @@ struct max17048_chip {
 	struct qpnp_vadc_chip*				vadc_dev;
 
 	struct max17048_platform_data*		pdata;
-	/* < DTS2014112101292 taohanwen 20141201 begin */
 	struct soc_smooth_info				soc_smooth;
-	/* DTS2014112101292 taohanwen 20141201 end > */
 
 	bool	bbatt_alrm;
 	int		irq;
@@ -250,19 +221,14 @@ struct max17048_chip {
 	int		vcell;
 	/* battery capacity */
 	u8		soc;
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	int		saved_soc;
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 };
-
 static struct max17048_chip* global_chip = NULL;
 /* check whether the system boots up by factory mode */
 static bool factory_flag = false;
 
-/* < DTS2014101506675 taohanwen 20141015 begin */
-/* < DTS2014102005552 taohanwen 20141020 begin */
 static struct max17048_batt_data gbat_ini_default = {
 	.full_capacity = 3000000,	/* uAh */
 	.ini_rcompseg = 0x0080,
@@ -284,8 +250,6 @@ static struct max17048_batt_data gbat_ini_default = {
 		0x10, 0x10, 0x0F, 0xB0, 0x0B, 0x00, 0x0B, 0x00,
 	},
 };
-/* DTS2014102005552 taohanwen 20141020 end > */
-/* DTS2014101506675 taohanwen 20141015 end > */
 
 static struct max17048_platform_data gplatform_data_default = {
 	.irq_gpio = 109,
@@ -300,26 +264,32 @@ static struct max17048_platform_data gplatform_data_default = {
 static enum power_supply_property max17048_battery_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
-	/* < DTS2014102005552 taohanwen 20141020 begin */
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-	/* DTS2014102005552 taohanwen 20141020 end > */
-	/* < DTS2014110406059 taohanwen 20141104 begin */
 	POWER_SUPPLY_PROP_CURRENT_NOW,
-	/* DTS2014110406059 taohanwen 20141104 end > */
 };
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+/* Add max77819 reg recovery function. */
+#define MAXIM_ERROR_NO 5555
+#define MAXIM17048_RECOVERY_REG_NUM 3
+
+struct word_reg_info{
+	u8 reg_addr;
+	u16 reg_value;
+};
+
+/* reg: 0xa,0xb,0xc,0xd,0x18 */
+static struct word_reg_info max17048_recovery_regs[] = {
+		{0xa,0x0000},{0xc,0x371c},{0x18,0x8c00},
+};
+
+#ifdef CONFIG_HUAWEI_PMU_DSM
 extern struct dsm_client *bms_dclient;
 extern struct qpnp_lbc_chip *g_lbc_chip;
-#define ONE_MINUTE		60 //60 seconds
-#define SOC_NORMAL_DELTA		5 //change 5 percent
+#define ONE_MINUTE		60
+#define SOC_NORMAL_DELTA		5
 #define MAX17048_TOO_FULL					105
 extern int dump_registers_and_adc(struct dsm_client *dclient, struct qpnp_lbc_chip *chip, int type);
 
-/*<DTS2014121602559 jiangfei 20141225 begin */
-/* dump max17048 main 11 regs*/
-/* < DTS2015012009827 taohanwen 20150120 begin */
 void max17048_fgauge_dump_regs(struct dsm_client *dclient)
 {
     int ret = 0;
@@ -342,11 +312,8 @@ void max17048_fgauge_dump_regs(struct dsm_client *dclient)
         }
     }
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
 EXPORT_SYMBOL(max17048_fgauge_dump_regs);
 #endif
-/* DTS2014121602559 jiangfei 20141225 end> */
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 static int __init early_parse_factory_flag(char* p)
 {
@@ -358,29 +325,61 @@ static int __init early_parse_factory_flag(char* p)
 }
 early_param("androidboot.huawei_swtype",early_parse_factory_flag);
 
-/* <DTS2014111600686 chendeng 20141117 begin */
-/* <DTS2014102107529 chendeng 20141021 begin */
 /* Use another mothed to reduce the power consumption of FTM mode. */
-/* DTS2014102107529 chendeng 20141021 end> */
-/* DTS2014111600686 chendeng 20141117 end> */
 
 static int max17048_write_reg(struct i2c_client *client, u8 reg, u16 value)
 {
-	int ret;
-
+	int ret = 0;
+	int i = 0;
 	ret = i2c_smbus_write_word_data(client, reg, swab16(value));
 
 	if (ret < 0)
+	{
 		pr_err("reg %d err %d\n", reg, ret);
+
+		if (ret == -MAXIM_ERROR_NO)
+		{
+			pr_err(": SDA is low. recovery the reg. \n");
+
+			for (i = 0; i < MAXIM17048_RECOVERY_REG_NUM; i++)
+			{
+				if (max17048_recovery_regs[i].reg_addr == reg)
+				{
+					max17048_recovery_regs[i].reg_value = value;
+					continue;
+				}
+				ret = i2c_smbus_write_word_data(
+				client,
+				max17048_recovery_regs[i].reg_addr,
+				swab16(max17048_recovery_regs[i].reg_value));
+				if (ret != 0)
+				{
+					pr_err(": recovery the reg 0x%x error %d. \n", max17048_recovery_regs[i].reg_addr, ret);
+					break;
+				}
+			}
+			ret = i2c_smbus_write_word_data(client, reg, swab16(value));
+		}
+	}
+	else
+	{
+		for (i = 0; i < MAXIM17048_RECOVERY_REG_NUM; i++)
+		{
+			if (max17048_recovery_regs[i].reg_addr == reg)
+			{
+				max17048_recovery_regs[i].reg_value = value;
+				break;
+			}
+		}
+	}
 
 	return ret;
 }
 
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static int max17048_read_reg(struct i2c_client *client, u8 reg, u16* pvalue)
 {
 	s32 ret = 0;
-
+	int i = 0;
 	if (!pvalue)
 	{
 		return -EIO;
@@ -388,8 +387,7 @@ static int max17048_read_reg(struct i2c_client *client, u8 reg, u16* pvalue)
 
 	ret = i2c_smbus_read_word_data(client, reg);
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	/* if max17048 i2c read failed, record this log, and notify to the dsm server*/
 	if(ret < 0){
 		if(!dsm_client_ocuppy(bms_dclient)){
@@ -398,11 +396,32 @@ static int max17048_read_reg(struct i2c_client *client, u8 reg, u16* pvalue)
 		}
 	}
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 	if (ret < 0)
 	{
 		pr_err("reg %d err %d\n", reg, ret);
+
+		if (ret == -MAXIM_ERROR_NO)
+		{
+			pr_err(": SDA is low. recovery the reg. \n");
+			for (i = 0; i < MAXIM17048_RECOVERY_REG_NUM; i++)
+			{
+				ret = i2c_smbus_write_word_data(
+				client,
+				max17048_recovery_regs[i].reg_addr,
+				swab16(max17048_recovery_regs[i].reg_value));
+				if (ret != 0)
+				{
+					pr_err(": recovery the reg 0x%x error %d. \n", max17048_recovery_regs[i].reg_addr, ret);
+					break;
+				}
+			}
+			ret = i2c_smbus_read_word_data(client, reg);
+			if (ret >= 0)
+			{
+				*pvalue = swab16((u16)ret);
+			}
+		}
 	}
 	else
 	{
@@ -411,9 +430,6 @@ static int max17048_read_reg(struct i2c_client *client, u8 reg, u16* pvalue)
 
 	return ret;
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
-
-/* < DTS2014112101292 taohanwen 20141201 begin */
 #define max17048_get_ext_property(psy, prop, valptr) \
 ({\
 	int __rc = -ENODEV;\
@@ -432,16 +448,6 @@ static int max17048_read_reg(struct i2c_client *client, u8 reg, u16* pvalue)
 	__rc;\
 })
 
-#define max17048_qcom_charger_get_property(_chip, prop, valptr) \
-({\
-	if (!(_chip)->psy_qcom_charger)\
-	{\
-		(_chip)->psy_qcom_charger = \
-			power_supply_get_by_name(QCOM_POWR_SUPPLY_CAHRGER_NAME);\
-	}\
-	max17048_get_ext_property((_chip)->psy_qcom_charger, prop, valptr);\
-})
-
 static int max17048_maxim_charger_get_property(
 				struct max17048_chip* chip,
 				enum power_supply_property psp,
@@ -450,37 +456,17 @@ static int max17048_maxim_charger_get_property(
 	static struct power_supply* pmaxim_charger = NULL;
 	if (!pmaxim_charger)
 	{
-		pmaxim_charger = power_supply_get_by_name(MAXIM_POWR_SUPPLY_CHARGER_NAME);\
+		pmaxim_charger = power_supply_get_by_name(POWR_SUPPLY_CHARGER_NAME);\
 	}
-	return max17048_get_ext_property(pmaxim_charger, POWER_SUPPLY_PROP_STATUS, val);
+	return max17048_get_ext_property(pmaxim_charger, psp, val);
 }
-
-/* < DTS2014111003502 taohanwen 20141112 begin */
 static int max17048_get_battery_temp(struct max17048_chip* chip)
 {
-	int rc = 0;
-	int temp = 250;
-	union power_supply_propval val = {0};
-	rc = max17048_qcom_charger_get_property(chip, POWER_SUPPLY_PROP_TEMP, &val);
-	if (likely(!IS_ERR_VALUE(rc)))
-	{
-		temp = val.intval;
-	}
-	return temp;
+	return huawei_charger_get_battery_temperature();
 }
-/* DTS2014111003502 taohanwen 20141112 end > */
-
 static bool max17048_get_battery_present(struct max17048_chip* chip)
 {
-	int rc = 0;
-	bool present = false;
-	union power_supply_propval val = {0};
-	rc = max17048_qcom_charger_get_property(chip, POWER_SUPPLY_PROP_PRESENT, &val);
-	if (likely(!IS_ERR_VALUE(rc)))
-	{
-		present = !!val.intval;
-	}
-	return present;
+	return huawei_charger_battery_is_exist();
 }
 
 static int max17048_get_charging_status(struct max17048_chip* chip)
@@ -493,7 +479,7 @@ static int max17048_get_charging_status(struct max17048_chip* chip)
 	{
 		status = val.intval;
 	}
-	return status;
+	return status;      
 }
 
 /* check the system powers up or not: true = power up, false = powering */
@@ -521,9 +507,6 @@ static bool max17048_is_power_up_status(struct max17048_chip* chip)
 	}
 	return power_up_flag;
 }
-/* DTS2014112101292 taohanwen 20141201 end > */
-
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static int max17048_prepare_load_model(struct max17048_chip* chip)
 {
 	int ret = 0;
@@ -549,10 +532,6 @@ static int max17048_prepare_load_model(struct max17048_chip* chip)
 		((OCV_1==MAX17048_REG_INVALID_VALUE) && (OCV_2==MAX17048_REG_INVALID_VALUE)));//verify Model Access Unlocked
 	return msb;
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
-
-/* < DTS2014111003502 taohanwen 20141112 begin */
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static void max17048_dump_model_regs(struct max17048_chip* chip)
 {
 	u16 value = 0;
@@ -571,7 +550,6 @@ static void max17048_dump_model_regs(struct max17048_chip* chip)
 		pr_debug("rcomp_seg[0x%02x] = 0x%04x \n", (MAX17048_MODEL_RCOMSEG_ADDR+k), value);
 	}
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
 
 void max17048_load_model(struct max17048_chip* chip) {	
    	/******************************************************************************
@@ -608,7 +586,6 @@ void max17048_load_model(struct max17048_chip* chip) {
 		max17048_dump_model_regs(chip);
 	}
 }
-/* DTS2014111003502 taohanwen 20141112 end > */
 
 bool max17048_verify_model_is_correct(struct max17048_chip* chip) 
 {
@@ -632,13 +609,11 @@ bool max17048_verify_model_is_correct(struct max17048_chip* chip)
 	msleep(500);
  
 	//Step 9. Read SOC register and compare to expected result
-	/* < DTS2015012009827 taohanwen 20150120 begin */
 	if (max17048_read_reg(chip->client, MAX17048_SOC_REG, &msb) < 0)
 	{
 		pr_info("Read soc failed, model data was NOT loaded successfully!\n");
 		return false; 
 	}
-	/* DTS2015012009827 taohanwen 20150120 end > */
 
 	SOC_1 = HIGH_WORD_VALUE(msb);//"big endian":low byte save MSB
 	SOC_2 = LOW_WORD_VALUE(msb);
@@ -659,11 +634,9 @@ bool max17048_verify_model_is_correct(struct max17048_chip* chip)
 
 void max17048_cleanup_model_load(struct max17048_chip* chip, u16 original_ocv) 
 {
-	/* < DTS2014111003502 taohanwen 20141112 begin */
 	u16 recom_alrt = TWO_U8_TO_U16(
 		(chip->pdata->pbat_data->ini_rcomp),
 		(MAX17048_ALERT_SOC_HIGHEST - chip->pdata->alert_soc));
-	/* DTS2014111003502 taohanwen 20141112 end > */
 
 	//step9.1, Unlock Model Access (MAX17048/49/58/59 only): To write OCV, requires model access to be unlocked
 	max17048_write_reg(chip->client,
@@ -690,7 +663,6 @@ up. Any time this bit is set, the IC is not configured,
 so the model should be loaded and the bit should
 be cleared.
 */
-/* < DTS2015012009827 taohanwen 20150120 begin */
 bool max17048_check_por(struct max17048_chip* chip)
 {
 	int ret = 0;
@@ -716,11 +688,9 @@ void max17048_clear_por(struct max17048_chip* chip)
 		max17048_write_reg(chip->client,MAX17048_STATUS_REG,status);
 	}
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
 
 bool max17048_handle_model(struct max17048_chip* chip, int load_or_verify) 
 {
-	/* < DTS2015012009827 taohanwen 20150120 begin */
 	int ret = 0;
 	bool model_load_ok = false;
 	u16 check_times = 0;
@@ -733,7 +703,6 @@ bool max17048_handle_model(struct max17048_chip* chip, int load_or_verify)
 		goto out;
 	}
 	msb_original = (u16)ret;
-	/* DTS2015012009827 taohanwen 20150120 end > */
 
 	check_times = 0;
 	do {
@@ -750,27 +719,22 @@ bool max17048_handle_model(struct max17048_chip* chip, int load_or_verify)
 			load_or_verify = MAX17048_LOAD_MODEL;
 		}
 
-		/* < DTS2014111003502 taohanwen 20141112 begin */
 		if (check_times++ >= MAX17048_LOADMODLE_MAXTIMES) {
 			pr_err("max17048 handle model :time out1...");
 			goto out;
 		}
-		/* DTS2014111003502 taohanwen 20141112 end > */
 	} while (!model_load_ok);
 
 	// Steps 10-12
 	max17048_cleanup_model_load(chip, msb_original);
 
-	/* < DTS2014111003502 taohanwen 20141112 begin */
 	//clear up por
 		//firstly check POR
 	if(max17048_check_por(chip)){
 		max17048_clear_por(chip);
 	}
-	/* DTS2014111003502 taohanwen 20141112 end > */
 out:
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	/* if max17048 handle model failed, record this log, and notify to the dsm server*/
 	if(!model_load_ok){
 		if(!dsm_client_ocuppy(bms_dclient)){
@@ -779,12 +743,9 @@ out:
 		}
 	}
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 	return model_load_ok;
 }
 
-/* < DTS2014111003502 taohanwen 20141112 begin */
-/* < DTS2015012009827 taohanwen 20150120 begin */
 void max17048_update_rcomp(struct max17048_chip *chip) 
 {
 	u16 cfg=0;
@@ -824,10 +785,7 @@ void max17048_update_rcomp(struct max17048_chip *chip)
 	}
 	msleep(150);
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
-/* DTS2014111003502 taohanwen 20141112 end > */
 
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static int max17048_get_vcell_batt_uv(struct max17048_chip *chip)
 {
 	int ret = 0;
@@ -839,15 +797,12 @@ static int max17048_get_vcell_batt_uv(struct max17048_chip *chip)
 	{
 		vcell_uV = MAX17048_VBATT_REGVAL_TO_UV(fg_vcell);
 		chip->vcell = vcell_uV;
-		/*< DTS2014101700455 taohanwen 20141017 begin */
 		log_vdbg("max17048:chip->vcell = %duV\n", vcell_uV);
-		/* DTS2014101700455 taohanwen 20141017 end > */
 		return vcell_uV;
 	}
 	pr_err("max17048:chip get vcell error rc = %d \n", ret);
 	return ret;
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
 
 static int max17048_avarage_vbat_mv(struct max17048_chip *chip, int avrg_count)
 {
@@ -874,15 +829,14 @@ static int max17048_avarage_vbat_mv(struct max17048_chip *chip, int avrg_count)
 	return ((0 == cnt) ? (-EIO) :  (sum / cnt / HW_VOLTAGE_FACTORIAL));
 }
 
-/* < DTS2014112101292 taohanwen 20141201 begin */
-/* < DTS2015012009827 taohanwen 20150120 begin */
+
+
 static u8 max17048_get_soc(struct max17048_chip *chip)
 {
 	int ret = 0;
 	u16 fg_soc = 0, ret_soc = 0;
 	int ini_bits = chip->pdata->pbat_data->ini_bits;
 
-	/* < DTS2014121602126 taohanwen 20141223 begin */
 	__lock(chip);
 	ret = max17048_read_reg(chip->client, MAX17048_SOC_REG, &fg_soc);
 	if (unlikely(ret < 0))
@@ -892,10 +846,8 @@ static u8 max17048_get_soc(struct max17048_chip *chip)
 		goto end_out;
 	}
 	fg_soc = MAX17048_CALC_SOC(fg_soc, ini_bits);
-	/* DTS2014121602126 taohanwen 20141223 end > */
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	/* if origin soc read from soc reg is high than 105%, notify to server*/
 	if(MAX17048_TOO_FULL < fg_soc){
 		if(!dsm_client_ocuppy(bms_dclient)){
@@ -904,23 +856,14 @@ static u8 max17048_get_soc(struct max17048_chip *chip)
 		}
 	}
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 	ret_soc = min((int)fg_soc, MAX17048_SOC_FULL);
-	/*< DTS2014101700455 taohanwen 20141017 begin */
 	log_vdbg("max17048:updated soc:%d, fg_soc:%d, bits:%d\n", ret_soc, fg_soc, ini_bits);
-	/* DTS2014101700455 taohanwen 20141017 end > */
 
 end_out:
-	/* < DTS2014121602126 taohanwen 20141223 begin */
 	__unlock(chip);
-	/* DTS2014121602126 taohanwen 20141223 end > */
 	return ret_soc;
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
-/* DTS2014112101292 taohanwen 20141201 end > */
-
-/* < DTS2014110406059 taohanwen 20141104 begin */
 static int max17048_get_charge_current_now(struct max17048_chip *chip)
 {
 #define MAXIM_VICHG_ADC_CHAN P_MUX2_1_3
@@ -936,9 +879,7 @@ static int max17048_get_charge_current_now(struct max17048_chip *chip)
 
 	return MAXIM_CURRENT_NOW_UV_TO_UA(results.physical);
 }
-/* DTS2014110406059 taohanwen 20141104 end > */
 
-/* < DTS2015010500708 taohanwen 20150105 begin */
 static void max17048_soc_factory_check(struct max17048_chip* chip)
 {
 	/* In factory system mode, reporting the soc 1% when the soc fall to 0% */
@@ -950,7 +891,6 @@ static void max17048_soc_factory_check(struct max17048_chip* chip)
 		pr_info("In factory system mode, reporting the soc 1 when the soc fall to 0 \n");
 	}
 }
-/* DTS2015010500708 taohanwen 20150105 end > */
 
 static int max17048_get_property(struct power_supply *psy,
 				enum power_supply_property psp,
@@ -967,24 +907,15 @@ static int max17048_get_property(struct power_supply *psy,
 		val->intval = chip->vcell;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		/* <DTS2014112101292 taohanwen 20141201 begin */
-		/* remove max17048_get_soc(chip); */
-		/* DTS2014112101292 taohanwen 20141201 end > */
-		/* < DTS2015010500708 taohanwen 20150105 begin */
 		max17048_soc_factory_check(chip);
-		/* DTS2015010500708 taohanwen 20150105 end > */
 		val->intval = chip->soc;
 		break;
-	/* < DTS2014102005552 taohanwen 20141020 begin */
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 		val->intval = chip->pdata->pbat_data->full_capacity;
 		break;
-	/* DTS2014102005552 taohanwen 20141020 end > */
-	/* < DTS2014110406059 taohanwen 20141104 begin */
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		val->intval = max17048_get_charge_current_now(chip);
 		break;
-	/* DTS2014110406059 taohanwen 20141104 end > */
 	default:
 		rc = -EINVAL;
 	}
@@ -992,7 +923,6 @@ static int max17048_get_property(struct power_supply *psy,
 	return rc;
 }
 
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static u16 max17048_get_version(struct i2c_client *client)
 {
 	u16 chip_version = 0;
@@ -1002,7 +932,6 @@ static u16 max17048_get_version(struct i2c_client *client)
 	pr_info("max17048 Fuel-Gauge Ver 0x%04x\n", chip_version);
 	return chip_version;
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
 
 static void max17048_init(struct max17048_chip *chip)
 {
@@ -1019,22 +948,18 @@ static void max17048_init(struct max17048_chip *chip)
 	/*config rcomp and alert register*/
 	ini_rcomp = chip->pdata->pbat_data->ini_rcomp;
 	init_alert = chip->pdata->alert_soc;
-	/* <DTS2014112101292 taohanwen 20141201 begin */
 	/* if bits type is 19, the alert set value must be double */
 	if (MAX17048_SOC_BITS_TYPE_19 == chip->pdata->pbat_data->ini_bits)
 	{
 		init_alert = init_alert * 2;
 	}
-	/* DTS2014112101292 taohanwen 20141201 end > */
 	if((init_alert > MAX17048_ALERT_SOC_HIGHEST)||
 		(init_alert < MAX17048_ALERT_SOC_LOWEST))
 	{
 		init_alert = HW_ALERT_LOW_SOC;
 	}
 
-	/* < DTS2014111003502 taohanwen 20141112 begin */
 	init_cfg = TWO_U8_TO_U16(ini_rcomp, (MAX17048_ALERT_SOC_HIGHEST-init_alert));
-	/* DTS2014111003502 taohanwen 20141112 end > */
 	max17048_write_reg(chip->client, MAX17048_RCOMP_REG, init_cfg);	
 
 	/*config vreset */
@@ -1047,8 +972,7 @@ static void max17048_init(struct max17048_chip *chip)
 	max17048_write_reg(chip->client, MAX17048_VRESET_REG, vreset);
 }
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 static int get_current_time(unsigned long *now_tm_sec)
 {
 	struct rtc_time tm;
@@ -1056,7 +980,7 @@ static int get_current_time(unsigned long *now_tm_sec)
 	int rc;
 
 	rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
-	if (rtc == NULL) {
+	if (NULL == rtc) {
 		pr_err("%s: unable to open rtc device (%s)\n",
 			__FILE__, CONFIG_RTC_HCTOSYS_DEVICE);
 		return -EINVAL;
@@ -1114,9 +1038,7 @@ static void monitor_normal_soc_jump(struct max17048_chip *chip)
 	}
 }
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
-/* < DTS2014112101292 taohanwen 20141201 begin */
 static void max17048_relax_pm_by_soc(struct max17048_chip* chip)
 {
 	/* If battery alarm is enabled, but we charge the battery again at alert_soc,*/
@@ -1130,7 +1052,6 @@ static void max17048_relax_pm_by_soc(struct max17048_chip* chip)
 
 static bool max17048_time_to_report(struct max17048_chip* chip)
 {
-	/* < DTS2015012909110 taohanwen 20150129 begin */
 	static int pre_type = -1;
 	static int report_count = 0;
 	int report_time_num = 0;
@@ -1141,7 +1062,6 @@ static bool max17048_time_to_report(struct max17048_chip* chip)
 		report_count = 0;
 		pre_type = chip->soc_smooth.smooth_type;
 	}
-	/* DTS2015012909110 taohanwen 20150129 end > */
 
 	if (SOC_SMOOTH_FALL == chip->soc_smooth.smooth_type)
 	{
@@ -1153,18 +1073,23 @@ static bool max17048_time_to_report(struct max17048_chip* chip)
 		report_time_num = 
 			HW_SMOOTH_SOC_RISE_TIME / MAX17048_SOC_REPORT_WORK_TIME;
 	}
-	/* < DTS2015011606316 taohanwen 20150116 begin */
 	else if (SOC_SMOOTH_SHUT == chip->soc_smooth.smooth_type)
 	{
 		report_time_num = 0; /* report the soc at once to shut down the system */
 	}
-	/* DTS2015011606316 taohanwen 20150116 end > */
-	/* if soc less than 15%, every 5s reports soc, or else every 30s reports soc */
-	else if (chip->soc <= HW_REPORT_SOC_THRESHOLD)
+	/* if soc lesser than 5%, every 5s reports soc  */
+	else if (chip->soc <= HW_REPORT_LOW_SOC_THRESHOLD)
 	{
 		report_time_num = 
 			HW_REPORT_SOC_FAST_TIME / MAX17048_SOC_REPORT_WORK_TIME;
 	}
+	/* if soc lesser than 15% every 15s reports soc */
+	else if (chip->soc <= HW_REPORT_SOC_THRESHOLD)
+	{
+		report_time_num = 
+			HW_REPORT_SOC_MIDL_TIME / MAX17048_SOC_REPORT_WORK_TIME;
+	}
+	/* if soc greater than 15%, every 60s report soc */
 	else
 	{
 		report_time_num = 
@@ -1264,7 +1189,6 @@ static void max17048_soc_smooth_rise(struct max17048_chip* chip)
 	}
 }
 
-/* < DTS2015011606316 taohanwen 20150116 begin */
 static struct low_soc_check_info* 
 max17048_get_soc_check_info(struct max17048_chip* chip, bool cable_in)
 {
@@ -1319,14 +1243,12 @@ static void max17048_low_soc_smooth_info(
 	/* get the battery voltage & check the low voltage and soc */
 	bat_mv = max17048_avarage_vbat_mv(chip, HW_AVRG_BATT_MV_COUNT);
 
-	/* < DTS2015012909110 taohanwen 20150129 begin */
 	/* get the battery voltage error */
 	if (bat_mv <= 0)
 	{
 		pr_err("get battery voltage failed rc =%d, skip checking smooth info !!", bat_mv);
 		return;
 	}
-	/* DTS2015012909110 taohanwen 20150129 end > */
 
 	if (bat_mv < plow_info->danger_mv)
 	{
@@ -1395,19 +1317,14 @@ static void max17048_low_soc_smooth_info(
 		/* do nothing */
 	}
 }
-/* DTS2015011606316 taohanwen 20150116 end > */
 
-/* < DTS2015012609011 taohanwen 20150126 begin */
 static void max17048_get_report_soc(
 			struct max17048_chip* chip, bool cable_in, int chg_status)
 {
-	u8 fg_soc = 0;
+	u8 fg_soc = 0, soc_change = 0;
 	if (SOC_SMOOTH_FALL == chip->soc_smooth.smooth_type)
 	{
 		max17048_soc_smooth_fall(chip);
-		/* < DTS2015010500708 taohanwen 20150105 begin */
-		/* replace some lines */
-		/* DTS2015010500708 taohanwen 20150105 end > */
 	}
 	else if (SOC_SMOOTH_RISE == chip->soc_smooth.smooth_type)
 	{
@@ -1421,12 +1338,10 @@ static void max17048_get_report_soc(
 			max17048_soc_smooth_rise(chip);
 		}
 	}
-	/* < DTS2015011606316 taohanwen 20150116 begin */
 	else if (SOC_SMOOTH_SHUT == chip->soc_smooth.smooth_type)
 	{
 		chip->soc = chip->soc_smooth.end_soc;
 	}
-	/* DTS2015011606316 taohanwen 20150116 end > */
 	else
 	{
 		/* get the fgague ic truly soc */
@@ -1434,15 +1349,21 @@ static void max17048_get_report_soc(
 		if (POWER_SUPPLY_STATUS_CHARGING != chg_status)
 		{
 			pr_vdebug("no charging, report the min value of (%d, %d)!\n", chip->soc, fg_soc);
-			chip->soc = min(chip->soc, fg_soc);
+			fg_soc = min(chip->soc, fg_soc);
 		}
-		else
+
+		if (chip->soc > fg_soc)
 		{
-			chip->soc = fg_soc;
+			soc_change = min(HW_REPROT_SOC_CHANGE_MAX, (chip->soc - fg_soc));
+			chip->soc -= soc_change;
+		}
+		else if (chip->soc < fg_soc)
+		{
+			soc_change = min(HW_REPROT_SOC_CHANGE_MAX, (fg_soc - chip->soc));
+			chip->soc += soc_change;
 		}
 	}
 }
-/* DTS2015012609011 taohanwen 20150126 end > */
 
 static void max17048_report_soc(struct max17048_chip* chip)
 {
@@ -1482,10 +1403,7 @@ report:
 smooth_skip:
 	return;
 }
-/* DTS2014112101292 taohanwen 20141201 end > */
 
-/* < DTS2014111003502 taohanwen 20141112 begin */
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static void max17048_dump_register(struct max17048_chip* chip)
 {
 	static u8	g_dump_reg_adrrs[] = {
@@ -1515,7 +1433,6 @@ static void max17048_dump_register(struct max17048_chip* chip)
 	__lock_register(chip)
 	/* lock */
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
 
 static void max17048_debug_log(struct max17048_chip* chip)
 {
@@ -1529,9 +1446,7 @@ static void max17048_debug_log(struct max17048_chip* chip)
 		pr_debug("battery temp = %d \n", temp);
 	}
 }
-/* DTS2014111003502 taohanwen 20141112 end > */
 
-/* < DTS2014112101292 taohanwen 20141201 begin */
 static void max17048_load_model_by_por(struct max17048_chip* chip)
 {
 	if (max17048_check_por(chip))
@@ -1570,20 +1485,17 @@ static void max17048_load_model_by_por(struct max17048_chip* chip)
     bdly_ok_##__LINE__;\
 })
 
-/* < DTS2014111003502 taohanwen 20141112 begin */
 static void max17048_work(struct work_struct *work)
 {
 	struct max17048_chip *chip;
 	chip = container_of(work, struct max17048_chip, work.work);
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	if (max17048_work_delay_ok(MAX17048_DSM_WORK_TIME))
 	{
 		monitor_normal_soc_jump(chip);
 	}
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 	if (max17048_work_delay_ok(MAX17048_RCOMP_WORK_TIME))
 	{
@@ -1608,10 +1520,7 @@ static void max17048_work(struct work_struct *work)
 	loop_schedule_delayed_work(&chip->work,
 		msecs_to_jiffies(MAX17048_TIME_WORK_DELAY));
 }
-/* DTS2014111003502 taohanwen 20141112 end > */
-/* DTS2014112101292 taohanwen 20141201 end > */
 
-/* <DTS2015011100649 taohanwen 20150110 begin */
 static void max17048_handle_work(struct work_struct *work)
 {
 	static bool chip_soc_init = false;
@@ -1630,9 +1539,7 @@ static void max17048_handle_work(struct work_struct *work)
 		log_info("first read soc = %d \n", chip->soc);
 	}
 }
-/* DTS2015011100649 taohanwen 20150110 end> */
 
-/* < DTS2014111003502 taohanwen 20141112 begin */
 static irqreturn_t max17048_low_bat_interrupt(int irq, void *thechip)
 {
 	struct max17048_chip* chip = (struct max17048_chip*)thechip;
@@ -1641,10 +1548,7 @@ static irqreturn_t max17048_low_bat_interrupt(int irq, void *thechip)
 
 	return IRQ_HANDLED;
 }
-/* DTS2014111003502 taohanwen 20141112 end > */
 
-/* <DTS2014112101292 taohanwen 20141201 begin */
-/* < DTS2015012009827 taohanwen 20150120 begin */
 static void max17048_interrupt_notifier_work(struct work_struct *work)
 {
 	struct max17048_chip *chip;
@@ -1683,8 +1587,6 @@ out_work:
 	__unlock(chip);
 	return;
 }
-/* DTS2015012009827 taohanwen 20150120 end > */
-/* DTS2014112101292 taohanwen 20141201 end > */
 
 static int max17048_soc_alarm_irq_init(struct max17048_chip* chip)
 {
@@ -1712,10 +1614,8 @@ static int max17048_soc_alarm_irq_init(struct max17048_chip* chip)
 	pr_debug("max17048 gpio = %d, aler irq = %d \n",chip->pdata->irq_gpio,chip->irq);
 
 	/* request battery_low interruption */
-	/* < DTS2014111003502 taohanwen 20141112 begin */
 	ret = request_irq(chip->irq, max17048_low_bat_interrupt, IRQF_TRIGGER_FALLING,
 			MAX17048_SOC_ALRM_IRQ_NAME, chip);
-	/* DTS2014111003502 taohanwen 20141112 end > */
 	if (ret) {
 		pr_err("could not request irq %d, status %d\n", chip->irq, ret);
 		goto err_irq;
@@ -1740,7 +1640,6 @@ static void max17048_soc_alarm_irq_free(struct max17048_chip* chip)
 	gpio_free(chip->pdata->irq_gpio);
 }
 
-/* <DTS2014102107529 chendeng 20141021 begin */
 static int max17048_battery_id(struct max17048_chip *chip)
 {
 	int rc = 0;
@@ -1759,7 +1658,6 @@ static int max17048_battery_id(struct max17048_chip *chip)
 	vbatt_id = results.physical;
 	return vbatt_id;
 }
-/* DTS2014102107529 chendeng 20141021 end> */
 
 int maxim_get_battery_id_uv(void)
 {
@@ -1815,8 +1713,7 @@ static int max17048_probe(struct i2c_client *client,
 	ret = max17048_get_version(client);
 	if (!MAX17048_RIGHT_VERSION(ret)) {
 		pr_err("fail to get max17048 Fuel-Gauge Ver, exit!\n");
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 		/* if get max17048 version failed, record this log, and notify to the dsm server*/
 		if(!dsm_client_ocuppy(bms_dclient)){
 			dsm_client_record(bms_dclient,
@@ -1824,7 +1721,6 @@ static int max17048_probe(struct i2c_client *client,
 			dsm_client_notify(bms_dclient, DSM_MAXIM_GET_VER_FAIL);
 		}
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 		return -EIO;
 	}
 	
@@ -1872,18 +1768,12 @@ static int max17048_probe(struct i2c_client *client,
 		goto err_out2;
 	}
 
-	/* <DTS2015011100649 taohanwen 20150110 begin */
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	chip->saved_soc = -EINVAL;
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
-
-	/* <DTS2014112101292 taohanwen 20141201 begin */
 	chip->soc = -EINVAL;
 	chip->soc_smooth.end_soc = chip->soc;
 	chip->soc_smooth.smooth_type = SOC_SMOOTH_NONE;
-	/* DTS2014112101292 taohanwen 20141201 end > */
 
 	INIT_DELAYED_WORK(&chip->notifier_work,max17048_interrupt_notifier_work);
 	INIT_DELAYED_WORK(&chip->work, max17048_work);
@@ -1892,7 +1782,6 @@ static int max17048_probe(struct i2c_client *client,
 	/* schedule handle work to load the model at once */
 	schedule_delayed_work(&chip->hand_work,0);
 	schedule_delayed_work(&chip->work, 0);
-	/* DTS2015011100649 taohanwen 20150110 end > */
 
 	global_chip = chip;
 	return 0;
@@ -1990,5 +1879,3 @@ module_i2c_driver(max17048_i2c_driver);
 MODULE_AUTHOR("Minkyu Kang <mk7.kang@samsung.com>");
 MODULE_DESCRIPTION("max17048 Fuel Gauge");
 MODULE_LICENSE("GPL");
-/* DTS2014100804605 taohanwen 20141008 end > */
-/* DTS2014080900552 chenyuanquan 20140825 end> */

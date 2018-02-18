@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,6 +12,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/debugfs.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
@@ -23,27 +24,31 @@
 #include <linux/input.h>
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
-/* < DTS2014092405372 gwx199358 20140924 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-#include <linux/huawei_boardid.h>
-#include <soc/qcom/socinfo.h>
-#endif
-/* DTS2014092405372 gwx199358 20140924 end > */
-/*< DTS2014071502043 zhaoyuxia 20140715 begin */
 #include <linux/time.h>
-/* DTS2014071502043 zhaoyuxia 20140715 end >*/
-/* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 #include <soc/qcom/smsm.h>
 #endif
-/* DTS2014070303611 guohui 20140703 end> */
-/* < DTS2014080106240 renxigang 20140801 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/dsm_pub.h>
 #include <linux/hw_lcd_common.h>
 #endif
-/* DTS2014080106240 renxigang 20140801 end > */
 
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+#include <linux/huawei_reset_detect.h>
+#endif
+#ifdef CONFIG_HUAWEI_PMU_DSM
+#include <linux/power/huawei_dsm_charger.h>
+#endif
+#ifdef CONFIG_HUAWEI_KERNEL
+#define PON_INT_RT_STS_KPDPWR_ON  0x0
+#define PON_INT_RT_STS_KPDPWR_BARK  0x3
+#endif
+
+
+#define CREATE_MASK(NUM_BITS, POS) \
+	((unsigned char) (((1 << (NUM_BITS)) - 1) << (POS)))
+#define PON_MASK(MSB_BIT, LSB_BIT) \
+	CREATE_MASK(MSB_BIT - LSB_BIT + 1, LSB_BIT)
 
 #define PMIC_VER_8941           0x01
 #define PMIC_VERSION_REG        0x0105
@@ -66,11 +71,9 @@
 #define QPNP_PON_WARM_RESET_REASON1(base)	(base + 0xA)
 #define QPNP_PON_WARM_RESET_REASON2(base)	(base + 0xB)
 #define QPNP_POFF_REASON1(base)			(base + 0xC)
-/* <DTS2014052105882 xufeng 20140521 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define QPNP_POFF_REASON2(base)	(base + 0xD)
 #endif
-/* DTS2014052105882 xufeng 20140521 end> */
 #define QPNP_PON_KPDPWR_S1_TIMER(base)		(base + 0x40)
 #define QPNP_PON_KPDPWR_S2_TIMER(base)		(base + 0x41)
 #define QPNP_PON_KPDPWR_S2_CNTL(base)		(base + 0x42)
@@ -90,10 +93,11 @@
 #define QPNP_PON_S3_SRC(base)			(base + 0x74)
 #define QPNP_PON_S3_DBC_CTL(base)		(base + 0x75)
 #define QPNP_PON_TRIGGER_EN(base)		(base + 0x80)
+#define QPNP_PON_XVDD_RB_SPARE(base)		(base + 0x8E)
+#define QPNP_PON_SOFT_RB_SPARE(base)		(base + 0x8F)
+#define QPNP_PON_SEC_ACCESS(base)		(base + 0xD0)
 
-/* < DTS2014102804861 youqi 20141028 begin */
-/* Revert DTS2014080600748 to slove handset reboot function issue */
-/* DTS2014102804861 youqi 20141028 end > */
+#define QPNP_PON_SEC_UNLOCK			0xA5
 
 #define QPNP_PON_WARM_RESET_TFT			BIT(4)
 
@@ -124,6 +128,9 @@
 #define QPNP_PON_S3_SRC_KPDPWR_AND_RESIN	2
 #define QPNP_PON_S3_SRC_KPDPWR_OR_RESIN		3
 #define QPNP_PON_S3_SRC_MASK			0x3
+#define QPNP_PON_HARD_RESET_MASK		PON_MASK(7, 5)
+
+#define QPNP_PON_UVLO_DLOAD_EN		BIT(7)
 
 /* Ranges */
 #define QPNP_PON_S1_TIMER_MAX			10256
@@ -139,13 +146,11 @@
 
 #define QPNP_PON_BUFFER_SIZE			9
 
-/* <DTS2014070303611 guohui 20140703 begin */
+#define QPNP_POFF_REASON_UVLO			13
 #ifdef  CONFIG_HUAWEI_KERNEL
 #define PON_DIS_PWRKPD_RESET 1
 #endif
-/* DTS2014070303611 guohui 20140703 end> */
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 #define CHECK_PMU_STATUS_DELAY			msecs_to_jiffies(30000)
 #define PA_CPU_TEMP_THRESH			70
 #define TSENS_TEMP_THRESH			90
@@ -164,6 +169,7 @@
 #define LDO_ON_MASK			0x20
 #define LDO_VOL_MASK			0x80
 #define LDO_NUM					18
+#define LDO_USEC_INTERVAL			1200
 
 /*pmu dsm client definition */
 struct dsm_dev dsm_pmu = {
@@ -177,7 +183,6 @@ extern int dsm_get_pa_temp(void);
 extern int dsm_get_cpu_temp(void);
 extern int get_tsens_temp(uint32_t tsensor_id, long *temp);
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 enum pon_type {
 	PON_KPDPWR,
@@ -209,30 +214,37 @@ struct qpnp_pon {
 	int num_pon_config;
 	u16 base;
 	struct delayed_work bark_work;
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	struct delayed_work dsm_pmu_work;
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 	u32 dbc;
+	int pon_trigger_reason;
+	int pon_power_off_reason;
+	u32 uvlo;
+	struct dentry *debugfs;
+	u8 warm_reset_reason1;
+	u8 warm_reset_reason2;
+	bool store_hard_reset_reason;
+#ifdef CONFIG_HUAWEI_KERNEL
+	bool use_cbl_interrupt;
+#endif
 };
 
 static struct qpnp_pon *sys_reset_dev;
-
-/* < DTS2014092405372 gwx199358 20140924 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-static int g_cblpwr_irq_no;
-#endif
-/* DTS2014092405372 gwx199358 20140924 end > */
-
-/* < DTS2014090409459 wanghang 20140904 begin */
 bool power_key_ps = false;
-/* DTS2014090409459 wanghang 20140904 end >*/
+
+#ifdef CONFIG_HUAWEI_KERNEL
+static int g_cblpwr_state_irq;
+#endif
 
 static u32 s1_delay[PON_S1_COUNT_MAX + 1] = {
 	0 , 32, 56, 80, 138, 184, 272, 408, 608, 904, 1352, 2048,
 	3072, 4480, 6720, 10256
 };
+
+#ifdef CONFIG_HUAWEI_KERNEL
+u32 huawei_pon_regs[MAX_REG_TYPE] = {0};
+#endif
 
 static const char * const qpnp_pon_reason[] = {
 	[0] = "Triggered from Hard Reset",
@@ -271,17 +283,19 @@ static const char * const qpnp_poff_reason[] = {
  * boot of the device.
  */
 static int warm_boot;
-/* < DTS2014080106240 renxigang 20140801 begin */
-/*< DTS2015012205825  tianye/293347 20150122 begin*/
-/* remove APR web LCD report log information  */
-#ifdef CONFIG_HUAWEI_DSM
-/*DTS2015012205825 tianye/293347 20150122 end >*/
+#ifdef CONFIG_HUAWEI_KERNEL
 struct lcd_pwr_status_t lcd_pwr_status;
 #endif
-/* DTS2014080106240 renxigang 20140801 end > */
 module_param(warm_boot, int, 0);
 
-/* <DTS2014070303611 guohui 20140703 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
+int hw_get_cblpwr_state_irq(void)
+{
+	return g_cblpwr_state_irq;
+}
+EXPORT_SYMBOL(hw_get_cblpwr_state_irq);
+#endif
+
 #ifdef  CONFIG_HUAWEI_KERNEL
 static int hw_get_pwrkpd_flag(void)
 {
@@ -295,7 +309,6 @@ static int hw_get_pwrkpd_flag(void)
 	return -1;
 }
 #endif
-/* DTS2014070303611 guohui 20140703 end> */
 
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
@@ -321,6 +334,56 @@ qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
 			"Unable to write to addr=%hx, rc(%d)\n", addr, rc);
 	return rc;
 }
+
+/**
+ * qpnp_pon_set_restart_reason - Store device restart reason in PMIC register.
+ *
+ * Returns = 0 if PMIC feature is not avaliable or store restart reason
+ * successfully.
+ * Returns > 0 for errors
+ *
+ * This function is used to store device restart reason in PMIC register.
+ * It checks here to see if the restart reason register has been specified.
+ * If it hasn't, this function should immediately return 0
+ */
+int qpnp_pon_set_restart_reason(enum pon_restart_reason reason)
+{
+	int rc = 0;
+	struct qpnp_pon *pon = sys_reset_dev;
+
+	if (!pon)
+		return 0;
+
+	if (!pon->store_hard_reset_reason)
+		return 0;
+
+	rc = qpnp_pon_masked_write(pon, QPNP_PON_SOFT_RB_SPARE(pon->base),
+					PON_MASK(7, 5), (reason << 5));
+	if (rc)
+		dev_err(&pon->spmi->dev,
+				"Unable to write to addr=%x, rc(%d)\n",
+				QPNP_PON_SOFT_RB_SPARE(pon->base), rc);
+	return rc;
+}
+EXPORT_SYMBOL(qpnp_pon_set_restart_reason);
+
+/*
+ * qpnp_pon_check_hard_reset_stored - Checks if the PMIC need to
+ * store hard reset reason.
+ *
+ * Returns true if reset reason can be stored, false if it cannot be stored
+ *
+ */
+bool qpnp_pon_check_hard_reset_stored(void)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+
+	if (!pon)
+		return false;
+
+	return pon->store_hard_reset_reason;
+}
+EXPORT_SYMBOL(qpnp_pon_check_hard_reset_stored);
 
 static int qpnp_pon_set_dbc(struct qpnp_pon *pon, u32 delay)
 {
@@ -450,9 +513,6 @@ int qpnp_pon_system_pwr_off(enum pon_power_off_type type)
 }
 EXPORT_SYMBOL(qpnp_pon_system_pwr_off);
 
-/* < DTS2014102804861 youqi 20141028 begin */
-/* Revert DTS2014080600748 to slove handset reboot function issue */
-/* DTS2014102804861 youqi 20141028 end > */
 
 
 /**
@@ -466,36 +526,12 @@ EXPORT_SYMBOL(qpnp_pon_system_pwr_off);
 int qpnp_pon_is_warm_reset(void)
 {
 	struct qpnp_pon *pon = sys_reset_dev;
-	int rc;
-	u8 reg;
 
 	if (!pon)
 		return -EPROBE_DEFER;
 
-	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
-			QPNP_PON_WARM_RESET_REASON1(pon->base), &reg, 1);
-	if (rc) {
-		dev_err(&pon->spmi->dev,
-			"Unable to read addr=%x, rc(%d)\n",
-			QPNP_PON_WARM_RESET_REASON1(pon->base), rc);
-		return rc;
-	}
-
-	if (reg)
-		return 1;
-
-	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
-			QPNP_PON_WARM_RESET_REASON2(pon->base), &reg, 1);
-	if (rc) {
-		dev_err(&pon->spmi->dev,
-			"Unable to read addr=%x, rc(%d)\n",
-			QPNP_PON_WARM_RESET_REASON2(pon->base), rc);
-		return rc;
-	}
-	if (reg & QPNP_PON_WARM_RESET_TFT)
-		return 1;
-
-	return 0;
+	return pon->warm_reset_reason1
+		|| (pon->warm_reset_reason2 & QPNP_PON_WARM_RESET_TFT);
 }
 EXPORT_SYMBOL(qpnp_pon_is_warm_reset);
 
@@ -558,6 +594,53 @@ int qpnp_pon_trigger_config(enum pon_trigger_source pon_src, bool enable)
 }
 EXPORT_SYMBOL(qpnp_pon_trigger_config);
 
+/*
+ * This function stores the PMIC warm reset reason register values. It also
+ * clears these registers if the qcom,clear-warm-reset device tree property
+ * is specified.
+ */
+static int qpnp_pon_store_and_clear_warm_reset(struct qpnp_pon *pon)
+{
+	int rc;
+	u8 reg = 0;
+
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+			QPNP_PON_WARM_RESET_REASON1(pon->base),
+			&pon->warm_reset_reason1, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to read addr=%x, rc(%d)\n",
+			QPNP_PON_WARM_RESET_REASON1(pon->base), rc);
+		return rc;
+	}
+
+#ifdef CONFIG_HUAWEI_KERNEL	
+	huawei_pon_regs[WARM_REASON_INDEX] = pon->warm_reset_reason1;
+#endif	
+
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+			QPNP_PON_WARM_RESET_REASON2(pon->base),
+			&pon->warm_reset_reason2, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to read addr=%x, rc(%d)\n",
+			QPNP_PON_WARM_RESET_REASON2(pon->base), rc);
+		return rc;
+	}
+
+	if (of_property_read_bool(pon->spmi->dev.of_node,
+					"qcom,clear-warm-reset")) {
+		rc = spmi_ext_register_writel(pon->spmi->ctrl, pon->spmi->sid,
+			QPNP_PON_WARM_RESET_REASON1(pon->base), &reg, 1);
+		if (rc)
+			dev_err(&pon->spmi->dev,
+				"Unable to write to addr=%hx, rc(%d)\n",
+				QPNP_PON_WARM_RESET_REASON1(pon->base), rc);
+	}
+
+	return 0;
+}
+
 static struct qpnp_pon_config *
 qpnp_get_cfg(struct qpnp_pon *pon, u32 pon_type)
 {
@@ -612,7 +695,6 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		return -EINVAL;
 	}
 
-/* <DTS2014050904735  wuliuzhen 20140509 begin */ 
 #ifdef CONFIG_HUAWEI_KERNEL
 	pr_err("PMIC input: code=%d, sts=0x%hhx\n",
 					cfg->key_code, pon_rt_sts);
@@ -620,7 +702,6 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	pr_debug("PMIC input: code=%d, sts=0x%hhx\n",
 					cfg->key_code, pon_rt_sts);
 #endif
-/* DTS2014050904735  wuliuzhen 20140509 end> */
 
 	key_status = pon_rt_sts & pon_rt_bit;
 
@@ -635,10 +716,7 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	input_report_key(pon->pon_input, cfg->key_code, key_status);
 	input_sync(pon->pon_input);
 
-	/* < DTS2014091605946 wanghang 20140916 begin */
 	//remove to  following row
-	/* DTS2014091605946 wanghang 20140916 end >*/
-	/* < DTS2014121803938 yangzhonghua 20141218 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	if(cfg->key_code == DSM_POWER_KEY_VAL && key_status){
 		dsm_key_pressed(DSM_POW_KEY);
@@ -646,33 +724,23 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		dsm_key_pressed(DSM_VOL_DOWN_KEY);
 	}
 #endif
-	/* DTS2014121803938 yangzhonghua 20141218 end > */
 
-/* < DTS2014080106240 renxigang 20140801 begin */
 #define POWERKEY_KEYCODE 116
 #define KEY_DOWN_S 1
 #define KEY_UP_S 0
-/*< DTS2015012205825  tianye/293347 20150122 begin*/
-/* remove APR web LCD report log information  */
-#ifdef CONFIG_HUAWEI_DSM
-/*DTS2015012205825 tianye/293347 20150122 end >*/
-	/* < DTS2014091605946 wanghang 20140916 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
 	if(cfg->key_code == POWERKEY_KEYCODE && key_status == KEY_DOWN_S)
 	{
 		power_key_ps = true;
 	}
-	/* DTS2014091605946 wanghang 20140916 end >*/
-
+	/*optimize 20110 report strategy for device monitor.*/
 	/*when device wake up,we enable the timer,3 senconds later report the lcd power status if work abnormally*/
-	if(cfg->key_code == POWERKEY_KEYCODE && key_status == KEY_DOWN_S && lcd_pwr_status.panel_power_on== 0)       
+	if(cfg->key_code == POWERKEY_KEYCODE && key_status == KEY_DOWN_S &&  lcd_pwr_status.panel_power_on== 0 )     
 	{
 		del_timer(&lcd_pwr_status.lcd_dsm_t);
 		lcd_pwr_status.lcd_dsm_t.function = lcd_dcm_pwr_status_handler;
   		lcd_pwr_status.lcd_dsm_t.data = 0;
   		lcd_pwr_status.lcd_dsm_t.expires = jiffies + 3*HZ;
-/* DTS2015012002645 songliangliang 20150120 begin >*/
-		//lcd_pwr_status.lcd_dcm_pwr_status = 0;
-/* DTS2015012002645 songliangliang 20150120 begin >*/
 		add_timer(&lcd_pwr_status.lcd_dsm_t);
 	}
 	/*(lcd_dcm_pwr_status & 0x000f) >> 3 == 1 means lcd  power on*/
@@ -680,9 +748,10 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	else if((cfg->key_code == POWERKEY_KEYCODE) && (key_status == KEY_DOWN_S) && (lcd_pwr_status.panel_power_on== 1) )
 	{
 		del_timer(&lcd_pwr_status.lcd_dsm_t);
+		/* clear dcm_pwr_status when del timer */
+		lcd_pwr_status.lcd_dcm_pwr_status = 0;
 	}
 #endif
-/* DTS2014080106240 renxigang 20140801 end > */
 	cfg->old_state = !!key_status;
 
 	return 0;
@@ -692,54 +761,65 @@ static irqreturn_t qpnp_kpdpwr_irq(int irq, void *_pon)
 {
 	int rc;
 	struct qpnp_pon *pon = _pon;
-/*< DTS2014071502043 zhaoyuxia 20140715 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	struct timeval tv_pwr;
 	struct tm tm_pwr;
 #endif
-/* DTS2014071502043 zhaoyuxia 20140715 end >*/
 
 	rc = qpnp_pon_input_dispatch(pon, PON_KPDPWR);
 	if (rc)
 		dev_err(&pon->spmi->dev, "Unable to send input event\n");
-	/*< DTS2014071502043 zhaoyuxia 20140715 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	do_gettimeofday(&tv_pwr);
 	time_to_tm(tv_pwr.tv_sec, 0, &tm_pwr);
 	pr_info("Exit %s : [%ld-%d-%d]%d:%d:%d:%ld\n",__func__,tm_pwr.tm_year + 1900,tm_pwr.tm_mon+1,
 						tm_pwr.tm_mday,tm_pwr.tm_hour,tm_pwr.tm_min,tm_pwr.tm_sec,tv_pwr.tv_usec%1000);
 #endif
-	/* DTS2014071502043 zhaoyuxia 20140715 end >*/
 	return IRQ_HANDLED;
 }
 
-/* < DTS2014042700497 niuxiangyu 20140428 begin */
-/* < DTS2014022704350 wuzhihui 20140306 begin */
 #ifdef CONFIG_MSM_DLOAD_MODE
 #ifdef CONFIG_HUAWEI_KERNEL
 extern void clear_dload_mode(void);
 #endif
 #endif
-/* DTS2014022704350 wuzhihui 20140306 end > */
-/* DTS2014042700497 niuxiangyu 20140428 end > */
 
 static irqreturn_t qpnp_kpdpwr_bark_irq(int irq, void *_pon)
 {
-    /* < DTS2014042700497 niuxiangyu 20140428 begin */
-    /* < DTS2014022704350 wuzhihui 20140306 begin */
-#ifdef CONFIG_MSM_DLOAD_MODE
-#ifdef CONFIG_HUAWEI_KERNEL
-    /* clear dload mode to reduce false triggering dump*/
-    clear_dload_mode();
-#endif
+#ifdef CONFIG_HUAWEI_KERNEL	
+    int rc = 0;
+	u8 pon_rt_sts = 0;
+	u8 pon_rt_sts_kpdpwr_bark = (0x1 << PON_INT_RT_STS_KPDPWR_ON)|(0x1 << PON_INT_RT_STS_KPDPWR_BARK);
+	struct qpnp_pon *pon = _pon;
+
+	/* check the RT status to get the current status of the line */
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+				QPNP_PON_RT_STS(pon->base), &pon_rt_sts, 1);
+	if (rc)
+	{
+		dev_err(&pon->spmi->dev, "Unable to read PON RT status\n");
+	}
+
+	pr_err("PMIC input: sts=0x%hhx, when expect 0x%hhx.\n",  pon_rt_sts, pon_rt_sts_kpdpwr_bark);
 #endif
 
+
 #ifdef CONFIG_HUAWEI_KERNEL
-    /*print message to inform developer this is triggered by long press power key */
-    printk(KERN_ERR "long press power key have detected!\n");
+	if(pon_rt_sts_kpdpwr_bark == (pon_rt_sts & pon_rt_sts_kpdpwr_bark))
+	{
+#ifdef CONFIG_MSM_DLOAD_MODE
+        /* clear dload mode to reduce false triggering dump*/
+        clear_dload_mode();
 #endif
-    /* DTS2014022704350 wuzhihui 20140306 end > */
-    /* DTS2014042700497 niuxiangyu 20140428 end > */
+	
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+        clear_reset_magic();
+#endif	
+
+	    /*print message to inform developer this is triggered by long press power key */
+        printk(KERN_ERR "long press power key have detected!\n");
+	}
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -852,9 +932,6 @@ static void bark_work_func(struct work_struct *work)
 
 	if (!(pon_rt_sts & QPNP_PON_RESIN_BARK_N_SET)) {
 		/* report the key event and enable the bark IRQ */
-		/* < DTS2014061000435 cuixiaokang 20140610 begin */
-		pr_err("bark_work_func PMIC input: code=%d, value=%d\n", cfg->key_code, 0);
-		/* DTS2014061000435 cuixiaokang 20140610 end > */
 		input_report_key(pon->pon_input, cfg->key_code, 0);
 		input_sync(pon->pon_input);
 		enable_irq(cfg->bark_irq);
@@ -899,9 +976,6 @@ static irqreturn_t qpnp_resin_bark_irq(int irq, void *_pon)
 	}
 
 	/* report the key event */
-	/* < DTS2014061000435 cuixiaokang 20140610 begin */
-	pr_err("qpnp_resin_bark_irq PMIC input: code=%d, value=%d\n",cfg->key_code, 1);
-	/* < DTS2014061000435 cuixiaokang 20140610 end */
 	input_report_key(pon->pon_input, cfg->key_code, 1);
 	input_sync(pon->pon_input);
 	/* schedule work to check the bark status for key-release */
@@ -1017,25 +1091,10 @@ qpnp_config_reset(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 	return 0;
 }
 
-/* < DTS2014092405372 gwx199358 20140924 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-int huawei_get_cblpwr_irq_no(void)
-{
-	return g_cblpwr_irq_no;
-}
-EXPORT_SYMBOL(huawei_get_cblpwr_irq_no);
-#endif
-/* DTS2014092405372 gwx199358 20140924 end > */
-
 static int
 qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 {
 	int rc = 0;
-/* < DTS2014092405372 gwx199358 20140924 begin > */
-#ifdef CONFIG_HUAWEI_KERNEL
-        uint32_t boardid = 0;
-#endif
-/* DTS2014092405372 gwx199358 20140924 end > */
 
 	switch (cfg->pon_type) {
 	case PON_KPDPWR:
@@ -1085,34 +1144,31 @@ qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 		}
 		break;
 	case PON_CBLPWR:
-/* < DTS2014092405372 gwx199358 20140924 begin */
-#ifndef CONFIG_HUAWEI_KERNEL
-               rc = devm_request_irq(&pon->spmi->dev, cfg->state_irq,
-                                                       qpnp_cblpwr_irq,
-                               IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-                                       "qpnp_cblpwr_status", pon);
-               if (rc < 0) {
-                       dev_err(&pon->spmi->dev, "Can't request %d IRQ\n",
-                                                       cfg->state_irq);
-                       return rc;
-	       }
+#ifdef CONFIG_HUAWEI_KERNEL
+		if (pon->use_cbl_interrupt) {
+			break;
+		} else {
+			rc = devm_request_irq(&pon->spmi->dev, cfg->state_irq,
+								qpnp_cblpwr_irq,
+					IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+						"qpnp_cblpwr_status", pon);
+			if (rc < 0) {
+				dev_err(&pon->spmi->dev, "Can't request %d IRQ\n",
+								cfg->state_irq);
+				return rc;
+			}
+		}
 #else
-               boardid =  socinfo_get_platform_type();
-	       if(BOARDID_T1_10 != boardid) {
-			/* NOOP */;
-               }
-               else {
-                        rc = devm_request_irq(&pon->spmi->dev, cfg->state_irq,
-                                qpnp_cblpwr_irq, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-                                "qpnp_cblpwr_status", pon);
-                        if (rc < 0) {
-                                dev_err(&pon->spmi->dev, "Can't request %d IRQ\n",
-                                        cfg->state_irq);
-                                return rc;
-                        }
-                }
+		rc = devm_request_irq(&pon->spmi->dev, cfg->state_irq,
+							qpnp_cblpwr_irq,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+					"qpnp_cblpwr_status", pon);
+		if (rc < 0) {
+			dev_err(&pon->spmi->dev, "Can't request %d IRQ\n",
+				 			cfg->state_irq);
+			return rc;
+		}
 #endif
-/* < DTS2014092405372 gwx199358 20140924 begin */
 		break;
 	case PON_KPDPWR_RESIN:
 		if (cfg->use_bark) {
@@ -1173,11 +1229,9 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 	u8 pmic_type;
 	u8 revid_rev4;
 
-    /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 	int pwrkpd_flag = 0;
 #endif
-    /* DTS2014070303611 guohui 20140703 end> */
 
 	/* Check if it is rev B */
 	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
@@ -1212,7 +1266,6 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 
 			rc = of_property_read_u32(pp, "qcom,support-reset",
 							&cfg->support_reset);
-            /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 			pwrkpd_flag = hw_get_pwrkpd_flag();
             /*if disable pwrkpd flag is true, disable pwrkpd reset function*/
@@ -1221,7 +1274,6 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 				cfg->support_reset = 0;
 			}
 #endif
-            /* DTS2014070303611 guohui 20140703 end> */
 			
 			if (rc && rc != -EINVAL) {
 				dev_err(&pon->spmi->dev,
@@ -1268,7 +1320,6 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 			rc = of_property_read_u32(pp, "qcom,support-reset",
 							&cfg->support_reset);
 			
-            /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 			pwrkpd_flag = hw_get_pwrkpd_flag();
 			if (1 == pwrkpd_flag)
@@ -1276,7 +1327,6 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 				cfg->support_reset = 0;
 			}
 #endif
-            /* DTS2014070303611 guohui 20140703 end> */
 			
 			if (rc && rc != -EINVAL) {
 				dev_err(&pon->spmi->dev,
@@ -1347,21 +1397,15 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 						"Unable to get cblpwr irq\n");
 				return rc;
 			}
-/* < DTS2014092405372 gwx199358 20140924 begin */
-/* < DTS2014112300112 xwx234328 20141129 begin */
-#ifdef  CONFIG_HUAWEI_KERNEL
-                       else {
-                                g_cblpwr_irq_no =  cfg->state_irq;
-                            }
+#ifdef CONFIG_HUAWEI_KERNEL
+			if (pon->use_cbl_interrupt)
+				g_cblpwr_state_irq =  cfg->state_irq;
 #endif
-/*  DTS2014112300112 xwx234328 20141129 end > */
-/* < DTS2014092405372 gwx199358 20140924 begin */
 			break;
 		case PON_KPDPWR_RESIN:
 			rc = of_property_read_u32(pp, "qcom,support-reset",
 							&cfg->support_reset);
 
-            /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 			pwrkpd_flag = hw_get_pwrkpd_flag();
 			if (1 == pwrkpd_flag)
@@ -1369,7 +1413,6 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 				cfg->support_reset = 0;
 			}
 #endif
-            /* DTS2014070303611 guohui 20140703 end> */
 			
 			if (rc && rc != -EINVAL) {
 				dev_err(&pon->spmi->dev,
@@ -1544,7 +1587,7 @@ free_input_dev:
 		input_free_device(pon->pon_input);
 	return rc;
 }
-/* <DTS2014052105882 xufeng 20140521 begin */
+
 #ifdef CONFIG_HUAWEI_KERNEL
 #define REASON_MAX		16
 
@@ -1594,10 +1637,140 @@ static void hw_dump_warm_reset_reason(void)
 	return;
 }
 #endif
-/* DTS2014052105882 xufeng 20140521 end> */
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+static bool dload_on_uvlo;
+
+static int qpnp_pon_debugfs_uvlo_dload_get(char *buf,
+		const struct kernel_param *kp)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+	int rc = 0;
+	u8 reg;
+
+	if (!pon)
+		return -ENODEV;
+
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+			QPNP_PON_XVDD_RB_SPARE(pon->base), &reg, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to read addr=%x, rc(%d)\n",
+			QPNP_PON_XVDD_RB_SPARE(pon->base), rc);
+		return rc;
+	}
+
+	return snprintf(buf, PAGE_SIZE, "%d",
+			!!(QPNP_PON_UVLO_DLOAD_EN & reg));
+}
+
+static int qpnp_pon_debugfs_uvlo_dload_set(const char *val,
+		const struct kernel_param *kp)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+	int rc = 0;
+	u8 reg;
+
+	if (!pon)
+		return -ENODEV;
+
+	rc = param_set_bool(val, kp);
+	if (rc) {
+		pr_err("Unable to set bms_reset: %d\n", rc);
+		return rc;
+	}
+
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+			QPNP_PON_XVDD_RB_SPARE(pon->base), &reg, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to read addr=%x, rc(%d)\n",
+			QPNP_PON_XVDD_RB_SPARE(pon->base), rc);
+		return rc;
+	}
+
+	reg &= ~QPNP_PON_UVLO_DLOAD_EN;
+	if (*(bool *)kp->arg)
+		reg |= QPNP_PON_UVLO_DLOAD_EN;
+
+	rc = spmi_ext_register_writel(pon->spmi->ctrl, pon->spmi->sid,
+			QPNP_PON_XVDD_RB_SPARE(pon->base), &reg, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to write to addr=%hx, rc(%d)\n",
+				QPNP_PON_XVDD_RB_SPARE(pon->base), rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+static struct kernel_param_ops dload_on_uvlo_ops = {
+	.set = qpnp_pon_debugfs_uvlo_dload_set,
+	.get = qpnp_pon_debugfs_uvlo_dload_get,
+};
+
+module_param_cb(dload_on_uvlo, &dload_on_uvlo_ops, &dload_on_uvlo, 0644);
+
+#if defined(CONFIG_DEBUG_FS)
+
+static int qpnp_pon_debugfs_uvlo_get(void *data, u64 *val)
+{
+	struct qpnp_pon *pon = (struct qpnp_pon *) data;
+
+	*val = pon->uvlo;
+
+	return 0;
+}
+
+static int qpnp_pon_debugfs_uvlo_set(void *data, u64 val)
+{
+	struct qpnp_pon *pon = (struct qpnp_pon *) data;
+
+	if (pon->pon_trigger_reason == PON_SMPL ||
+		pon->pon_power_off_reason == QPNP_POFF_REASON_UVLO)
+		panic("An UVLO was occurred.\n");
+	pon->uvlo = val;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(qpnp_pon_debugfs_uvlo_fops, qpnp_pon_debugfs_uvlo_get,
+			qpnp_pon_debugfs_uvlo_set, "0x%02llx\n");
+
+static void qpnp_pon_debugfs_init(struct spmi_device *spmi)
+{
+	struct qpnp_pon *pon = dev_get_drvdata(&spmi->dev);
+	struct dentry *ent;
+
+	pon->debugfs = debugfs_create_dir(dev_name(&spmi->dev), NULL);
+	if (!pon->debugfs) {
+		dev_err(&pon->spmi->dev, "Unable to create debugfs directory\n");
+	} else {
+		ent = debugfs_create_file("uvlo_panic",
+				S_IFREG | S_IWUSR | S_IRUGO,
+				pon->debugfs, pon, &qpnp_pon_debugfs_uvlo_fops);
+		if (!ent)
+			dev_err(&pon->spmi->dev, "Unable to create uvlo_panic debugfs file.\n");
+	}
+}
+
+static void qpnp_pon_debugfs_remove(struct spmi_device *spmi)
+{
+	struct qpnp_pon *pon = dev_get_drvdata(&spmi->dev);
+
+	debugfs_remove_recursive(pon->debugfs);
+}
+
+#else
+
+static void qpnp_pon_debugfs_init(struct spmi_device *spmi)
+{}
+
+static void qpnp_pon_debugfs_remove(struct spmi_device *spmi)
+{}
+#endif
+
+#ifdef CONFIG_HUAWEI_PMU_DSM
 /* monitor power-on and power-off reasons, if abnormal, notify to dsm*/
 static void monitor_power_on_off_reason(struct qpnp_pon *pon)
 {
@@ -1640,22 +1813,10 @@ static void monitor_power_on_off_reason(struct qpnp_pon *pon)
 				"PMIC@SID%d Power-on reason: %s, reg:0x%x\n",
 				pon->spmi->sid, qpnp_pon_reason[index], pon_sts);
 			/* if power on reason is SMPL, record this log, and notify to the dsm server*/
-			if(!dsm_client_ocuppy(pmu_dclient)){
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d Power-on reason: %s, reg:0x%x\n",
-					pon->spmi->sid, qpnp_pon_reason[index], pon_sts);
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d:Warm-reset reason: %s and reg: 0x%x \n",
-					/* <DTS2015011506659  chengkai/wx209700 20150115 begin */
-					pon->spmi->sid, index_warm?qpnp_pon_warm_reset_reason[index_warm - 1]:
-					"Unknown", pon_warm_reset_reason);
-					/* DTS2015011506659  chengkai/wx209700 20150115 end> */
-				dsm_client_notify(pmu_dclient, DSM_ABNORMAL_POWERON_REASON_1);
-			}
+			DSM_PMU_LOG(pmu_dclient, DSM_ABNORMAL_POWERON_REASON_1,
+				"PMIC@SID%d Power-on reason: %s, reg:0x%x\n",
+				pon->spmi->sid, qpnp_pon_reason[index], pon_sts);
 		}
-		/*<DTS2014121602559 jiangfei 20141225 begin */
-		/* remove the monitor point of hardreset power-on reason, it is not suited to C199S*/
-		/* DTS2014121602559 jiangfei 20141225 end> */
 	}
 
 	/* POFF reason */
@@ -1678,18 +1839,9 @@ static void monitor_power_on_off_reason(struct qpnp_pon *pon)
 				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
 				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 			/* if power on reason is TFT, record this log, and notify to the dsm server*/
-			if(!dsm_client_ocuppy(pmu_dclient)){
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
-					pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d:Warm-reset reason: %s and reg: 0x%x \n",
-					/* <DTS2015011506659  chengkai/wx209700 20150115 begin */
-					pon->spmi->sid, index_warm?qpnp_pon_warm_reset_reason[index_warm - 1]:
-					"Unknown", pon_warm_reset_reason);
-					/* DTS2015011506659  chengkai/wx209700 20150115 end> */
-				dsm_client_notify(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_1);
-			}
+			DSM_PMU_LOG(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_1,
+				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
+				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 		}
 
 		if(POFF_REA_UVLO == index){
@@ -1697,18 +1849,9 @@ static void monitor_power_on_off_reason(struct qpnp_pon *pon)
 				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
 				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 			/* if power on reason is UVLO, record this log, and notify to the dsm server*/
-			if(!dsm_client_ocuppy(pmu_dclient)){
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
-					pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d:Warm-reset reason: %s and reg: 0x%x \n",
-					/* <DTS2015011506659  chengkai/wx209700 20150115 begin */
-					pon->spmi->sid, index_warm?qpnp_pon_warm_reset_reason[index_warm - 1]:
-					"Unknown", pon_warm_reset_reason);
-					/* DTS2015011506659  chengkai/wx209700 20150115 end> */
-				dsm_client_notify(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_2);
-			}
+			DSM_PMU_LOG(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_2,
+				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
+				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 		}
 
 		if(POFF_REA_PMIC_OVETEMP == index){
@@ -1716,18 +1859,9 @@ static void monitor_power_on_off_reason(struct qpnp_pon *pon)
 				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
 				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 			/* if power on reason is PMIC_OVETEMP, record this log, and notify to the dsm server*/
-			if(!dsm_client_ocuppy(pmu_dclient)){
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
-					pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d:Warm-reset reason: %s and reg: 0x%x \n",
-					/* <DTS2015011506659  chengkai/wx209700 20150115 begin */
-					pon->spmi->sid, index_warm?qpnp_pon_warm_reset_reason[index_warm - 1]:
-					"Unknown", pon_warm_reset_reason);
-					/* DTS2015011506659  chengkai/wx209700 20150115 end> */
-				dsm_client_notify(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_2);
-			}
+			DSM_PMU_LOG(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_3,
+				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
+				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 		}
 
 		if(POFF_REA_STAGE3 == index){
@@ -1735,18 +1869,9 @@ static void monitor_power_on_off_reason(struct qpnp_pon *pon)
 				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
 				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 			/* if power on reason is STAGE3, record this log, and notify to the dsm server*/
-			if(!dsm_client_ocuppy(pmu_dclient)){
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
-					pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
-				dsm_client_record(pmu_dclient,
-					"PMIC@SID%d:Warm-reset reason: %s and reg: 0x%x \n",
-					/* <DTS2015011506659  chengkai/wx209700 20150115 begin */
-					pon->spmi->sid, index_warm?qpnp_pon_warm_reset_reason[index_warm - 1]:
-					"Unknown", pon_warm_reset_reason);
-					/* DTS2015011506659  chengkai/wx209700 20150115 end> */
-				dsm_client_notify(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_2);
-			}
+			DSM_PMU_LOG(pmu_dclient, DSM_ABNORMAL_POWEROFF_REASON_4,
+				"PMIC@SID%d Power-off reason: %s, reg:0x%x\n",
+				pon->spmi->sid, qpnp_poff_reason[index], poff_sts);
 		}
 	}
 }
@@ -1764,21 +1889,15 @@ static void monitor_pa_cpu_temperature(void)
 	cpu_temp = dsm_get_cpu_temp();
 
 	if(PA_CPU_TEMP_THRESH < pa_temp){
-		/* if pa_temp is over 60 degree, record this log, and notify to the dsm server*/
-		if(!dsm_client_ocuppy(pmu_dclient)){
-			dsm_client_record(pmu_dclient,
-				"pa_temp is high, over 70 degree: pa_temp = %d\n", pa_temp);
-			dsm_client_notify(pmu_dclient, DSM_PA_OVERTEMP);
-		}
+		/* if pa_temp is over 70 degree, record this log, and notify to the dsm server*/
+		DSM_PMU_LOG(pmu_dclient, DSM_PA_OVERTEMP,
+			"pa_temp is high, over 70 degree: pa_temp = %d\n", pa_temp);
 	}
 
 	if(PA_CPU_TEMP_THRESH < cpu_temp){
-		/* if cpu_temp is over 60 degree, record this log, and notify to the dsm server*/
-		if(!dsm_client_ocuppy(pmu_dclient)){
-			dsm_client_record(pmu_dclient,
-				"cpu_temp is high, over 70 degree: cpu_temp = %d\n", cpu_temp);
-			dsm_client_notify(pmu_dclient, DSM_CPU_OVERTEMP);
-		}
+		/* if cpu_temp is over 70 degree, record this log, and notify to the dsm server*/
+		DSM_PMU_LOG(pmu_dclient, DSM_CPU_OVERTEMP,
+			"cpu_temp is high, over 70 degree: cpu_temp = %d\n", cpu_temp);
 	}
 
 	tsensor_id2 = TSENS_ID2;
@@ -1791,12 +1910,9 @@ static void monitor_pa_cpu_temperature(void)
 
 	if(TSENS_TEMP_THRESH < tsen_temp){
 		/* if zone2(tsens2) temp is over 90 degree, record this log, and notify to the dsm server*/
-		if(!dsm_client_ocuppy(pmu_dclient)){
-			dsm_client_record(pmu_dclient,
-				"zone2 is high, over 80 degree: tsen_temp = %d\n", (int)tsen_temp);
-			pr_info("zone2 is high, over 60 degree: tsen_temp = %ld\n", tsen_temp);
-			dsm_client_notify(pmu_dclient, DSM_THERMAL_ZONE2_OVERTEMP);
-		}
+		pr_info("zone2 is high, over 90 degree: tsen_temp = %ld\n", tsen_temp);
+		DSM_PMU_LOG(pmu_dclient, DSM_THERMAL_ZONE2_OVERTEMP,
+			"zone2 is high, over 90 degree: tsen_temp = %d\n", (int)tsen_temp);
 	}
 
 	tsensor_id5 = TSENS_ID5;
@@ -1809,16 +1925,12 @@ static void monitor_pa_cpu_temperature(void)
 
 	if(TSENS_TEMP_THRESH < tsen_temp){
 		/* if zone4(tsens5) temp is over 90 degree, record this log, and notify to the dsm server*/
-		if(!dsm_client_ocuppy(pmu_dclient)){
-			dsm_client_record(pmu_dclient,
-				"zone4 is high, over 80 degree: tsen_temp = %d\n", (int)tsen_temp);
-			pr_info("zone4 is high, over 60 degree: tsen_temp = %ld\n", tsen_temp);
-			dsm_client_notify(pmu_dclient, DSM_THERMAL_ZONE4_OVERTEMP);
-		}
+		pr_info("zone4 is high, over 90 degree: tsen_temp = %ld\n", tsen_temp);
+		DSM_PMU_LOG(pmu_dclient, DSM_THERMAL_ZONE4_OVERTEMP,
+			"zone4 is high, over 90 degree: tsen_temp = %d\n", (int)tsen_temp);
 	}
 }
 
-/*<DTS2014121602559 jiangfei 20141225 begin */
 /*===========================================
 FUNCTION: qpnp_read_ldo_status_reg
 DESCRIPTION: this function is used to read ldo_x status reg value
@@ -1855,6 +1967,7 @@ static void monitor_ldo_voltage(struct qpnp_pon *pon)
 	int i = 0;
 	int rc = 0;
 	u8 ldo_status1[LDO_NUM] = {0}, ldo_status2[LDO_NUM] = {0};
+	struct timeval tv_begin, tv_end;
 
 	if (!pon)
 		return;
@@ -1874,8 +1987,8 @@ static void monitor_ldo_voltage(struct qpnp_pon *pon)
 			}
 
 			if(!(LDO_VOL_MASK & ldo_status1[i])){
-				/* <DTS2015011506659  chengkai/wx209700 20150115 begin */
-				msleep(1); //delay 10 ms to ensure LDO voltage can keep stably
+				do_gettimeofday(&tv_begin);
+				usleep(1000); //delay 1 ms to ensure LDO voltage can keep stably
 				/*after 1ms,read LDO_ON reg again to make sure LDO_ON en*/
 				rc = qpnp_read_ldo_status_reg(pon, STATUS2_OFFSET, i, &ldo_status2[i]);
 				if (rc) {
@@ -1886,31 +1999,28 @@ static void monitor_ldo_voltage(struct qpnp_pon *pon)
 					return;
 				}
 				/* after 1 ms, read status1 reg again to check VREG_OK*/
-				/* DTS2015011506659  chengkai/wx209700 20150115 end> */
 				rc = qpnp_read_ldo_status_reg(pon, STATUS1_OFFSET, i, &ldo_status1[i]);
 				if (rc) {
 					pr_err("Unable to read LDO status1 reg value\n");
 					return;
 				}
-
-				if(!(LDO_VOL_MASK & ldo_status1[i])){
-				/* LDOx voltage is below VREG_OK threshold, save the log, and notify to dsm server*/
-					pr_info("LDO_%d voltage is below VREG_OK threshold"
-						"LDO status1 and status2 regs val: 0x%x, 0x%x\n",
-						(i+1), ldo_status1[i], ldo_status2[i]);
-					if(!dsm_client_ocuppy(pmu_dclient)){
-						dsm_client_record(pmu_dclient,
+				do_gettimeofday(&tv_end);
+				if(LDO_USEC_INTERVAL >= (tv_end.tv_usec - tv_begin.tv_usec)) {
+					if(!(LDO_VOL_MASK & ldo_status1[i])){
+					/* LDOx voltage is below VREG_OK threshold, save the log, and notify to dsm server*/
+						pr_info("LDO_%d voltage is below VREG_OK threshold"
+							"LDO status1 and status2 regs val: 0x%x, 0x%x\n",
+							(i+1), ldo_status1[i], ldo_status2[i]);
+						DSM_PMU_LOG(pmu_dclient, (DSM_LDO1_VOLTAGE_LOW+i),
 							"LDO_%d voltage is below VREG_OK threshold"
 							"LDO status1 and status2 regs val: 0x%x, 0x%x\n",
 							(i+1), ldo_status1[i], ldo_status2[i]);
-						dsm_client_notify(pmu_dclient, (DSM_LDO1_VOLTAGE_LOW+i));
 					}
 				}
 			}
 		}
 	}
 }
-/* DTS2014121602559 jiangfei 20141225 end> */
 
 static void dsm_pmu_work_func(struct work_struct *work)
 {
@@ -1930,7 +2040,6 @@ static void dsm_pmu_work_func(struct work_struct *work)
 	schedule_delayed_work(&pon->dsm_pmu_work, CHECK_PMU_STATUS_DELAY);
 }
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 static int qpnp_pon_probe(struct spmi_device *spmi)
 {
@@ -1944,11 +2053,9 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	const char *s3_src;
 	u8 s3_src_reg;
 
-    /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 	int pwrkpd_flag = 0;
 #endif
-    /* DTS2014070303611 guohui 20140703 end> */
 
 	pon = devm_kzalloc(&spmi->dev, sizeof(struct qpnp_pon),
 							GFP_KERNEL);
@@ -1989,6 +2096,13 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	}
 	pon->base = pon_resource->start;
 
+	rc = qpnp_pon_store_and_clear_warm_reset(pon);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to store/clear WARM_RESET_REASONx registers\n");
+		return rc;
+	}
+
 	/* PON reason */
 	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
 				QPNP_PON_REASON1(pon->base), &pon_sts, 1);
@@ -2001,9 +2115,8 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 
 	index = ffs(pon_sts) - 1;
 	cold_boot = !qpnp_pon_is_warm_reset();
-	if (index >= ARRAY_SIZE(qpnp_pon_reason) || index < 0)
+	if (index >= ARRAY_SIZE(qpnp_pon_reason) || index < 0) {
 		dev_info(&pon->spmi->dev,
-			/* <DTS2014052105882 xufeng 20140521 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 			"PMIC@SID%d Power-on reason: Unknown and '%s' boot, reg:0x%x\n",
 			pon->spmi->sid, cold_boot ? "cold" : "warm", pon_sts);
@@ -2011,7 +2124,8 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 			"PMIC@SID%d Power-on reason: Unknown and '%s' boot\n",
 			pon->spmi->sid, cold_boot ? "cold" : "warm");
 #endif
-	else
+	} else {
+		pon->pon_trigger_reason = index;
 		dev_info(&pon->spmi->dev,
 #ifdef CONFIG_HUAWEI_KERNEL
 			"PMIC@SID%d Power-on reason: %s and '%s' boot, reg:0x%x\n",
@@ -2022,7 +2136,12 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 			pon->spmi->sid, qpnp_pon_reason[index],
 			cold_boot ? "cold" : "warm");
 #endif
-			/* DTS2014052105882 xufeng 20140521 end> */
+	}
+	
+#ifdef CONFIG_HUAWEI_KERNEL
+    huawei_pon_regs[PON_REASON_INDEX] = pon_sts;
+#endif	
+
 	/* POFF reason */
 	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
 				QPNP_POFF_REASON1(pon->base),
@@ -2033,9 +2152,8 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	}
 	poff_sts = buf[0] | (buf[1] << 8);
 	index = ffs(poff_sts) - 1;
-	if (index >= ARRAY_SIZE(qpnp_poff_reason) || index < 0)
+	if (index >= ARRAY_SIZE(qpnp_poff_reason) || index < 0) {
 		dev_info(&pon->spmi->dev,
-	/* <DTS2014052105882 xufeng 20140521 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 				"PMIC@SID%d: Unknown power-off reason, reg:0x%x\n",
 				pon->spmi->sid, poff_sts);
@@ -2043,7 +2161,8 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 				"PMIC@SID%d: Unknown power-off reason\n",
 				pon->spmi->sid);
 #endif
-	else
+	} else {
+		pon->pon_power_off_reason = index;
 		dev_info(&pon->spmi->dev,
 #ifdef CONFIG_HUAWEI_KERNEL
 				"PMIC@SID%d: Power-off reason: %s, reg:0x%x\n",
@@ -2054,17 +2173,31 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 				pon->spmi->sid,
 				qpnp_poff_reason[index]);
 #endif
+	}
+	
+#ifdef CONFIG_HUAWEI_KERNEL
+    huawei_pon_regs[POFF_REASON_INDEX] = poff_sts;
+#endif
 
 #ifdef CONFIG_HUAWEI_KERNEL
 	hw_dump_warm_reset_reason();
 #endif
-	/* DTS2014052105882 xufeng 20140521 end> */
+
+#ifdef CONFIG_HUAWEI_KERNEL
+	pon->use_cbl_interrupt = of_property_read_bool(spmi->dev.of_node, "qcom,use-cbl-interrupt");
+#endif
+
+	if (pon->pon_trigger_reason == PON_SMPL ||
+		pon->pon_power_off_reason == QPNP_POFF_REASON_UVLO) {
+		if (of_property_read_bool(spmi->dev.of_node,
+						"qcom,uvlo-panic"))
+			panic("An UVLO was occurred.");
+	}
 
 	/* program s3 debounce */
 	rc = of_property_read_u32(pon->spmi->dev.of_node,
 				"qcom,s3-debounce", &s3_debounce);
 
-    /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
     /*if disable pwrkpd flag is true, set s3 timer to 128s*/
 	pwrkpd_flag = hw_get_pwrkpd_flag();
@@ -2073,7 +2206,6 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 		s3_debounce = QPNP_PON_S3_TIMER_SECS_MAX;
 	}
 #endif
-    /* DTS2014070303611 guohui 20140703 end> */
 
 	if (rc) {
 		if (rc != -EINVAL) {
@@ -2090,6 +2222,15 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 		/* 0 is a special value to indicate instant s3 reset */
 		if (s3_debounce != 0)
 			s3_debounce = ilog2(s3_debounce);
+
+		/* s3 debounce is SEC_ACCESS register */
+		rc = qpnp_pon_masked_write(pon, QPNP_PON_SEC_ACCESS(pon->base),
+					0xFF, QPNP_PON_SEC_UNLOCK);
+		if (rc) {
+			dev_err(&spmi->dev, "Unable to do SEC_ACCESS\n");
+			return rc;
+		}
+
 		rc = qpnp_pon_masked_write(pon, QPNP_PON_S3_DBC_CTL(pon->base),
 				QPNP_PON_S3_DBC_DELAY_MASK, s3_debounce);
 		if (rc) {
@@ -2116,18 +2257,14 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	else /* default combination */
 		s3_src_reg = QPNP_PON_S3_SRC_KPDPWR_AND_RESIN;
 
-    /* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
     /*set s3 timer trigger source to pwrkpd if pwrkpd reset flag is true*/
 	pwrkpd_flag = hw_get_pwrkpd_flag();
 	if (1 == pwrkpd_flag)
 	{
-        /* <DTS2014080607519 guohui 20140805 begin */
 	    s3_src_reg = QPNP_PON_S3_SRC_KPDPWR_AND_RESIN;
-        /* DTS2014080607519 guohui 20140805 end> */
 	}
 #endif
-    /* DTS2014070303611 guohui 20140703 end> */
 
 	/* S3 source is a write once register. If the register has
 	 * been configured by bootloader then this operation will
@@ -2144,8 +2281,7 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 
 	INIT_DELAYED_WORK(&pon->bark_work, bark_work_func);
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	if (!pmu_dclient) {
 		pmu_dclient = dsm_register_client(&dsm_pmu);
 	}
@@ -2153,12 +2289,9 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	INIT_DELAYED_WORK(&pon->dsm_pmu_work, dsm_pmu_work_func);
 	schedule_delayed_work(&pon->dsm_pmu_work, CHECK_PMU_STATUS_DELAY);
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
-/* < DTS2014080106240 renxigang 20140801 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	init_timer(&lcd_pwr_status.lcd_dsm_t);
 #endif
-/* DTS2014080106240 renxigang 20140801 end > */
 	/* register the PON configurations */
 	rc = qpnp_pon_config_init(pon);
 	if (rc) {
@@ -2186,6 +2319,12 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 		return rc;
 	}
 
+	/* config whether store the hard reset reason */
+	pon->store_hard_reset_reason = of_property_read_bool(
+					spmi->dev.of_node,
+					"qcom,store-hard-reset-reason");
+
+	qpnp_pon_debugfs_init(spmi);
 	return rc;
 }
 
@@ -2195,21 +2334,17 @@ static int qpnp_pon_remove(struct spmi_device *spmi)
 
 	device_remove_file(&spmi->dev, &dev_attr_debounce_us);
 
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 	cancel_delayed_work_sync(&pon->dsm_pmu_work);
 #endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 	cancel_delayed_work_sync(&pon->bark_work);
 
 	if (pon->pon_input)
 		input_unregister_device(pon->pon_input);
-
+	qpnp_pon_debugfs_remove(spmi);
 	return 0;
 }
-
-/*<DTS2014121602559 jiangfei 20141225 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 static int qpnp_pon_suspend(struct device *dev)
 {
 	struct qpnp_pon *pon = dev_get_drvdata(dev);
@@ -2233,7 +2368,6 @@ static const struct dev_pm_ops qpnp_pon_pm_ops = {
 	.resume	= qpnp_pon_resume,
 };
 #endif
-/* DTS2014121602559 jiangfei 20141225 end> */
 
 static struct of_device_id spmi_match_table[] = {
 	{ .compatible = "qcom,qpnp-power-on", },
@@ -2244,11 +2378,9 @@ static struct spmi_driver qpnp_pon_driver = {
 	.driver		= {
 		.name	= "qcom,qpnp-power-on",
 		.of_match_table = spmi_match_table,
-		/*<DTS2014121602559 jiangfei 20141225 begin */
-#ifdef CONFIG_HUAWEI_DSM
+#ifdef CONFIG_HUAWEI_PMU_DSM
 		.pm		= &qpnp_pon_pm_ops,
 #endif
-		/* DTS2014121602559 jiangfei 20141225 end> */
 	},
 	.probe		= qpnp_pon_probe,
 	.remove		= qpnp_pon_remove,

@@ -50,6 +50,8 @@
 #define MODE_G711		0xA
 #define MODE_G711A		0xF
 
+#define RX_PATH_MUTE 1
+
 enum msm_audio_g711a_frame_type {
 	MVS_G711A_SPEECH_GOOD,
 	MVS_G711A_SID,
@@ -288,6 +290,39 @@ static int msm_voip_dtx_mode_get(struct snd_kcontrol *kcontrol,
 
 	return 0;
 }
+/* add for CVAA */
+static int msm_voip_rx_device_mute_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		voc_get_rx_device_mute(voc_get_session_id(VOIP_SESSION_NAME));
+	return 0;
+}
+
+static int msm_voip_rx_device_mute_put(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	int ret = 0;
+	int mute = ucontrol->value.integer.value[0];
+	//uint32_t session_id = ucontrol->value.integer.value[1];
+	int ramp_duration = ucontrol->value.integer.value[1];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	if ((mute < 0) || (mute > 1) || (ramp_duration < 0)
+		|| (ramp_duration > MAX_RAMP_DURATION)) {
+		pr_err(" %s Invalid arguments", __func__);
+
+		ret = -EINVAL;
+		goto done;
+	}
+
+	pr_err("%s: mute=%d ramp_duration=%d\n", __func__,mute, ramp_duration);
+	voc_set_device_mute(voc_get_session_id(VOIP_SESSION_NAME), RX_PATH_MUTE,
+			    mute, ramp_duration);
+done:
+	return ret;
+}
 
 static struct snd_kcontrol_new msm_voip_controls[] = {
 	SOC_SINGLE_MULTI_EXT("Voip Tx Mute", SND_SOC_NOPM, 0,
@@ -306,8 +341,11 @@ static struct snd_kcontrol_new msm_voip_controls[] = {
 			     msm_voip_evrc_min_max_rate_config_put),
 	SOC_SINGLE_EXT("Voip Dtx Mode", SND_SOC_NOPM, 0, 1, 0,
 		       msm_voip_dtx_mode_get, msm_voip_dtx_mode_put),
+	SOC_SINGLE_MULTI_EXT("Voip Rx Device Mute", SND_SOC_NOPM, 0,
+		     MAX_RAMP_DURATION,
+		     0, 2,msm_voip_rx_device_mute_get,
+		     msm_voip_rx_device_mute_put),
 };
-
 static int msm_pcm_voip_probe(struct snd_soc_platform *platform)
 {
 	snd_soc_add_platform_controls(platform, msm_voip_controls,
@@ -811,9 +849,14 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 				ret = copy_from_user(&buf_node->frame.voc_pkt,
 							buf, count);
 				buf_node->frame.pktlen = count;
-			} else
+			} else {
 				ret = copy_from_user(&buf_node->frame,
 							buf, count);
+				if (buf_node->frame.pktlen >= count)
+					buf_node->frame.pktlen = count -
+					(sizeof(buf_node->frame.frm_hdr) +
+					 sizeof(buf_node->frame.pktlen));
+			}
 			spin_lock_irqsave(&prtd->dsp_lock, dsp_flags);
 			list_add_tail(&buf_node->list, &prtd->in_queue);
 			spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags);
@@ -1231,7 +1274,7 @@ msm_pcm_capture_pointer(struct snd_pcm_substream *substream)
 static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
 {
 	snd_pcm_uframes_t ret = 0;
-	 pr_debug("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		ret = msm_pcm_playback_pointer(substream);
 	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
@@ -1632,6 +1675,7 @@ static int msm_pcm_probe(struct platform_device *pdev)
 		pr_err("%s: error allocating shared mem err %d\n",
 		       __func__, rc);
 	}
+
 
 	pr_debug("%s: dev name %s\n", __func__, dev_name(&pdev->dev));
 	rc = snd_soc_register_platform(&pdev->dev,

@@ -121,7 +121,7 @@ enum {
 	SMEM_SMSM_CPU_INTR_MASK,
 	SMEM_APPS_DEM_SLAVE_DATA,
 	SMEM_QDSP6_DEM_SLAVE_DATA,
-	SMEM_CLKREGIM_BSP,
+	SMEM_VSENSE_DATA,
 	SMEM_CLKREGIM_SOURCES,
 	SMEM_SMD_FIFO_BASE_ID,
 	SMEM_USABLE_RAM_PARTITION_TABLE = SMEM_SMD_FIFO_BASE_ID +
@@ -163,10 +163,15 @@ enum {
 	SMEM_CPR_CONFIG, /* 473 */
 	SMEM_CLOCK_INFO, /* 474 */
 	SMEM_IPC_FIFO, /* 475 */
-	SMEM_NUM_ITEMS,
+	SMEM_RF_EEPROM_DATA, /* 476 */
+	SMEM_COEX_MDM_WCN, /* 477 */
+	SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, /* 478 */
+	SMEM_GLINK_NATIVE_XPRT_FIFO_0, /* 479 */
+	SMEM_GLINK_NATIVE_XPRT_FIFO_1, /* 480 */
+	SMEM_SMP2P_SENSOR_BASE, /* 481 */
+	SMEM_NUM_ITEMS = SMEM_SMP2P_SENSOR_BASE + 8, /* 489 */
 };
 
-/* < DTS2014051702218 zhaiqi 20140530 begin */
 typedef struct
 {
     unsigned int lpddrID;                  /* DDR ID */
@@ -175,17 +180,11 @@ typedef struct
 #ifdef CONFIG_HUAWEI_DEBUG_MODE    
     unsigned int huawei_debug;
 #endif
-/* <DTS2014070303611 guohui 20140703 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
     unsigned int pwrkpd_reset;
-/* < DTS2015011002343 liyu 20150112 begin */
-    unsigned int chg_type;
-/* DTS2015011002343 liyu 20150112 end > */
 #endif
-/* DTS2014070303611 guohui 20140703 end> */
     unsigned int reserved;                  /* reserved for filling */
 }smem_exten_huawei_paramater;
-/* DTS2014051702218 zhaiqi 20140530 end > */
 #ifdef CONFIG_MSM_SMEM
 void *smem_alloc(unsigned id, unsigned size_in, unsigned to_proc,
 								unsigned flags);

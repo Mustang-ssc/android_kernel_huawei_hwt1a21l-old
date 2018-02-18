@@ -1397,12 +1397,10 @@ static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 	vm->addr = (void *)va->va_start;
 	vm->size = va->va_end - va->va_start;
 	vm->caller = caller;
-	/* < DTS2014052805125 liwei 20140528 begin */
 #ifdef CONFIG_DEBUG_VMALLOC
 	vm->pid = current->pid;
 	vm->task_name = current->comm;
 #endif
-	/* DTS2014052805125 liwei 20140528 end > */
 	va->vm = vm;
 	va->flags |= VM_VM_AREA;
 	spin_unlock(&vmap_area_lock);
@@ -1728,12 +1726,10 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	}
 	area->pages = pages;
 	area->caller = caller;
-	/* < DTS2014052805125 liwei 20140528 begin */
 #ifdef CONFIG_DEBUG_VMALLOC
 	area->pid = current->pid;
 	area->task_name = current->comm;
 #endif
-	/* DTS2014052805125 liwei 20140528 end > */
 	if (!area->pages) {
 		remove_vm_area(area->addr);
 		kfree(area);
@@ -2774,7 +2770,6 @@ static int s_show(struct seq_file *m, void *p)
 	if (v->flags & VM_LOWMEM)
 		seq_printf(m, " lowmem");
 
-	/* < DTS2014052805125 liwei 20140528 begin */
 #ifdef CONFIG_DEBUG_VMALLOC
 	if (v->pid)
 		seq_printf(m, " pid=%d", v->pid);
@@ -2782,8 +2777,6 @@ static int s_show(struct seq_file *m, void *p)
 	if (v->task_name)
 		seq_printf(m, " task name=%s", v->task_name);
 #endif
-	/* DTS2014052805125 liwei 20140528 end > */
-
 	show_numa_info(m, v);
 	seq_putc(m, '\n');
 	return 0;

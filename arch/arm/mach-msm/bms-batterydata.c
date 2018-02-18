@@ -12,7 +12,6 @@
 
 #include <linux/batterydata-lib.h>
 
-/* <DTS2014042804721 chenyuanquan 20140428 begin */
 static struct single_row_lut fcc_temp = {
 	.x		= {-20, 0, 25, 40, 65},
 	.y		= {1492, 1492, 1493, 1483, 1502},
@@ -109,9 +108,4 @@ struct bms_battery_data palladium_1500_data = {
 	.rbatt_capacitive_mohm	= 50,
 	.flat_ocv_threshold_uv	= 3800000,
 	.battery_type		= "palladium_1500mah",
-#ifdef CONFIG_HUAWEI_KERNEL
-	.max_voltage_uv = 4200000,
-	.iterm_ua = 100000,
-#endif
 };
-/* DTS2014042804721 chenyuanquan 20140428 end> */

@@ -19,9 +19,7 @@
 #include <linux/power_supply.h>
 #include <linux/thermal.h>
 #include "power_supply.h"
-/*< DTS2015011001210  yesiping 20150123 begin */
-#include <linux/sched.h>
-/* DTS2015011001210  yesiping 20150123 end >*/
+
 /* exported for the APM Power driver, APM emulation */
 struct class *power_supply_class;
 EXPORT_SYMBOL_GPL(power_supply_class);
@@ -53,6 +51,28 @@ static bool __power_supply_is_supplied_by(struct power_supply *supplier,
 
 	return false;
 }
+
+/**
+ * power_supply_set_voltage_limit - set current limit
+ * @psy:	the power supply to control
+ * @limit:	current limit in uV from the power supply.
+ *		0 will disable the power supply.
+ *
+ * This function will set a maximum supply current from a source
+ * and it will disable the charger when limit is 0.
+ */
+int power_supply_set_voltage_limit(struct power_supply *psy, int limit)
+{
+	const union power_supply_propval ret = {limit,};
+
+	if (psy->set_property)
+		return psy->set_property(psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
+								&ret);
+
+	return -ENXIO;
+}
+EXPORT_SYMBOL(power_supply_set_voltage_limit);
+
 
 /**
  * power_supply_set_current_limit - set current limit
@@ -283,9 +303,6 @@ static void power_supply_changed_work(struct work_struct *work)
 	if (!psy->changed)
 		pm_relax(psy->dev);
 	spin_unlock_irqrestore(&psy->changed_lock, flags);
-	/*< DTS2015011001210  yesiping 20150128 begin */
-       //delete by yesiping
-       /* DTS2015011001210  yesiping 20150128 end >*/
 }
 
 void power_supply_changed(struct power_supply *psy)

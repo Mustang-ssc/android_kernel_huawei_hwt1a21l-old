@@ -32,7 +32,7 @@ static int mmc_gpio_get_status(struct mmc_host *host)
 
 	if (!ctx || !gpio_is_valid(ctx->cd_gpio))
 		goto out;
-/* < DTS2014050707299  wenshuai 20140507 begin */
+
 #ifdef CONFIG_HUAWEI_KERNEL
 /* to make mmc_gpio_get_status return 1, mean sdcard plugged-in status
  *                             return 0, mead sdcard plugged-out status
@@ -50,22 +50,22 @@ static int mmc_gpio_get_status(struct mmc_host *host)
 	ret = !gpio_get_value_cansleep(ctx->cd_gpio) ^
 		!!(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH);
 #endif
-/* DTS2014050707299  wenshuai 20140507 end > */
 out:
 	return ret;
 }
-/* < DTS2014050707299  wenshuai 20140507 begin */
+
+#ifdef CONFIG_HUAWEI_KERNEL
 static unsigned long msmsdcc_irqtime = 0;
-/* DTS2014050707299  wenshuai 20140507 end > */
+#endif
 static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 {
 	/* Schedule a card detection after a debounce timeout */
 	struct mmc_host *host = dev_id;
 	struct mmc_gpio *ctx = host->slot.handler_priv;
 	int status;
-/* < DTS2014050707299  wenshuai 20140507 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
 	unsigned long duration =0;
-/* DTS2014050707299  wenshuai 20140507 end > */
+#endif
 	/*
 	 * In case host->ops are not yet initialized return immediately.
 	 * The card will get detected later when host driver calls
@@ -87,7 +87,6 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
 				"HIGH" : "LOW");
 		ctx->status = status;
-/* < DTS2014050707299  wenshuai 20140507 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 		duration = jiffies - msmsdcc_irqtime;
 		/* current msmsdcc is present, add to handle dithering */
@@ -114,7 +113,6 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 		/* Schedule a card detection after a debounce timeout */
 		mmc_detect_change(host, msecs_to_jiffies(200));
 #endif
-/* DTS2014050707299  wenshuai 20140507 end > */
 	}
 out:
 

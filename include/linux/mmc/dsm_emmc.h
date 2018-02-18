@@ -1,20 +1,14 @@
-/* < DTS2014081108133 duanhuan 20140805 begin */
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
-/* DTS2014111306772 duanhuan 20141110 end > */
 #ifndef LINUX_MMC_DSM_EMMC_H
 #define LINUX_MMC_DSM_EMMC_H
 
 #include <linux/dsm_pub.h>
 
-/* < DTS2014111306772 duanhuan 20141110 begin */
 /* define a 4096 size of array as buffer */
 #define EMMC_DSM_BUFFER_SIZE  4096
 extern unsigned int emmc_dsm_real_upload_size;
-/* DTS2014111306772 duanhuan 20141110 end > */
 #define MSG_MAX_SIZE 200
 
-/* < DTS2014111306772 duanhuan 20141110 begin */
 //eMMC card ext_csd lengh
 #define EMMC_EXT_CSD_LENGHT 512
 
@@ -26,7 +20,6 @@ deta version  0x02 ;
 #define EMMC_LIFE_TIME_TRIGGER_LEVEL_FOR_BETA            0x02
 #define EMMC_LIFE_TIME_TRIGGER_LEVEL_FOR_USER            0x05
 #define DEVICE_LIFE_TRIGGER_LEVEL  EMMC_LIFE_TIME_TRIGGER_LEVEL_FOR_BETA
-/* DTS2014111306772 duanhuan 20141110 end > */
 /* Error code, decimal[5]: 0 is input, 1 is output, 2 I&O
  * decimal[4:3]: 10 is for eMMC,
  * decimal[2:1]: for different error code.
@@ -38,14 +31,23 @@ enum DSM_EMMC_ERR
 	DSM_EMMC_VDET_ERR,
 	DSM_EMMC_SEND_CXD_ERR,
 	DSM_EMMC_READ_ERR,
-	/* < DTS2014111306772 duanhuan 20141110 begin */
 	/*21006~21010*/
 	DSM_EMMC_WRITE_ERR,
 	DSM_EMMC_SET_BUS_WIDTH_ERR,
 	DSM_EMMC_PRE_EOL_INFO_ERR,
 	DSM_EMMC_TUNING_ERROR,
 	DSM_EMMC_LIFE_TIME_EST_ERR,
-	/* DTS2014111306772 duanhuan 20141110 end > */
+	/*21011~21015*/
+	DSM_EMMC_PACKED_FAILURE,
+	DSM_EMMC_RSP_ERR,
+	DSM_EMMC_HOST_TIMEOUT_ERR,
+	DSM_EMMC_HOST_ERR,
+	DSM_EMMC_URGENT_BKOPS,
+	/*21016~21020*/
+	DSM_EMMC_DYNCAP_NEEDED,
+	DSM_EMMC_SYSPOOL_EXHAUSTED,
+	DSM_EMMC_CACHE_TIMEOUT,
+	DSM_EMMC_CACHE_ERR,
 };
 
 struct emmc_dsm_log {
@@ -74,7 +76,4 @@ extern int dsm_emmc_get_log(void *card, int code, char * err_msg);
 	}while(0)
 
 #endif /* LINUX_MMC_DSM_EMMC_H */
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #endif /* CONFIG_HUAWEI_DSM */
-/* DTS2014111306772 duanhuan 20141110 end > */
-/* DTS2014081108133 duanhuan 20140805 end > */

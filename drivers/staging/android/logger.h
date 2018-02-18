@@ -70,29 +70,45 @@ struct logger_entry {
 	char		msg[0];
 };
 
+#ifdef CONFIG_HUAWEI_LOG_PARSER
+/**
+ * struct logger_log - represents a specific log, such as 'main' or 'radio'
+ * @buffer:	The actual ring buffer
+ * @misc:	The "misc" device representing the log
+ * @wq:		The wait queue for @readers
+ * @readers:	This log's readers
+ * @mutex:	The mutex that protects the @buffer
+ * @w_off:	The current write head offset
+ * @head:	The head, or location that readers start reading at.
+ * @size:	The size of the log
+ * @logs:	The list of log channels
+ *
+ * This structure lives from module insertion until module removal, so it does
+ * not need additional reference counting. The structure is protected by the
+ * mutex 'mutex'.
+ */
+struct logger_log {
+	unsigned char		*buffer;
+	struct miscdevice	misc;
+	wait_queue_head_t	wq;
+	struct list_head	readers;
+	struct mutex		mutex;
+	size_t			w_off;
+	size_t			head;
+	size_t			size;
+	struct list_head	logs;
+};
+#endif
+
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
-/* < DTS2014050806287 wuzhihui 20140518 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
 #define LOGGER_LOG_EXCEPTION    "log_exception" /* exception */
-#endif
-/* DTS2014050806287 wuzhihui 20140518 end > */
-/*< DTS2014061200428 Wuzhen/w00213434 20140612 begin */
+
 #ifdef CONFIG_LOG_JANK
 #define LOGGER_LOG_JANK "log_jank"  /* dev/log/jank */
-#endif 
-/*DTS2014061200428 Wuzhen/w00213434 20140612 end > */
-/* <DTS2014052007049 zhongming 20140521 begin */
-/* <DTS2013062905282 guohui 20130629 begin */
-#if defined(CONFIG_HUAWEI_KERNEL)
-/*<qindiwen 106479 20130607 begin */
-#define LOGGER_LOG_POWER	"smart_power"	/* dev/smart/power */
-/* qindiwen 106479 20130607 end>*/
 #endif
-/* DTS2013062905282 guohui 20130629 end> */
-/* DTS2014052007049 zhongming 20140521 end> */
 #define LOGGER_ENTRY_MAX_PAYLOAD	4076
 
 #define __LOGGERIO	0xAE

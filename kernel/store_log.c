@@ -1,4 +1,3 @@
-/* < DTS2014042405184 duanhuan 20140611 begin */
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/time.h>
@@ -98,10 +97,9 @@ void storage_log(int code, const char* msg) {
             break;
     }
 }
-
-#define LOG_PARTITION_DEV "mmcblk0p15"
-#define LOG_PARTITION_START 0x5E012
-#define LOG_PARTITION_SIZE 0x10000
+#define LOG_PARTITION_DEV "mmcblk0p16"        /* /dev/block/mmcblk0p16 is log partition in p8916u R002 */
+#define LOG_PARTITION_START 0x60000            /* /sys/block/mmcblk0/mmcblk0p16/start */
+#define LOG_PARTITION_SIZE 0x20000
 #define LOG_PARTITION_END (LOG_PARTITION_START + LOG_PARTITION_SIZE)
 
 /**
@@ -121,8 +119,7 @@ bool is_log_partition_by_devname(const char* devname) {
  * @devname: request start sector
  * return: true - is log partition, false - not log partiton
  */
-bool is_log_partition_by_addr(unsigned long sector) {
+bool is_log_partition_by_addr(sector_t sector) {
     return ((sector >= LOG_PARTITION_START)
         && (sector < LOG_PARTITION_END));
 }
-/* < DTS2014042405184 duanhuan 20140611 end > */

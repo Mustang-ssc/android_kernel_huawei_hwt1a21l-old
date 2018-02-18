@@ -959,10 +959,13 @@ INT32 ffsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *
 	ep = get_entry_in_dir(sb, &olddir, dentry, NULL);
 	if (!ep)
 		return FFS_MEDIAERR;
-
-	if (p_fs->fs_func->get_entry_attr(ep) & ATTR_READONLY)
-		return FFS_PERMISSIONERR;
-
+/* some dirs and files in pc copy to exfat format sdcard, attr change to readonly
+ * this cause can't del and rename.
+ */
+ 	if (p_fs->fs_func->get_entry_attr(ep) & ATTR_READONLY) {
+		//return FFS_PERMISSIONERR;
+		PRINTK("ffsMoveFile ATTR_READONLY [%x]\n",p_fs->fs_func->get_entry_attr(ep));
+	}
 	/* check whether new dir is existing directory and empty */
 	if (new_inode) {
 		UINT32 entry_type;

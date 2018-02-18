@@ -48,14 +48,16 @@
 
 #include <asm/uaccess.h>
 
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
 #ifdef CONFIG_SRECORDER
 #include <linux/srecorder.h>
 #endif
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/printk.h>
+
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+extern void printascii(char *);
+#endif
 
 /* printk's without a loglevel use this.. */
 #define DEFAULT_MESSAGE_LOGLEVEL CONFIG_DEFAULT_MESSAGE_LOGLEVEL
@@ -71,12 +73,10 @@ int console_printk[4] = {
 	DEFAULT_CONSOLE_LOGLEVEL,	/* default_console_loglevel */
 };
 
-/* < DTS2014070303497 shenjinming 20140703 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 int KERNEL_HWFLOW = CONFIG_DEBUG_HUAWEI_FLOW_LOGLEVEL;
 EXPORT_SYMBOL(KERNEL_HWFLOW);
 #endif
-/* DTS2014070303497 shenjinming 20140703 end > */
 
 /*
  * Low level drivers may need that to know if they can schedule in
@@ -221,12 +221,16 @@ struct log {
 	u8 facility;		/* syslog facility */
 	u8 flags:5;		/* internal record flags */
 	u8 level:3;		/* syslog level */
-	/* < DTS2014070103950 liwei 20140701 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	pid_t pid;					/* task pid */
 	char comm[TASK_COMM_LEN];	/* task name */
 #endif
-	/* DTS2014070103950 liwei 20140701 end > */
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
+	int cpu_no;
+#endif
+#if defined(CONFIG_LOG_BUF_MAGIC)
+	u32 magic;		/* handle for ramdump analysis tools */
+#endif
 };
 
 /*
@@ -249,7 +253,6 @@ static u32 log_first_idx;
 
 /* index and sequence number of the next record to store in the buffer */
 static u64 log_next_seq;
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
 #ifndef CONFIG_SRECORDER
 static u32 log_next_idx;
 #else
@@ -274,10 +277,8 @@ static u32 clear_idx;
 #else
 #define LOG_ALIGN __alignof__(struct log)
 #endif
-/* < DTS2014120805052 wangyuantao 20141208 begin */
-#define __LOG_BUF_LEN (1 << (CONFIG_LOG_BUF_SHIFT+1))
-/* DTS2014120805052 wangyuantao 20141208 end > */
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
+#define __LOG_BUF_LEN (1 << CONFIG_LOG_BUF_SHIFT)
+
 #ifndef CONFIG_SRECORDER
 static char __log_buf[__LOG_BUF_LEN] __aligned(LOG_ALIGN);
 static char *log_buf = __log_buf;
@@ -287,6 +288,18 @@ static char __log_buf[__LOG_BUF_LEN] __attribute__((__section__(".data")));
 static char *log_buf __attribute__((__section__(".data"))) = __log_buf;
 static int log_buf_len __attribute__((__section__(".data"))) = __LOG_BUF_LEN;
 
+void* get_kernel_log_buf(void)
+{
+	return log_buf;
+}
+EXPORT_SYMBOL(get_kernel_log_buf);
+
+unsigned int get_kernel_log_buf_len(void)
+{
+	return log_buf_len;
+}
+EXPORT_SYMBOL(get_kernel_log_buf_len);
+
 void srecorder_get_printk_buf_info(unsigned long* p_log_buf, unsigned* p_log_end, unsigned* p_log_buf_len)
 {
     *p_log_buf = (unsigned long)log_buf;
@@ -295,7 +308,6 @@ void srecorder_get_printk_buf_info(unsigned long* p_log_buf, unsigned* p_log_end
 }
 EXPORT_SYMBOL(srecorder_get_printk_buf_info);
 #endif
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
 
 #if defined(CONFIG_OOPS_LOG_BUFFER)
 #define __OOPS_LOG_BUF_LEN (1 << CONFIG_OOPS_LOG_BUF_SHIFT)
@@ -314,21 +326,12 @@ static u32 syslog_oops_buf_idx;
 static const char log_oops_end[] = "---end of oops log buffer---";
 #endif
 
-/*< DTS2015012007753 wangyuantao 20150120 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-void* huawei_get_log_buf_addr(void)
-{
-	return log_buf;
-}
-
-int huawei_get_log_buf_len(void)
-{
-	return log_buf_len;
-}
-EXPORT_SYMBOL(huawei_get_log_buf_addr);
-EXPORT_SYMBOL(huawei_get_log_buf_len);
+#if defined(CONFIG_LOG_BUF_MAGIC)
+static u32 __log_align __used = LOG_ALIGN;
+#define LOG_MAGIC(msg) ((msg)->magic = 0x5d7aefca)
+#else
+#define LOG_MAGIC(msg)
 #endif
-/*DTS2015012007753 wangyuantao 20150120 end >*/
 
 /* cpu currently holding logbuf_lock */
 static volatile unsigned int logbuf_cpu = UINT_MAX;
@@ -428,13 +431,14 @@ static void log_oops_store(struct log *msg)
 			msg->level = default_message_loglevel & 7;
 			msg->flags = (LOG_NEWLINE | LOG_PREFIX) & 0x1f;
 			msg->ts_nsec = ts_nsec;
-			/* < DTS2014070103950 liwei 20140701 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 			msg->pid = current->pid;
 			memset(msg->comm, 0, TASK_COMM_LEN);
 			memcpy(msg->comm, current->comm, TASK_COMM_LEN-1);
 #endif
-			/* DTS2014070103950 liwei 20140701 end > */
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
+			msg->cpu_no = smp_processor_id();
+#endif
 			eom = 1;
 		}
 
@@ -495,6 +499,7 @@ static void log_store(int facility, int level,
 		 * to signify a wrap around.
 		 */
 		memset(log_buf + log_next_idx, 0, sizeof(struct log));
+		LOG_MAGIC((struct log *)(log_buf + log_next_idx));
 		log_next_idx = 0;
 	}
 
@@ -507,13 +512,16 @@ static void log_store(int facility, int level,
 	msg->facility = facility;
 	msg->level = level & 7;
 	msg->flags = flags & 0x1f;
-	/* < DTS2014070103950 liwei 20140701 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	msg->pid = current->pid;
 	memset(msg->comm, 0, TASK_COMM_LEN);
 	memcpy(msg->comm, current->comm, TASK_COMM_LEN-1);
 #endif
-	/* DTS2014070103950 liwei 20140701 end > */
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
+	msg->cpu_no = smp_processor_id();
+#endif
+	
+	LOG_MAGIC(msg);
 	if (ts_nsec > 0)
 		msg->ts_nsec = ts_nsec;
 	else
@@ -1084,17 +1092,13 @@ static size_t print_time(u64 ts, char *buf)
 
 	rem_nsec = do_div(ts, 1000000000);
 
-	/* < DTS2014070103950 liwei 20140701 begin */
-	/* revert DTS2014042602437 */
 	if (!buf)
 		return snprintf(NULL, 0, "[%5lu.000000] ", (unsigned long)ts);
 
 	return sprintf(buf, "[%5lu.%06lu] ",
 		       (unsigned long)ts, rem_nsec / 1000);
-	/* DTS2014070103950 liwei 20140701 end > */
 }
 
-/* < DTS2014070103950 liwei 20140701 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 static bool printk_task_info = 1;
 module_param_named(task_info, printk_task_info, bool, S_IRUGO | S_IWUSR);
@@ -1109,8 +1113,18 @@ static size_t print_task_info(pid_t pid, const char *task_name, char *buf)
 
 	return sprintf(buf, "[%d, %s]", pid, task_name);
 }
+
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
+static size_t print_cpu_info(int cpu, char* buf)
+{
+	if (!buf)
+		return snprintf(NULL, 0, "[cpu%d]", cpu);
+
+	return sprintf(buf, "[cpu%d]", cpu);
+}
 #endif
-/* DTS2014070103950 liwei 20140701 end > */
+
+#endif
 
 static size_t print_prefix(const struct log *msg, bool syslog, char *buf)
 {
@@ -1131,11 +1145,13 @@ static size_t print_prefix(const struct log *msg, bool syslog, char *buf)
 		}
 	}
 
-	/* < DTS2014070103950 liwei 20140701 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	len += print_task_info(msg->pid, msg->comm, buf ? buf + len : NULL);
 #endif
-	/* DTS2014070103950 liwei 20140701 end > */
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
+	len += print_cpu_info(msg->cpu_no, buf ? buf + len : NULL);
+#endif
+	
 	len += print_time(msg->ts_nsec, buf ? buf + len : NULL);
 	return len;
 }
@@ -1208,7 +1224,8 @@ static int syslog_oops_buf_print(char __user *buf, int size, char *text)
 	int len = 0;
 
 	raw_spin_lock_irq(&logbuf_lock);
-	if (syslog_seq < log_oops_first_seq) {
+	if (log_oops_first_seq != ULLONG_MAX &&
+	    syslog_seq < log_oops_first_seq) {
 		syslog_seq = log_oops_first_seq;
 		syslog_oops_buf_idx = 0;
 	}
@@ -1944,6 +1961,10 @@ asmlinkage int vprintk_emit(int facility, int level,
 			text = (char *)end_of_header;
 		}
 	}
+
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+	printascii(text);
+#endif
 
 	if (level == -1)
 		level = default_message_loglevel;

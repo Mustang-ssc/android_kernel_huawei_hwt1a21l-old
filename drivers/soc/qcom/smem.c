@@ -29,11 +29,9 @@
 
 #include <soc/qcom/smem.h>
 
-/* < DTS2014070813095  renlipeng 20140708 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <soc/qcom/subsystem_restart.h>
 #endif
-/* DTS2014070813095  renlipeng 20140708 end > */
 
 #include "smem_private.h"
 
@@ -993,11 +991,10 @@ static int restart_notifier_cb(struct notifier_block *this,
 				unsigned long code,
 				void *data)
 {
-	/*< DTS2014092403407  zengwei/WX221991 20140928 begain */
 	struct restart_notifier_block *notifier;
 	struct notif_data *notifdata = data;
 	int ret;
-
+	
 	switch (code) {
 
 	case SUBSYS_AFTER_SHUTDOWN:
@@ -1010,9 +1007,13 @@ static int restart_notifier_cb(struct notifier_block *this,
 		remote_spin_release_all(notifier->processor);
 		break;
 	case SUBSYS_RAMDUMP_NOTIFICATION:
-		if (!(smem_ramdump_dev && notifdata->enable_ramdump))
-			break;
-		SMEM_DBG("%s: saving ramdump\n", __func__);
+    #ifdef CONFIG_HUAWEI_KERNEL
+		if (!(smem_ramdump_dev && notifdata->enable_ramdump && enable_ramdumps))
+    #else
+        if (!(smem_ramdump_dev && notifdata->enable_ramdump))
+    #endif
+		break;	
+        pr_info("%s: saving ramdump\n", __func__);
 		/*
 		 * XPU protection does not currently allow the
 		 * auxiliary memory regions to be dumped.  If this
@@ -1027,7 +1028,7 @@ static int restart_notifier_cb(struct notifier_block *this,
 	default:
 		break;
 	}
-	/* DTS2014092403407  zengwei/WX221991 20140928 end >*/
+
 	return NOTIFY_DONE;
 }
 
@@ -1353,7 +1354,7 @@ smem_targ_info_done:
 		goto free_smem_areas;
 	}
 
-	ramdump_segments_tmp = kmalloc_array(num_smem_areas,
+	ramdump_segments_tmp = kcalloc(num_smem_areas,
 			sizeof(struct ramdump_segment), GFP_KERNEL);
 	if (!ramdump_segments_tmp) {
 		LOG_ERR("%s: ramdump segment kmalloc failed\n", __func__);
@@ -1473,7 +1474,7 @@ int __init msm_smem_init(void)
 
 	registered = true;
 
-	smem_ipc_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smem");
+	smem_ipc_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smem", 0);
 	if (!smem_ipc_log_ctx) {
 		pr_err("%s: unable to create logging context\n", __func__);
 		msm_smem_debug_mask = 0;

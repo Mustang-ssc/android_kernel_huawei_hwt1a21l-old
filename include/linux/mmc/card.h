@@ -15,23 +15,12 @@
 #include <linux/mod_devicetable.h>
 #include <linux/notifier.h>
 
-/*<DTS2014042303955 renlipeng 20140424 begin*/
-#ifdef CONFIG_HUAWEI_KERNEL
-#define EMMC_SANDISK_MANFID 0x45
-#define EMMC_HYNIX_MANFID 0x90
-#define EMMC_SAMSUNG_MANFID 0x15
-#define EMMC_TOSHIBA_MANFID 0x11
-#endif
-/*DTS2014042303955 renlipeng 20140424 end>*/
-
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #define EXT_CSD_PRE_EOL_INFO_NORMAL     0x01
 #define EXT_CSD_PRE_EOL_INFO_WARNING     0x02
 #define EXT_CSD_PRE_EOL_INFO_URGENT     0x03
 #endif
-/* DTS2014111306772 duanhuan 20141110 end > */
-
+#define EMMC_SAMSUNG_MANFID 0x15
 struct mmc_cid {
 	unsigned int		manfid;
 	char			prod_name[8];
@@ -125,13 +114,11 @@ struct mmc_ext_csd {
 	u8			raw_bkops_status;	/* 246 */
 	u8			raw_sectors[4];		/* 212 - 4 bytes */
 
-    /* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	u8			pre_eol_info;	/* 267 */
 	u8			device_life_time_est_typ_a;	/* 268 */
 	u8			device_life_time_est_typ_b;	/* 269 */
 #endif
-    /* DTS2014111306772 duanhuan 20141110 end > */
 
 	unsigned int            feature_support;
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
@@ -152,6 +139,9 @@ struct sd_ssr {
 	unsigned int		au;			/* In sectors */
 	unsigned int		erase_timeout;		/* In milliseconds */
 	unsigned int		erase_offset;		/* In milliseconds */
+#ifdef CONFIG_HUAWEI_KERNEL	
+	unsigned int		speed_class;
+#endif
 };
 
 struct sd_switch_caps {
@@ -384,13 +374,6 @@ struct mmc_card {
 #define MMC_QUIRK_BROKEN_DATA_TIMEOUT	(1<<13)
 #define MMC_QUIRK_CACHE_DISABLE (1 << 14)       /* prevent cache enable */
 
-/* < DTS2014042606672 gaoxu 20140424 begin */
-/* To avoid conflict with linux forum, Huawei added quirk macro value should started from 20 */
-#ifdef CONFIG_HUAWEI_KERNEL 
-#define MMC_QUIRK_SAMSUNG_SMART (1<<20)          /* Samsung SMART is available */ 
-#endif
-/* DTS2014042606672 gaoxu 20140424 end > */
-
 	unsigned int		erase_size;	/* erase size in sectors */
  	unsigned int		erase_shift;	/* if erase unit is power 2 */
  	unsigned int		pref_erase;	/* in sectors */
@@ -418,11 +401,9 @@ struct mmc_card {
 	unsigned int		sd_bus_speed;	/* Bus Speed Mode set for the card */
 
 	struct dentry		*debugfs_root;
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-	struct dentry          *debugfs_sdxc;
+	struct dentry		*debugfs_sdxc;
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */
 
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */
 	unsigned int    nr_parts;
@@ -489,10 +470,15 @@ struct mmc_fixup {
 
 #define EXT_CSD_REV_ANY (-1u)
 
+#ifdef CONFIG_HUAWEI_KERNEL
+#define CID_MANFID_SANDISK	0x45
+#else
 #define CID_MANFID_SANDISK	0x2
+#endif
 #define CID_MANFID_TOSHIBA	0x11
 #define CID_MANFID_MICRON	0x13
 #define CID_MANFID_SAMSUNG	0x15
+#define CID_MANFID_KINGSTON	0x70
 #define CID_MANFID_HYNIX	0x90
 #define CID_MANFID_NUMONYX_MICRON 0xfe
 
@@ -694,9 +680,4 @@ extern struct mmc_wr_pack_stats *mmc_blk_get_packed_statistics(
 extern void mmc_blk_init_packed_statistics(struct mmc_card *card);
 extern void mmc_blk_disable_wr_packing(struct mmc_queue *mq);
 extern int mmc_send_long_pon(struct mmc_card *card);
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HUAWEI_KERNEL 
-extern ssize_t mmc_samsung_smart_handle(struct mmc_card *card, char *buf); 
-#endif
-/* DTS2014042606672  gaoxu 20140424 end > */
 #endif /* LINUX_MMC_CARD_H */

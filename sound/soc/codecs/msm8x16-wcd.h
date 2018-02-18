@@ -17,6 +17,7 @@
 #include <sound/q6afe-v2.h>
 #include <linux/mfd/wcd9xxx/pdata.h>
 #include "wcd-mbhc-v2.h"
+#include "wcdcal-hwdep.h"
 
 #define MSM8X16_WCD_NUM_REGISTERS	0x6FF
 #define MSM8X16_WCD_MAX_REGISTER	(MSM8X16_WCD_NUM_REGISTERS-1)
@@ -47,10 +48,18 @@
 #define MCLK_SUS_NO_ACT	3
 
 #define NUM_DECIMATORS	2
+#define MSM89XX_VDD_SPKDRV_NAME "cdc-vdd-spkdrv"
 
 extern const u8 msm8x16_wcd_reg_readable[MSM8X16_WCD_CACHE_SIZE];
 extern const u8 msm8x16_wcd_reg_readonly[MSM8X16_WCD_CACHE_SIZE];
 extern const u8 msm8x16_wcd_reset_reg_defaults[MSM8X16_WCD_CACHE_SIZE];
+
+enum codec_versions {
+	TOMBAK_1_0,
+	TOMBAK_2_0,
+	CONGA,
+	UNSUPPORTED,
+};
 
 enum msm8x16_wcd_pid_current {
 	MSM8X16_WCD_PID_MIC_2P5_UA,
@@ -124,6 +133,7 @@ enum wcd_notify_event {
 
 enum {
 	ON_DEMAND_MICBIAS = 0,
+	ON_DEMAND_SPKDRV,
 	ON_DEMAND_SUPPLIES_MAX,
 };
 
@@ -151,6 +161,10 @@ struct msm8916_asoc_mach_data {
 	int ext_pa;
 	int us_euro_gpio;
 	int mclk_freq;
+	int spk_ext_pa_switch_in_gpio;
+	int spk_ext_pa_switch_vdd_gpio;
+	int spk_ext_pa_enable_gpio;
+	int spk_ext_pa_boost_gpio;
 	int lb_mode;
 	atomic_t mclk_rsc_ref;
 	atomic_t mclk_enabled;
@@ -205,33 +219,33 @@ struct on_demand_supply {
 struct msm8x16_wcd_priv {
 	struct snd_soc_codec *codec;
 	u16 pmic_rev;
+	u16 codec_version;
+	u32 boost_voltage;
 	u32 adc_count;
 	u32 rx_bias_count;
 	s32 dmic_1_2_clk_cnt;
 	u32 mute_mask;
-	/* < DTS2014101600765 weiqiang 20141016 begin */
-	u32 boost_voltage;
-	/* DTS2014101600765 weiqiang 20141016 end > */
-	/* < DTS2015030404853 weiqiang 20150318 begin */
-	bool pwm_mode;
-	/* DTS2015030404853 weiqiang 20150318 end > */
+    bool pwm_mode;
 	bool mclk_enabled;
 	bool clock_active;
 	bool config_mode_active;
-/* < DTS2015021103442 huangwei/hwx223581 20150213 begin */
-/* put boost in bypass mode when CODEC is active (output VPH_PWR): CR#787391 */
 	u16 boost_option;
-/* DTS2015021103442 huangwei/hwx223581 20150213 end > */
 	bool spk_boost_set;
 	bool ear_pa_boost_set;
-    /*begin:DTS2014121706741 by  y00188172 20141217*/
-    bool spk_media_case;
-    /*end:DTS2014121706741 by  y00188172 20141217*/
+	bool ext_spk_boost_set;
 	bool dec_active[NUM_DECIMATORS];
 	struct on_demand_supply on_demand_list[ON_DEMAND_SUPPLIES_MAX];
+	struct regulator *spkdrv_reg;
 	/* mbhc module */
 	struct wcd_mbhc mbhc;
+	/* cal info for codec */
+	struct fw_info *fw_data;
 	struct blocking_notifier_head notifier;
+	unsigned long status_mask;
+	int (*spk_pa_boost_set_cb)(struct snd_soc_codec *codec,int enable);
+	int (*spk_pa_enable_set_cb)(struct snd_soc_codec *codec,int enable);
+	int (*spk_pa_switch_vdd_set_cb)(struct snd_soc_codec *codec,int enable);
+	int (*spk_pa_switch_in_set_cb)(struct snd_soc_codec *codec,int enable);
 
 };
 
@@ -248,6 +262,10 @@ extern int msm8x16_register_notifier(struct snd_soc_codec *codec,
 
 extern int msm8x16_unregister_notifier(struct snd_soc_codec *codec,
 				     struct notifier_block *nblock);
+extern void msm8x16_wcd_spk_pa_boost_set_cb(int (*codec_spk_ext_pa)(struct snd_soc_codec *codec,int enable),struct snd_soc_codec *codec);
+extern void msm8x16_wcd_spk_pa_enable_set_cb(int (*codec_spk_ext_pa)(struct snd_soc_codec *codec,int enable),struct snd_soc_codec *codec);
+extern void msm8x16_wcd_spk_pa_switch_vdd_set_cb(int (*codec_spk_ext_pa)(struct snd_soc_codec *codec,int enable),struct snd_soc_codec *codec);
+extern void msm8x16_wcd_spk_pa_switch_in_set_cb(int (*codec_spk_ext_pa)(struct snd_soc_codec *codec,int enable),struct snd_soc_codec *codec);
 
 #endif
 

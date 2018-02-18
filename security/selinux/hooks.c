@@ -84,6 +84,8 @@
 #include <linux/export.h>
 #include <linux/msg.h>
 #include <linux/shm.h>
+#include <linux/pft.h>
+
 
 #include "avc.h"
 #include "objsec.h"
@@ -231,7 +233,11 @@ static void inode_free_security(struct inode *inode)
 {
 	struct inode_security_struct *isec = inode->i_security;
 	struct superblock_security_struct *sbsec = inode->i_sb->s_security;
-
+	/* inode is being destroyed */
+	if (!isec) {
+	    printk(KERN_INFO "i_security is being destroyed\n");
+	    return;
+	}
 	spin_lock(&sbsec->isec_lock);
 	if (!list_empty(&isec->list))
 		list_del_init(&isec->list);
@@ -1227,6 +1233,14 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 		goto out_unlock;
 
 	sbsec = inode->i_sb->s_security;
+
+	/* To prevent Null pointer exception */
+	if (!sbsec) {
+	    printk(KERN_ERR "[SELinux] sbsec is NULL, inode->i_sb->s_security is already freed. \n");
+	    rc = -EINVAL;
+	    goto out_unlock;
+	}
+
 	if (!(sbsec->flags & SE_SBINITIALIZED)) {
 		/* Defer initialization until selinux_complete_init,
 		   after the initial policy is loaded and the security
@@ -1361,15 +1375,33 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 		isec->sid = sbsec->sid;
 
 		if ((sbsec->flags & SE_SBPROC) && !S_ISLNK(inode->i_mode)) {
-			if (opt_dentry) {
-				isec->sclass = inode_mode_to_security_class(inode->i_mode);
-				rc = selinux_proc_get_sid(opt_dentry,
-							  isec->sclass,
-							  &sid);
-				if (rc)
-					goto out_unlock;
-				isec->sid = sid;
-			}
+			/* We must have a dentry to determine the label on
+			 * procfs inodes */
+			if (opt_dentry)
+				/* Called from d_instantiate or
+				 * d_splice_alias. */
+				dentry = dget(opt_dentry);
+			else
+				/* Called from selinux_complete_init, try to
+				 * find a dentry. */
+				dentry = d_find_alias(inode);
+			/*
+			 * This can be hit on boot when a file is accessed
+			 * before the policy is loaded.  When we load policy we
+			 * may find inodes that have no dentry on the
+			 * sbsec->isec_head list.  No reason to complain as
+			 * these will get fixed up the next time we go through
+			 * inode_doinit() with a dentry, before these inodes
+			 * could be used again by userspace.
+			 */
+			if (!dentry)
+				goto out_unlock;
+			isec->sclass = inode_mode_to_security_class(inode->i_mode);
+			rc = selinux_proc_get_sid(dentry, isec->sclass, &sid);
+			dput(dentry);
+			if (rc)
+				goto out_unlock;
+			isec->sid = sid;
 		}
 		break;
 	}
@@ -1531,6 +1563,12 @@ static int inode_has_perm(const struct cred *cred,
 	sid = cred_sid(cred);
 	isec = inode->i_security;
 
+	/* To prevent Null pointer exception */
+	if (unlikely(!isec)){
+	    printk(KERN_CRIT "[SELinux] isec is NULL, inode->i_security is already freed. \n");
+	    return -EINVAL;
+	}
+
 	return avc_has_perm_flags(sid, isec->sid, isec->sclass, perms, adp, flags);
 }
 
@@ -1644,6 +1682,12 @@ static int may_create(struct inode *dir,
 	return avc_has_perm(newsid, sbsec->sid,
 			    SECCLASS_FILESYSTEM,
 			    FILESYSTEM__ASSOCIATE, &ad);
+	if (rc)
+		return rc;
+
+	rc = pft_inode_mknod(dir, dentry, 0, 0);
+
+	return rc;
 }
 
 /* Check whether a task can create a key. */
@@ -1700,6 +1744,12 @@ static int may_link(struct inode *dir,
 	}
 
 	rc = avc_has_perm(sid, isec->sid, isec->sclass, av, &ad);
+	if (rc)
+		return rc;
+
+	if (kind == MAY_UNLINK)
+		rc = pft_inode_unlink(dir, dentry);
+
 	return rc;
 }
 
@@ -2660,7 +2710,22 @@ static int selinux_inode_init_security(struct inode *inode, struct inode *dir,
 
 static int selinux_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
+	int ret;
+
+	ret = pft_inode_create(dir, dentry, mode);
+	if (ret < 0)
+		return ret;
 	return may_create(dir, dentry, SECCLASS_FILE);
+}
+
+static int selinux_inode_post_create(struct inode *dir, struct dentry *dentry,
+				     umode_t mode)
+{
+	int ret;
+
+	ret = pft_inode_post_create(dir, dentry, mode);
+
+	return ret;
 }
 
 static int selinux_inode_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry)
@@ -2696,6 +2761,12 @@ static int selinux_inode_mknod(struct inode *dir, struct dentry *dentry, umode_t
 static int selinux_inode_rename(struct inode *old_inode, struct dentry *old_dentry,
 				struct inode *new_inode, struct dentry *new_dentry)
 {
+	int rc;
+
+	rc = pft_inode_rename(old_inode, old_dentry, new_inode, new_dentry);
+	if (rc)
+		return rc;
+
 	return may_rename(old_inode, old_dentry, new_inode, new_dentry);
 }
 
@@ -2715,6 +2786,7 @@ static int selinux_inode_follow_link(struct dentry *dentry, struct nameidata *na
 
 static noinline int audit_inode_permission(struct inode *inode,
 					   u32 perms, u32 audited, u32 denied,
+					   int result,
 					   unsigned flags)
 {
 	struct common_audit_data ad;
@@ -2725,7 +2797,7 @@ static noinline int audit_inode_permission(struct inode *inode,
 	ad.u.inode = inode;
 
 	rc = slow_avc_audit(current_sid(), isec->sid, isec->sclass, perms,
-			    audited, denied, &ad, flags);
+			    audited, denied, result, &ad, flags);
 	if (rc)
 		return rc;
 	return 0;
@@ -2760,6 +2832,12 @@ static int selinux_inode_permission(struct inode *inode, int mask)
 	sid = cred_sid(cred);
 	isec = inode->i_security;
 
+	/* inode is being destroyed */
+	if (!isec) {
+	    printk(KERN_INFO "i_security is being destroyed\n");
+	    return 0;
+	}
+
 	rc = avc_has_perm_noaudit(sid, isec->sid, isec->sclass, perms, 0, &avd);
 	audited = avc_audit_required(perms, &avd, rc,
 				     from_access ? FILE__AUDIT_ACCESS : 0,
@@ -2767,7 +2845,7 @@ static int selinux_inode_permission(struct inode *inode, int mask)
 	if (likely(!audited))
 		return rc;
 
-	rc2 = audit_inode_permission(inode, perms, audited, denied, flags);
+	rc2 = audit_inode_permission(inode, perms, audited, denied, rc, flags);
 	if (rc2)
 		return rc2;
 	return rc;
@@ -2811,6 +2889,9 @@ static int selinux_inode_getattr(struct vfsmount *mnt, struct dentry *dentry)
 static int selinux_inode_setotherxattr(struct dentry *dentry, const char *name)
 {
 	const struct cred *cred = current_cred();
+
+	if (pft_inode_set_xattr(dentry, name, NULL, 0, 0) < 0)
+		return -EACCES;
 
 	if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof XATTR_SECURITY_PREFIX - 1)) {
@@ -3055,10 +3136,15 @@ static int selinux_file_permission(struct file *file, int mask)
 	struct file_security_struct *fsec = file->f_security;
 	struct inode_security_struct *isec = inode->i_security;
 	u32 sid = current_sid();
+	int ret;
 
 	if (!mask)
 		/* No permission to check.  Existence test. */
 		return 0;
+
+	ret = pft_file_permission(file, mask);
+	if (ret < 0)
+		return ret;
 
 	if (sid == fsec->sid && fsec->isid == isec->sid &&
 	    fsec->pseqno == avc_policy_seqno())
@@ -3317,6 +3403,11 @@ static int selinux_file_open(struct file *file, const struct cred *cred)
 {
 	struct file_security_struct *fsec;
 	struct inode_security_struct *isec;
+	int ret;
+
+	ret = pft_file_open(file, cred);
+	if (ret < 0)
+		return ret;
 
 	fsec = file->f_security;
 	isec = file_inode(file)->i_security;
@@ -3338,6 +3429,17 @@ static int selinux_file_open(struct file *file, const struct cred *cred)
 	 * This check is not redundant - do not remove.
 	 */
 	return path_has_perm(cred, &file->f_path, open_file_to_av(file));
+}
+
+static int selinux_file_close(struct file *file)
+{
+	return pft_file_close(file);
+}
+
+
+static bool selinux_allow_merge_bio(struct bio *bio1, struct bio *bio2)
+{
+	return pft_allow_merge_bio(bio1, bio2);
 }
 
 /* task security operations */
@@ -3577,6 +3679,12 @@ static void selinux_task_to_inode(struct task_struct *p,
 {
 	struct inode_security_struct *isec = inode->i_security;
 	u32 sid = task_sid(p);
+
+	/* inode is being destroyed */
+	if (!isec) {
+	    printk(KERN_INFO "i_security is being destroyed\n");
+	    return;
+	}
 
 	isec->sid = sid;
 	isec->initialized = 1;
@@ -5744,6 +5852,7 @@ static struct security_operations selinux_ops = {
 	.inode_free_security =		selinux_inode_free_security,
 	.inode_init_security =		selinux_inode_init_security,
 	.inode_create =			selinux_inode_create,
+	.inode_post_create =		selinux_inode_post_create,
 	.inode_link =			selinux_inode_link,
 	.inode_unlink =			selinux_inode_unlink,
 	.inode_symlink =		selinux_inode_symlink,
@@ -5780,6 +5889,8 @@ static struct security_operations selinux_ops = {
 	.file_receive =			selinux_file_receive,
 
 	.file_open =			selinux_file_open,
+	.file_close =			selinux_file_close,
+	.allow_merge_bio =		selinux_allow_merge_bio,
 
 	.task_create =			selinux_task_create,
 	.cred_alloc_blank =		selinux_cred_alloc_blank,

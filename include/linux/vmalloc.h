@@ -36,12 +36,10 @@ struct vm_struct {
 	unsigned int		nr_pages;
 	phys_addr_t		phys_addr;
 	const void		*caller;
-	/* < DTS2014052805125 liwei 20140528 begin */
 #ifdef CONFIG_DEBUG_VMALLOC
 	unsigned int	pid;
 	unsigned char	*task_name;
 #endif
-	/* DTS2014052805125 liwei 20140528 end > */
 };
 
 struct vmap_area {

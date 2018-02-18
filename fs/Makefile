@@ -129,9 +129,5 @@ obj-$(CONFIG_EFIVAR_FS)		+= efivarfs/
 
 # Patched by YAFFS
 obj-$(CONFIG_YAFFS_FS)		+= yaffs2/
-#/* < DTS2014050406410 wenshuai 20140504 begin */
-obj-$(CONFIG_SDCARD_FS)   += sdcardfs/
-#/* DTS2014050406410 wenshuai 20140504 end > */
-#/*Begin DTS2015022803688  Added by lvxinkai/lwx270663 2015/2/28*/
+obj-$(CONFIG_SDCARD_FS)     += sdcardfs/
 obj-$(CONFIG_EXFAT_FS)   += exfat/
-#/*End DTS2015022803688  Added by lvxinkai/lwx270663 2015/2/28*/

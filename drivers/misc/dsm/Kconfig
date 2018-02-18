@@ -1,4 +1,3 @@
-#/* < DTS2014042900710 shenjinming 20140430 begin */
 #
 # huawei device state monitor configuration
 #
@@ -8,13 +7,8 @@ config HUAWEI_DSM
 	default n
 	help
 	  If you say yes here you get support for huawei touchscreen.
-#/* <DTS2014070104755 hangtianqi hwx220732 20140701 begin */
 config HUAWEI_SDCARD_VOLD
 	bool "huawei sdcard vold"
-#/* DTS2014071101173 hangtianqi hwx220732 20140711 begin */
 	default n
-#/* DTS2014071101173 hangtianqi hwx220732 20140711 end */
 	help
 	  If you say yes here you get support for huawei vold radar.
-#/* <DTS2014070104755 hangtianqi hwx220732 20140701 end */
-#/* DTS2014042900710 shenjinming 20140430 end > */

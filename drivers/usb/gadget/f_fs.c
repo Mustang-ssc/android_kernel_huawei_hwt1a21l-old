@@ -26,11 +26,10 @@
 
 #include <linux/usb/composite.h>
 #include <linux/usb/functionfs.h>
-/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifdef CONFIG_HUAWEI_USB_DSM
 #include <linux/usb/dsm_usb.h>
 #endif
-/* DTS2014112103275 wenshuai 20141121 end > */
+
 
 #define FUNCTIONFS_MAGIC	0xa647361 /* Chosen by a honest dice roll ;) */
 
@@ -703,6 +702,9 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 	if (unlikely(ffs->state == FFS_CLOSING))
 		return -EBUSY;
 
+	if (atomic_read(&ffs->opened))
+		return -EBUSY;
+
 	file->private_data = ffs;
 	ffs_data_opened(ffs);
 
@@ -766,11 +768,10 @@ static void ffs_epfile_io_complete(struct usb_ep *_ep, struct usb_request *req)
 	}
 }
 
-/* < DTS2014101102317 wenshuai 20141105 begin */
+#define MAX_BUF_LEN	4096
 #ifdef CONFIG_HUAWEI_USB
 #define WRITE_TIME	120
 #endif
-/* DTS2014101102317 wenshuai 20141105 end >*/
 static ssize_t ffs_epfile_io(struct file *file,
 			     char __user *buf, size_t len, int read)
 {
@@ -781,9 +782,8 @@ static ssize_t ffs_epfile_io(struct file *file,
 	ssize_t ret;
 	int halt;
 	int buffer_len = 0;
-/* < DTS2014101102317 wenshuai 20141105 begin */
 #ifdef CONFIG_HUAWEI_USB
-	int err = 0;
+	long err = 0;
 
 	long time_size;
 	if(!read){
@@ -793,7 +793,6 @@ static ssize_t ffs_epfile_io(struct file *file,
 		time_size = MAX_SCHEDULE_TIMEOUT;
 	}
 #endif
-/* DTS2014101102317 wenshuai 20141105 end >*/
 	pr_debug("%s: len %zu, read %d\n", __func__, len, read);
 
 	if (atomic_read(&epfile->error))
@@ -910,8 +909,7 @@ first_try:
 
 		if (unlikely(ret < 0)) {
 			ret = -EIO;
-		/* < DTS2014101102317 wenshuai 20141105 begin */
-		/* reolace wait_for_completion_interruptible with wait_for_completion_interruptible_timeout
+		/* replace wait_for_completion_interruptible with wait_for_completion_interruptible_timeout
 		  * wait_for_completion_interruptible_timeout return 0 meaning timeoout
 		  * return -1 meaning be interrupted, retrun > 0 meaning completion: normal thing
 		  * write operation maybe be timeout, read operation will not be timeout
@@ -919,15 +917,16 @@ first_try:
 #ifdef CONFIG_HUAWEI_USB
 		} else if((err = wait_for_completion_interruptible_timeout(done, time_size)) <= 0){
 			spin_lock_irq(&epfile->ffs->eps_lock);
-			if (epfile->ep == ep)
+			if (ep->ep)
 				usb_ep_dequeue(ep->ep, req);
 			spin_unlock_irq(&epfile->ffs->eps_lock);
 
 			if( (!read) && !err) {
-				pr_err("f_fs: %s: wait_for_completion timeout, read:%d,len(%d)\n", __func__, read,len);
+				pr_err("f_fs: %s: wait_for_completion timeout, read:%d,len(%d)\n", __func__, read,(int)len);
 				ret = -ETIMEDOUT;
 			}
-		    else {
+			else {
+				pr_err("f_fs: %s: wait_for_completion be EINTR, read:%d,len(%d)\n", __func__, read,(int)len);
 				ret = -EINTR;
 			}
 #else
@@ -942,7 +941,6 @@ first_try:
 			spin_unlock_irq(&epfile->ffs->eps_lock);
 			ret = -EINTR;
 #endif
-		/* DTS2014101102317 wenshuai 20141105 end >*/
 		} else {
 			spin_lock_irq(&epfile->ffs->eps_lock);
 			/*
@@ -955,34 +953,36 @@ first_try:
 				ret = -ENODEV;
 			spin_unlock_irq(&epfile->ffs->eps_lock);
 			if (read && ret > 0) {
-				if (ret > len)
+				if (len != MAX_BUF_LEN && ret < len)
+					pr_err("less data(%zd) recieved than intended length(%zu)\n",
+								ret, len);
+				if (ret > len) {
 					ret = -EOVERFLOW;
-				else if (unlikely(copy_to_user(buf, data, ret)))
+					pr_err("More data(%zd) recieved than intended length(%zu)\n",
+								ret, len);
+				} else if (unlikely(copy_to_user(
+							buf, data, ret))) {
+					pr_err("Fail to copy to user len:%zd\n",
+									ret);
 					ret = -EFAULT;
-				/* < DTS2014112606704 wenshuai 20141126 begin */
-				/* < DTS2014112103275 wenshuai 20141121 begin */
+				}
 #ifdef CONFIG_HUAWEI_USB_DSM
 				if(ret < 0)
 				{
 					DSM_USB_LOG(DSM_USB_DEVICE, NULL, DSM_USB_DEVICE_ADB_OFFLINE_ERR,
-						"%s: adb offline : error number %d\n",
+						"%s: adb offline : error number %zd\n",
 						__FUNCTION__, ret);
 				}
 #endif
-				/* DTS2014112103275 wenshuai 20141121 end > */
-				/* DTS2014112606704 wenshuai 20141126 end > */
 			}
 		}
 	}
 
 	mutex_unlock(&epfile->mutex);
 error:
-	kfree(data);    
-    /* < DTS2014073106223 wanghui 20140731 begin */
+	kfree(data);
 	if (ret < 0)
-    /* DTS2014073106223 wanghui 20140731 end > */
-		pr_info("return(%d) %dn buff_len:%d\n", ret, len,buffer_len);
-
+		pr_err("Error: returning %zd value\n", ret);
 	return ret;
 }
 
@@ -1455,9 +1455,15 @@ static void ffs_data_clear(struct ffs_data *ffs)
 {
 	ENTER();
 
+	pr_debug("%s: ffs->gadget= %p, ffs->flags= %lu\n", __func__,
+						ffs->gadget, ffs->flags);
 	if (test_and_clear_bit(FFS_FL_CALL_CLOSED_CALLBACK, &ffs->flags))
 		functionfs_closed_callback(ffs);
 
+	/* Dump ffs->gadget and ffs->flags */
+	if (ffs->gadget)
+		pr_err("%s: ffs->gadget= %p, ffs->flags= %lu\n", __func__,
+						ffs->gadget, ffs->flags);
 	BUG_ON(ffs->gadget);
 
 	if (ffs->epfiles)
@@ -1524,11 +1530,13 @@ static int functionfs_bind(struct ffs_data *ffs, struct usb_composite_dev *cdev)
 	ffs->ep0req->context = ffs;
 
 	lang = ffs->stringtabs;
-	for (lang = ffs->stringtabs; *lang; ++lang) {
-		struct usb_string *str = (*lang)->strings;
-		int id = ffs->first_id;
-		for (; str->s; ++id, ++str)
-			str->id = id;
+	if (lang) {
+		for (; *lang; ++lang) {
+			struct usb_string *str = (*lang)->strings;
+			int id = ffs->first_id;
+			for (; str->s; ++id, ++str)
+				str->id = id;
+		}
 	}
 
 	ffs->gadget = cdev->gadget;
@@ -1604,14 +1612,7 @@ static int functionfs_bind_config(struct usb_composite_dev *cdev,
 {
 	struct ffs_function *func;
 	int ret;
-	/*< Begin DTS2014121201799 yesiping 20141212*/
-	/*Begin DTS2014101605703 add by c00217097 for NULL point panic 2014/10/20*/
-	if(!ffs)
-	{
-		pr_err("functionfs_bind_config: ffs_data is NULL");
-		return -EINVAL;
-	}
-	/*End DTS2014101605703 add by c00217097 for NULL point panic 2014/10/20*/
+
 	ENTER();
 
 	func = kzalloc(sizeof *func, GFP_KERNEL);
@@ -1708,14 +1709,6 @@ static int ffs_func_eps_enable(struct ffs_function *func)
 	do {
 		struct usb_endpoint_descriptor *ds;
 		int desc_idx;
-
-        /* DTS2014101708761 modified by linghuabing 20141022 start */
-        if (NULL == ffs->gadget)
-        {
-            pr_err("ffs_func_eps_enable: ffs->gadget is NULL");
-            break;
-        }
-        /* DTS2014101708761 modified by linghuabing 20141022 end */
 
 		if (ffs->gadget->speed == USB_SPEED_SUPER)
 			desc_idx = 2;
@@ -2559,10 +2552,7 @@ static int ffs_func_set_alt(struct usb_function *f,
 
 	if (ffs->func) {
 		ffs_func_eps_disable(ffs->func);
-        /* DTS2014101708761 modified by linghuabing 20141017 start */
-		//ffs->func = NULL;
-	    /* DTS2014101708761 modified by linghuabing 20141017 end */
-		/*DTS2014121201799 yesiping 20141212 end >*/
+		ffs->func = NULL;
 	}
 
 	if (ffs->state != FFS_ACTIVE)

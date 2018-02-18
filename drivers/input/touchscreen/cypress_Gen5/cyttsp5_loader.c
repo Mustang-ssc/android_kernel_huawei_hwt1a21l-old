@@ -1520,7 +1520,7 @@ static int cyttsp5_loader_probe(struct cyttsp5_device *ttsp)
 
 error_create_auto_calibration:
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_MANUAL_TTCONFIG_UPGRADE
-    device_remove_file(dev, &bin_attr_config_data);
+    device_remove_bin_file(dev, &bin_attr_config_data);
 error_create_config_data:
 	device_remove_file(dev, &dev_attr_config_loading);
 error_create_config_loading:

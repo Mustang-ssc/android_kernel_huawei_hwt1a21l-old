@@ -26,14 +26,12 @@
 #include <linux/workqueue.h>
 #include <linux/freezer.h>
 
-/* <DTS2014072104266 chenyuanquan 20140722 begin */
 /* wakeup system 60 seconds before real clock time for huawei solution */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define ALARM_DELTA 60
 #else
 #define ALARM_DELTA 120
 #endif
-/* DTS2014072104266 chenyuanquan 20140722 end> */
 
 /**
  * struct alarm_base - Alarm timer bases
@@ -372,6 +370,8 @@ static int alarmtimer_resume(struct device *dev)
 	if (!rtc)
 		return 0;
 	rtc_timer_cancel(rtc, &rtctimer);
+
+	set_power_on_alarm(power_on_alarm , 1);
 	return 0;
 }
 #else

@@ -41,11 +41,10 @@
 /*-------------------------------------------------------------------------*/
 
 /* fill a qtd, returning how much of the buffer we were able to queue up */
-/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifdef CONFIG_HUAWEI_USB_DSM
 #include <linux/usb/dsm_usb.h>
 #endif
-/* DTS2014112103275 wenshuai 20141121 end > */
+
 
 static int
 qtd_fill(struct ehci_hcd *ehci, struct ehci_qtd *qtd, dma_addr_t buf,
@@ -236,7 +235,6 @@ static int qtd_copy_status (
 				? -ENOSR  /* hc couldn't read data */
 				: -ECOMM; /* hc couldn't write data */
 		} else if (token & QTD_STS_XACT) {
-		/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifdef CONFIG_HUAWEI_USB_DSM
 			DSM_USB_LOG(DSM_USB_HOST, NULL, DSM_USB_HOST_BUS_ERR,
 						"devpath %s ep%d%s 3strikes\n",
@@ -244,7 +242,6 @@ static int qtd_copy_status (
 						usb_pipeendpoint(urb->pipe),
 						usb_pipein(urb->pipe) ? "in" : "out");
 #endif
-		/* DTS2014112103275 wenshuai 20141121 end > */
 			/* timeout, bad CRC, wrong PID, etc */
 			ehci_dbg(ehci, "devpath %s ep%d%s 3strikes\n",
 				urb->dev->devpath,
@@ -254,7 +251,14 @@ static int qtd_copy_status (
 		} else {	/* unknown */
 			status = -EPROTO;
 		}
-
+#ifdef CONFIG_HUAWEI_USB_DSM
+		DSM_USB_LOG(DSM_USB_HOST, NULL, DSM_USB_HOST_BUS_ERR,
+			"dev%d ep%d%s serious can't proceed faults qtd token %08x --> status %d\n",
+			usb_pipedevice (urb->pipe),
+			usb_pipeendpoint (urb->pipe),
+			usb_pipein (urb->pipe) ? "in" : "out",
+			token, status);
+#endif
 		ehci_vdbg (ehci,
 			"dev%d ep%d%s qtd token %08x --> status %d\n",
 			usb_pipedevice (urb->pipe),

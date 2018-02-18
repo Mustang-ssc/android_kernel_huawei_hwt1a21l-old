@@ -168,27 +168,12 @@ obj-$(CONFIG_ESOC)		+= esoc/
 obj-$(CONFIG_BIF)		+= bif/
 obj-$(CONFIG_SENSORS)		+= sensors/
 obj-$(CONFIG_SENSORS_SSC)	+= sensors/
-#/*<DTS2014042202464 zhanggong 20140422 begin*/
-#/* < DTS2014041705903 zhangmin 20140418 begin */
 obj-$(CONFIG_HUAWEI_HW_DEV_DCT) += devdetect/
 obj-$(CONFIG_HUAWEI_FACTORY_INFO) += hw_fac_info/
-#/* DTS2014041705903 zhangmin 20140418 end > */
-#/*DTS2014042202464 zhanggong 20140422 end>*/
-#/* < DTS2014072906208 chenjikun 20140729 begin */
-#/*del DTS2014060603241 here temporary*/
-#/* DTS2014072906208 chenjikun 20140729 end > */
 
-#/* < DTS2014102104433 liwei 20141021 begin */
-# cpu stress test
-obj-$(CONFIG_CPU_STRESS_TEST)	+= cpu_stress/
-#/* DTS2014102104433 liwei 20141021 end > */
-#/* < DTS2014082110037 chenqihang 20140821 begin */
-obj-$(CONFIG_HUAWEI_STORE_EXCEPTION) += huawei/
-#/* DTS2014082110037 chenqihang 20140821 end> */
-# /* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
-obj-$(CONFIG_SRECORDER)     += srecorder/
-# /* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */
-
-#/* < DTS2014082110037 chenqihang 20140821 begin */
+obj-$(CONFIG_HUAWEI_GOLDENEYE) += goldeneye/
 obj-y				+= huawei/
-#/* DTS2014082110037 chenqihang 20140821 end> */
+
+obj-$(CONFIG_SRECORDER)     += srecorder/
+
+obj-$(CONFIG_HUAWEI_DRIVERS)    += huawei_platform/

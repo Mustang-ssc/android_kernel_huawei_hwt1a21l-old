@@ -121,7 +121,6 @@ enum battery_type {
  * @batt_id_kohm:	the best matched battery id resistor value
  */
 
-/* <DTS2014042804721 chenyuanquan 20140428 begin */
 struct bms_battery_data {
 	unsigned int		fcc;
 	struct single_row_lut	*fcc_temp_lut;
@@ -150,9 +149,7 @@ struct bms_battery_data {
 	int			hot_bat_decidegc;
 #endif
 };
-/* DTS2014042804721 chenyuanquan 20140428 end> */
 
-/* < DTS2014100804605 taohanwen 20141008 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 struct max77819_temp_control_info {
 	short	cold_bat_degree;		/*lowest temperature to stop charging*/
@@ -169,7 +166,6 @@ struct max77819_temp_control_info {
 /*below info should be provided by Maxim with a *.INI file
 for detailed infor, pls refer to maxim fuelgauge usermanual 20140916 beigin*/
 #define MAX17048_MODEL_DATA_SIZE	64
-/* < DTS2014102005552 taohanwen 20141020 begin */
 /* add full capacity info */
 struct max17048_batt_data{
 	int		full_capacity;
@@ -183,9 +179,7 @@ struct max17048_batt_data{
 	char	ini_bits;
 	char	model_data[MAX17048_MODEL_DATA_SIZE];
 };
-/* DTS2014102005552 taohanwen 20141020 end > */
 #endif
-/* DTS2014100804605 taohanwen 20141008 end > */
 
 #if defined(CONFIG_PM8921_BMS) || \
 	defined(CONFIG_PM8921_BMS_MODULE) || \

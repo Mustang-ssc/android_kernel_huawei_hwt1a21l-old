@@ -1,4 +1,3 @@
-/* < DTS2014060408745 roopesh 20140604 begin */
 #ifndef __HUAWEI_BOOT_LOG_H__
 #define __HUAWEI_BOOT_LOG_H__
 
@@ -30,4 +29,3 @@ struct boot_log_struct {
 };
 
 #endif
-/* DTS2014060408745 roopesh 20140604 end > */

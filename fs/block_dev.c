@@ -30,12 +30,10 @@
 #include <linux/aio.h>
 #include <asm/uaccess.h>
 #include "internal.h"
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
 #ifdef CONFIG_DUMP_SYS_INFO
 #include <linux/module.h>
 #include <linux/srecorder.h>
 #endif
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
 
 struct bdev_inode {
 	struct block_device bdev;
@@ -520,7 +518,6 @@ static int bdev_set(struct inode *inode, void *data)
 
 static LIST_HEAD(all_bdevs);
 
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
 #ifdef CONFIG_DUMP_SYS_INFO
 unsigned long get_all_bdevs(void)
 {
@@ -534,7 +531,6 @@ unsigned long get_bdev_lock(void)
 }
 EXPORT_SYMBOL(get_bdev_lock);
 #endif
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
 
 struct block_device *bdget(dev_t dev)
 {

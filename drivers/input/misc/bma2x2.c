@@ -29,7 +29,6 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <asm/irq.h>
-#include <asm/mach/irq.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of_gpio.h>
 #include <linux/sensors.h>
@@ -61,7 +60,7 @@
 #define ISR_INFO(dev, fmt, arg...)
 #endif
 
-#define SENSOR_NAME                 "accelerometer"
+#define SENSOR_NAME                 "bma2x2-accel"
 #define ABSMIN                      -512
 #define ABSMAX                      512
 #define SLOPE_THRESHOLD_VALUE       32
@@ -7351,7 +7350,7 @@ static int bma2x2_probe(struct i2c_client *client,
 	data->cdev.sensors_enable = bma2x2_cdev_enable;
 	data->cdev.sensors_poll_delay = bma2x2_cdev_poll_delay;
 	data->cdev.sensors_self_test = bma2x2_self_calibration_xyz;
-	err = sensors_classdev_register(&client->dev, &data->cdev);
+	err = sensors_classdev_register(&data->input->dev, &data->cdev);
 	if (err) {
 		dev_err(&client->dev, "create class device file failed!\n");
 		err = -EINVAL;

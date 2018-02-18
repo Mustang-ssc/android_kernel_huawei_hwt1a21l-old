@@ -396,7 +396,6 @@ static int __flush_iotlb(struct iommu_domain *domain)
 
 		SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
 			     ctx_drvdata->asid);
-		mb();
 		__sync_tlb(iommu_drvdata, ctx_drvdata->num);
 		__disable_clocks(iommu_drvdata);
 	}
@@ -425,7 +424,6 @@ static void __reset_iommu(struct msm_iommu_drvdata *iommu_drvdata)
 
 	/* Invalidate the entire non-secure TLB */
 	SET_TLBIALLNSNH(base, 0);
-	mb();
 	SET_TLBGSYNC(base, 0);
 	res = readl_tight_poll_timeout(GLB_REG(TLBGSTATUS, base), val,
 			(val & TLBGSTATUS_GSACTIVE) == 0, 5000000);
@@ -563,7 +561,7 @@ static void msm_iommu_set_ASID(void __iomem *base, unsigned int ctx_num,
 	SET_CB_CONTEXTIDR_ASID(base, ctx_num, asid);
 }
 #endif
-/* <DTS2014102207427 zhoujian 20141023 begin */
+
 static void msm_iommu_assign_ASID(const struct msm_iommu_drvdata *iommu_drvdata,
 				  struct msm_iommu_ctx_drvdata *curr_ctx,
 				  struct msm_iommu_priv *priv)
@@ -573,7 +571,7 @@ static void msm_iommu_assign_ASID(const struct msm_iommu_drvdata *iommu_drvdata,
 	curr_ctx->asid = curr_ctx->num;
 	msm_iommu_set_ASID(cb_base, curr_ctx->num, curr_ctx->asid);
 }
-/* DTS2014102207427 zhoujian 20141023 end > */
+
 #ifdef CONFIG_IOMMU_LPAE
 static void msm_iommu_setup_ctx(void __iomem *base, unsigned int ctx)
 {
@@ -636,6 +634,7 @@ static int program_m2v_table(struct device *dev, void __iomem *base)
 {
 	struct msm_iommu_ctx_drvdata *ctx_drvdata = dev_get_drvdata(dev);
 	u32 *sids = ctx_drvdata->sids;
+	u32 *sid_mask = ctx_drvdata->sid_mask;
 	unsigned int ctx = ctx_drvdata->num;
 	int num = 0, i, smt_size;
 	int len = ctx_drvdata->nsid;
@@ -649,7 +648,7 @@ static int program_m2v_table(struct device *dev, void __iomem *base)
 		BUG_ON(num >= smt_size);
 
 		SET_SMR_VALID(base, num, 1);
-		SET_SMR_MASK(base, num, 0);
+		SET_SMR_MASK(base, num, sid_mask[i]);
 		SET_SMR_ID(base, num, sids[i]);
 
 		SET_S2CR_N(base, num, 0);
@@ -727,10 +726,13 @@ static void __program_context(struct msm_iommu_drvdata *iommu_drvdata,
 	}
 
 	msm_iommu_assign_ASID(iommu_drvdata, ctx_drvdata, priv);
+
+	/* Ensure that ASID assignment has completed before we use
+	 * ASID for TLB invalidation. Here, mb() is required because
+	 * both these registers are separated by more than 1KB. */
 	mb();
 	SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
-		                             ctx_drvdata->asid);
-        mb();
+					ctx_drvdata->asid);
 	__sync_tlb(iommu_drvdata, ctx_drvdata->num);
 
 	/* Enable the MMU */
@@ -885,11 +887,14 @@ static void msm_iommu_detach_dev(struct iommu_domain *domain,
 	int ret;
 	int is_secure;
 
+	if (!dev)
+		return;
+
 	msm_iommu_detached(dev->parent);
 
 	mutex_lock(&msm_iommu_lock);
 	priv = domain->priv;
-	if (!priv || !dev)
+	if (!priv)
 		goto unlock;
 
 	iommu_drvdata = dev_get_drvdata(dev->parent);
@@ -911,7 +916,6 @@ static void msm_iommu_detach_dev(struct iommu_domain *domain,
 
 	SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
 					ctx_drvdata->asid);
-	mb();
 	__sync_tlb(iommu_drvdata, ctx_drvdata->num);
 
 	ctx_drvdata->asid = -1;
@@ -958,7 +962,10 @@ static int msm_iommu_map(struct iommu_domain *domain, unsigned long va,
 	if (ret)
 		goto fail;
 
+#ifdef CONFIG_MSM_IOMMU_TLBINVAL_ON_MAP
 	ret = __flush_iotlb_va(domain, va);
+#endif
+
 fail:
 	mutex_unlock(&msm_iommu_lock);
 	return ret;
@@ -981,6 +988,8 @@ static size_t msm_iommu_unmap(struct iommu_domain *domain, unsigned long va,
 		goto fail;
 
 	ret = __flush_iotlb_va(domain, va);
+
+	msm_iommu_pagetable_free_tables(&priv->pt, va, len);
 fail:
 	mutex_unlock(&msm_iommu_lock);
 
@@ -1008,7 +1017,10 @@ static int msm_iommu_map_range(struct iommu_domain *domain, unsigned int va,
 	if (ret)
 		goto fail;
 
+#ifdef CONFIG_MSM_IOMMU_TLBINVAL_ON_MAP
 	__flush_iotlb(domain);
+#endif
+
 fail:
 	mutex_unlock(&msm_iommu_lock);
 	return ret;
@@ -1026,6 +1038,8 @@ static int msm_iommu_unmap_range(struct iommu_domain *domain, unsigned int va,
 	msm_iommu_pagetable_unmap_range(&priv->pt, va, len);
 
 	__flush_iotlb(domain);
+
+	msm_iommu_pagetable_free_tables(&priv->pt, va, len);
 	mutex_unlock(&msm_iommu_lock);
 	return 0;
 }

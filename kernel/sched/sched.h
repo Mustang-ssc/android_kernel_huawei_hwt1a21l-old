@@ -72,11 +72,14 @@ extern __read_mostly int scheduler_running;
  */
 #define RUNTIME_INF	((u64)~0ULL)
 
+static inline int fair_policy(int policy)
+{
+	return policy == SCHED_NORMAL || policy == SCHED_BATCH;
+}
+
 static inline int rt_policy(int policy)
 {
-	if (policy == SCHED_FIFO || policy == SCHED_RR)
-		return 1;
-	return 0;
+	return policy == SCHED_FIFO || policy == SCHED_RR;
 }
 
 static inline int task_has_rt_policy(struct task_struct *p)
@@ -480,7 +483,7 @@ struct rq {
 	int cstate, wakeup_latency, wakeup_energy;
 #endif
 
-#if defined(CONFIG_SCHED_FREQ_INPUT) || defined(CONFIG_SCHED_HMP)
+#ifdef CONFIG_SCHED_HMP
 	/*
 	 * max_freq = user or thermal defined maximum
 	 * max_possible_freq = maximum supported by hardware
@@ -494,7 +497,17 @@ struct rq {
 	int capacity;
 	int max_possible_capacity;
 	u64 window_start;
+	u32 mostly_idle_load;
+	int mostly_idle_nr_run;
+	int mostly_idle_freq;
 
+#ifdef CONFIG_SCHED_FREQ_INPUT
+	unsigned int old_busy_time;
+	int notifier_sent;
+#endif
+#endif
+
+#ifdef CONFIG_SCHED_FREQ_INPUT
 	u64 curr_runnable_sum;
 	u64 prev_runnable_sum;
 #endif
@@ -683,12 +696,13 @@ extern int group_balance_cpu(struct sched_group *sg);
 
 extern void init_new_task_load(struct task_struct *p);
 
-#if defined(CONFIG_SCHED_FREQ_INPUT) || defined(CONFIG_SCHED_HMP)
+#ifdef CONFIG_SCHED_HMP
 
-#define WINDOW_STATS_USE_RECENT		0
-#define WINDOW_STATS_USE_MAX		1
-#define WINDOW_STATS_USE_AVG		2
-#define WINDOW_STATS_INVALID_POLICY	3
+#define WINDOW_STATS_RECENT		0
+#define WINDOW_STATS_MAX		1
+#define WINDOW_STATS_MAX_RECENT_AVG	2
+#define WINDOW_STATS_AVG		3
+#define WINDOW_STATS_INVALID_POLICY	4
 
 extern struct mutex policy_mutex;
 extern unsigned int sched_ravg_window;
@@ -710,8 +724,9 @@ extern unsigned int sched_upmigrate;
 extern unsigned int sched_downmigrate;
 extern unsigned int sched_init_task_load_pelt;
 extern unsigned int sched_init_task_load_windows;
-extern void fixup_nr_big_small_task(int cpu);
+extern unsigned int sched_heavy_task;
 
+extern void fixup_nr_big_small_task(int cpu);
 u64 scale_load_to_cpu(u64 load, int cpu);
 unsigned int max_task_load(void);
 extern void sched_account_irqtime(int cpu, struct task_struct *curr,
@@ -738,7 +753,13 @@ dec_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
 	BUG_ON((s64)rq->cumulative_runnable_avg < 0);
 }
 
-#else	/* CONFIG_SCHED_FREQ_INPUT || CONFIG_SCHED_HMP */
+#define pct_to_real(tunable)	\
+		(div64_u64((u64)tunable * (u64)max_task_load(), 100))
+
+#define real_to_pct(tunable)	\
+		(div64_u64((u64)tunable * (u64)100, (u64)max_task_load()))
+
+#else	/* CONFIG_SCHED_HMP */
 
 static inline int pct_task_load(struct task_struct *p) { return 0; }
 
@@ -767,7 +788,34 @@ static inline void sched_account_irqtime(int cpu, struct task_struct *curr,
 {
 }
 
-#endif	/* CONFIG_SCHED_FREQ_INPUT || CONFIG_SCHED_HMP */
+#endif	/* CONFIG_SCHED_HMP */
+
+#ifdef CONFIG_SCHED_FREQ_INPUT
+extern void check_for_freq_change(struct rq *rq);
+
+/* Is frequency of two cpus synchronized with each other? */
+static inline int same_freq_domain(int src_cpu, int dst_cpu)
+{
+	struct rq *rq = cpu_rq(src_cpu);
+
+	if (src_cpu == dst_cpu)
+		return 1;
+
+	return cpumask_test_cpu(dst_cpu, &rq->freq_domain_cpumask);
+}
+
+#else	/* CONFIG_SCHED_FREQ_INPUT */
+
+#define sched_migration_fixup	0
+
+static inline void check_for_freq_change(struct rq *rq) { }
+
+static inline int same_freq_domain(int src_cpu, int dst_cpu)
+{
+	return 1;
+}
+
+#endif	/* CONFIG_SCHED_FREQ_INPUT */
 
 #ifdef CONFIG_SCHED_HMP
 

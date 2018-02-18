@@ -18,7 +18,6 @@
 #include <linux/rbtree.h>
 #include <linux/slab.h>
 
-/* < DTS2014061303901 zhaoyingchun 20140625 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/syscalls.h> /* sys_sync */
 #include <linux/suspend.h>
@@ -27,7 +26,6 @@ static DEFINE_SPINLOCK(suspend_sys_sync_lock);
 struct workqueue_struct *suspend_sys_sync_work_queue;
 struct completion suspend_sys_sync_comp;
 #endif
-/* DTS2014061303901 zhaoyingchun 20140625 end > */
 
 static DEFINE_MUTEX(wakelocks_lock);
 
@@ -40,7 +38,6 @@ struct wakelock {
 #endif
 };
 
-/* < DTS2014061303901 zhaoyingchun 20140625begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 static void suspend_sys_sync(struct work_struct *work)
 {
@@ -128,7 +125,6 @@ int suspend_sys_sync_wait(void)
 	return 0;
 }
 #endif
-/* DTS2014061303901 zhaoyingchun 20140625 end > */
 
 
 static struct rb_root wakelocks_tree = RB_ROOT;

@@ -32,10 +32,12 @@
 
 #define MSM_FB_ENABLE_DBGFS
 #define WAIT_FENCE_FIRST_TIMEOUT (3 * MSEC_PER_SEC)
-#define WAIT_FENCE_FINAL_TIMEOUT (10 * MSEC_PER_SEC)
-/* Display op timeout should be greater than total timeout */
-#define WAIT_DISP_OP_TIMEOUT ((WAIT_FENCE_FIRST_TIMEOUT + \
-		WAIT_FENCE_FINAL_TIMEOUT) * MDP_MAX_FENCE_FD)
+#define WAIT_FENCE_FINAL_TIMEOUT (7 * MSEC_PER_SEC)
+/* Display op timeout should be greater than the total timeout but not
+ * unreasonably large. Set to 1s more than first wait + final wait which
+ * are already quite long and proceed without any further waits. */
+#define WAIT_DISP_OP_TIMEOUT (WAIT_FENCE_FIRST_TIMEOUT + \
+		WAIT_FENCE_FINAL_TIMEOUT + 1)
 
 #ifndef MAX
 #define  MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -44,6 +46,9 @@
 #ifndef MIN
 #define  MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
+
+#define MDP_PP_AD_BL_LINEAR	0x0
+#define MDP_PP_AD_BL_LINEAR_INV	0x1
 
 /**
  * enum mdp_notify_event - Different frame events to indicate frame update state
@@ -90,9 +95,22 @@ enum mdp_split_mode {
 	MDP_SPLIT_MODE_DST,
 };
 
+/**
+ * enum mdp_mmap_type - Lists the possible mmap type in the device
+ *
+ * @MDP_FB_MMAP_NONE: Unknown type.
+ * @MDP_FB_MMAP_ION_ALLOC:   Use ION allocate a buffer for mmap
+ * @MDP_FB_MMAP_PHYSICAL_ALLOC:  Use physical buffer for mmap
+ */
+enum mdp_mmap_type {
+	MDP_FB_MMAP_NONE,
+	MDP_FB_MMAP_ION_ALLOC,
+	MDP_FB_MMAP_PHYSICAL_ALLOC,
+};
+
 struct disp_info_type_suspend {
 	int op_enable;
-	int panel_power_on;
+	int panel_power_state;
 };
 
 struct disp_info_notify {
@@ -103,6 +121,7 @@ struct disp_info_notify {
 	int value;
 	int is_suspend;
 	int ref_count;
+	bool init_done;
 };
 
 struct msm_sync_pt_data {
@@ -136,9 +155,8 @@ struct msm_mdp_interface {
 	int (*on_fnc)(struct msm_fb_data_type *mfd);
 	int (*off_fnc)(struct msm_fb_data_type *mfd);
 	/* called to release resources associated to the process */
-/* <DTS2014110604375  zhoujian wx221429 20141107 begin */
-	int (*release_fnc)(struct msm_fb_data_type *mfd, bool release_all, uint32_t pid);
-/* DTS2014110604375   zhoujian wx221429 20141107 end > */
+	int (*release_fnc)(struct msm_fb_data_type *mfd, bool release_all,
+				uint32_t pid);
 	int (*kickoff_fnc)(struct msm_fb_data_type *mfd,
 					struct mdp_display_commit *data);
 	int (*ioctl_handler)(struct msm_fb_data_type *mfd, u32 cmd, void *arg);
@@ -148,7 +166,8 @@ struct msm_mdp_interface {
 	int (*lut_update)(struct msm_fb_data_type *mfd, struct fb_cmap *cmap);
 	int (*do_histogram)(struct msm_fb_data_type *mfd,
 				struct mdp_histogram *hist);
-	int (*update_ad_input)(struct msm_fb_data_type *mfd);
+	int (*ad_calc_bl)(struct msm_fb_data_type *mfd, int bl_in,
+		int *bl_out, bool *bl_out_notify);
 	int (*panel_register_done)(struct mdss_panel_data *pdata);
 	u32 (*fb_stride)(u32 fb_index, u32 xres, int bpp);
 	int (*splash_init_fnc)(struct msm_fb_data_type *mfd);
@@ -164,18 +183,16 @@ struct msm_mdp_interface {
 					out = (2 * (v) * (bl_max) + max_bright)\
 					/ (2 * max_bright);\
 					} while (0)
-/* <DTS2014110604375  zhoujian wx221429 20141107 begin */					
+
 struct mdss_fb_file_info {
 	struct file *file;
 	struct list_head list;
 };
-/* DTS2014110604375   zhoujian wx221429 20141107 end > */
+
 struct mdss_fb_proc_info {
 	int pid;
 	u32 ref_cnt;
-/* <DTS2014110604375  zhoujian wx221429 20141107 begin */
 	struct list_head file_list;
-/* DTS2014110604375   zhoujian wx221429 20141107 end > */
 	struct list_head list;
 };
 
@@ -208,7 +225,7 @@ struct msm_fb_data_type {
 	u32 panel_orientation;
 
 	u32 dst_format;
-	int panel_power_on;
+	int panel_power_state;
 	struct disp_info_type_suspend suspend;
 
 	struct ion_handle *ihdl;
@@ -220,19 +237,18 @@ struct msm_fb_data_type {
 	int ext_ad_ctrl;
 	u32 ext_bl_ctrl;
 	u32 calib_mode;
+	u32 calib_mode_bl;
+	u32 ad_bl_level;
 	u32 bl_level;
-	u32 bl_prev_level;
 	u32 bl_scale;
 	u32 bl_min_lvl;
 	u32 unset_bl_level;
 	u32 bl_updated;
 	u32 bl_level_scaled;
 	struct mutex bl_lock;
-/* <DTS2014042409252 d00238048 20140505 begin */
 #ifdef CONFIG_FB_AUTO_CABC
 	struct mutex lock; 
 #endif
-/* DTS2014042409252 d00238048 20140505 end> */
 	struct platform_device *pdev;
 
 	u32 mdp_fb_page_protection;
@@ -267,16 +283,19 @@ struct msm_fb_data_type {
 	struct list_head proc_list;
 	struct ion_client *fb_ion_client;
 	struct ion_handle *fb_ion_handle;
-/* < DTS2014051403007 zhaoyuxia 20140515 begin */
+	struct dma_buf *fbmem_buf;
+
+	bool mdss_fb_split_stored;
 #ifdef CONFIG_HUAWEI_LCD
 	struct delayed_work bkl_work;
-	/*< DTS2014071502043 zhaoyuxia 20140715 begin */
 	u32 frame_updated;
-	/* DTS2014071502043 zhaoyuxia 20140715 end >*/
 #endif
-/* DTS2014051403007 zhaoyuxia 20140515 end > */
+
 	u32 wait_for_kickoff;
-	bool mdss_fb_split_stored;
+	u32 thermal_level;
+	int doze_mode;
+
+	int fb_mmap_type;
 };
 
 static inline void mdss_fb_update_notify_update(struct msm_fb_data_type *mfd)
@@ -313,6 +332,34 @@ static inline bool is_split_dst(struct msm_fb_data_type *mfd)
 {
 	return (mfd && (mfd->split_mode == MDP_SPLIT_MODE_DST));
 }
+
+static inline bool mdss_fb_is_power_off(struct msm_fb_data_type *mfd)
+{
+	return mdss_panel_is_power_off(mfd->panel_power_state);
+}
+
+static inline bool mdss_fb_is_power_on_interactive(
+	struct msm_fb_data_type *mfd)
+{
+	return mdss_panel_is_power_on_interactive(mfd->panel_power_state);
+}
+
+static inline bool mdss_fb_is_power_on(struct msm_fb_data_type *mfd)
+{
+	return mdss_panel_is_power_on(mfd->panel_power_state);
+}
+
+static inline bool mdss_fb_is_power_on_lp(struct msm_fb_data_type *mfd)
+{
+	return mdss_panel_is_power_on_lp(mfd->panel_power_state);
+}
+
+static inline bool mdss_fb_is_hdmi_primary(struct msm_fb_data_type *mfd)
+{
+	return (mfd && (mfd->index == 0) &&
+		(mfd->panel_info->type == DTV_PANEL));
+}
+
 int mdss_fb_get_phys_info(dma_addr_t *start, unsigned long *len, int fb_num);
 void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl);
 void mdss_fb_update_backlight(struct msm_fb_data_type *mfd);
@@ -321,7 +368,6 @@ void mdss_fb_signal_timeline(struct msm_sync_pt_data *sync_pt_data);
 struct sync_fence *mdss_fb_sync_get_fence(struct sw_sync_timeline *timeline,
 				const char *fence_name, int val);
 int mdss_fb_register_mdp_instance(struct msm_mdp_interface *mdp);
-int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd);
 int mdss_fb_dcm(struct msm_fb_data_type *mfd, int req_state);
 int mdss_fb_suspres_panel(struct device *dev, void *data);
 int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,

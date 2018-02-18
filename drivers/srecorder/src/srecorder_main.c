@@ -5,11 +5,11 @@
     
     @brief: 
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 */
@@ -41,6 +41,8 @@ static int __init srecorder_init(void)
 
     srecorder_init_dev();
 
+    srecorder_ioremap_dts_memory();
+
     srecorder_init_log_headers();
 
     srecorder_resigter_notifiers();
@@ -67,6 +69,8 @@ static int __init srecorder_init(void)
 **/
 static void __exit srecorder_exit(void)
 {
+    srecorder_iounremap_dts_memory();
+
     srecorder_unresigter_notifiers();
 
 #ifdef CONFIG_KPROBES

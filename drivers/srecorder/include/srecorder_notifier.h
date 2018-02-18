@@ -5,11 +5,11 @@
     
     @brief: 
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 **/

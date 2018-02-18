@@ -407,11 +407,11 @@ static struct sk_buff *rndis_add_header(struct gether *port,
 	struct sk_buff *skb2;
 	struct rndis_packet_msg_type *header = NULL;
 	struct f_rndis *rndis = func_to_rndis(&port->func);
+	struct usb_composite_dev *cdev = port->func.config->cdev;
 
-	if (rndis->port.multi_pkt_xfer) {
+	if (rndis->port.multi_pkt_xfer || cdev->gadget->sg_supported) {
 		if (port->header) {
 			header = port->header;
-			memset(header, 0, sizeof(*header));
 			header->MessageType = cpu_to_le32(RNDIS_MSG_PACKET);
 			header->MessageLength = cpu_to_le32(skb->len +
 							sizeof(*header));
@@ -422,6 +422,7 @@ static struct sk_buff *rndis_add_header(struct gether *port,
 						header->DataLength);
 			return skb;
 		} else {
+			dev_kfree_skb_any(skb);
 			pr_err("RNDIS header is NULL.\n");
 			return NULL;
 		}
@@ -506,6 +507,7 @@ static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 	}
 }
 
+#define MAX_PKTS_PER_XFER	10
 static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
@@ -528,6 +530,23 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 	buf = (rndis_init_msg_type *)req->buf;
 
 	if (buf->MessageType == RNDIS_MSG_INIT) {
+		if (cdev->gadget->sg_supported) {
+			rndis->port.dl_max_xfer_size = buf->MaxTransferSize;
+			gether_update_dl_max_xfer_size(&rndis->port,
+					rndis->port.dl_max_xfer_size);
+
+			/* if SG is enabled multiple packets can be put
+			 * together too quickly. However, module param
+			 * is not honored.
+			 */
+			rndis->port.dl_max_pkts_per_xfer = 5;
+
+			gether_update_dl_max_pkts_per_xfer(&rndis->port,
+					 rndis->port.dl_max_pkts_per_xfer);
+
+			return;
+		}
+
 		if (buf->MaxTransferSize > 2048)
 			rndis->port.multi_pkt_xfer = 1;
 		else
@@ -894,16 +913,19 @@ rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 /* Some controllers can't support RNDIS ... */
 static inline bool can_support_rndis(struct usb_configuration *c)
 {
-    /* < DTS2014050804174 wanghui 20140523 begin */
-    /* requirement of us/tracfone/us, do not support rndis.
-     * requirement of consumercellular/us, do not support rndis.
+    /* consumercellular/us wants to support rndis now */
+    /* requirement of tracfone/us, do not support rndis.
      */
 #ifdef CONFIG_HUAWEI_USB
-    if((!strcmp(usb_parameter.country_name, COUNTRY_US) && !strcmp(usb_parameter.vender_name, VENDOR_TRACFONE))
-    || (!strcmp(usb_parameter.country_name, COUNTRY_US) && !strcmp(usb_parameter.vender_name, VENDOR_CC)))
+    if(!strcmp(usb_parameter.country_name, COUNTRY_US) && !strcmp(usb_parameter.vender_name, VENDOR_TRACFONE))
     {        
         printk("%s: customization requirement, rndis not supported\n", __func__);
         return false; 
+    }
+    else if(usb_parameter.hw_custom_features & HW_CUSTOM_FEATURES_USB_TETHER_DISABLED)
+    {
+        printk("%s: hw_custom_features is set, rndis not supported\n", __func__);
+        return false;
     }
     else
     {
@@ -914,7 +936,7 @@ static inline bool can_support_rndis(struct usb_configuration *c)
 	/* everything else is *presumably* fine */
 	return true;
 #endif
-    /* DTS2014050804174 wanghui 20140523 end > */
+
 }
 
 int

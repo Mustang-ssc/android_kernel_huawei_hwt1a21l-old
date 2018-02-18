@@ -30,12 +30,8 @@ obj-$(CONFIG_SGI_GRU)		+= sgi-gru/
 obj-$(CONFIG_CS5535_MFGPT)	+= cs5535-mfgpt.o
 obj-$(CONFIG_HP_ILO)		+= hpilo.o
 obj-$(CONFIG_APDS9802ALS)	+= apds9802als.o
-#/* < DTS2014042508166 yangxiaomei 20140428 begin */
-#obj-$(CONFIG_APDS9930)		+= apds993x.o
-#/* < DTS2014051304400 caowei 201400513 begin */
-#obj-$(CONFIG_APDS9930)		+= apds993x_ls.o
-#/* DTS2014051304400 caowei 201400513 end >*/
-#/* DTS2014042508166 yangxiaomei 20140428 end > */
+#obj-$(CONFIG_APDS9930)                += apds993x.o
+#obj-$(CONFIG_APDS9930)                += apds993x_ls.o
 obj-$(CONFIG_ISL29003)		+= isl29003.o
 obj-$(CONFIG_ISL29020)		+= isl29020.o
 obj-$(CONFIG_USB_HSIC_SMSC_HUB) += smsc_hub.o
@@ -64,23 +60,14 @@ obj-$(CONFIG_SRAM)		+= sram.o
 obj-$(CONFIG_TSIF) += msm_tsif.o
 obj-$(CONFIG_HAPTIC_ISA1200)		+= isa1200.o
 obj-$(CONFIG_QSEECOM) += qseecom.o
+ifdef CONFIG_COMPAT
+obj-$(CONFIG_QSEECOM) += compat_qseecom.o
+endif
 obj-$(CONFIG_QFP_FUSE) += qfp_fuse.o
 obj-$(CONFIG_TI_DRV2667) += ti_drv2667.o
 obj-$(CONFIG_QPNP_MISC) += qpnp-misc.o
-obj-$(CONFIG_APQ8084_DOCKING_STATION)	+= apq8084_dock.o
+obj-$(CONFIG_QCOM_LIQUID_DOCK)	+= qcom_liquid_dock.o
 obj-y				+= qcom/
-#/*< DTS2015012007753 wangyuantao 20150120 begin*/
-obj-$(CONFIG_HUAWEI_APANIC)	+= huawei_apanic/
-#/*DTS2015012007753 wangyuantao 20150120 end >*/
-#/* < DTS2014042900710 shenjinming 20140430 begin */
 obj-y				+= dsm/
-#/* DTS2014042900710 shenjinming 20140430 end > */
-#/* < DTS2014072602455 zhongming 20140726 begin */
-#/* < DTS2014021207582 xufeng 20140212 begin */
 obj-$(CONFIG_HUAWEI_KSTATE) += hw_kstate/
-#/* DTS2014021207582 xufeng 20140212 end > */
-#/* DTS2014072602455 zhongming 20140726 end > */
-
-#/* DTS2014091104672 xiongxi xwx234328 begin */
-obj-y += msm_sar_detect.o
-#/* DTS2014091104672 xiongxi xwx234328 end >*/
+obj-$(CONFIG_HUAWEI_RESET_DETECT) += huawei_reset_detect/

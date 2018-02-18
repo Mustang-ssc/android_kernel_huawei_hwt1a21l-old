@@ -25,6 +25,7 @@
 #include <linux/utsname.h>
 #include <linux/initrd.h>
 #include <linux/console.h>
+#include <linux/cache.h>
 #include <linux/bootmem.h>
 #include <linux/seq_file.h>
 #include <linux/screen_info.h>
@@ -39,10 +40,13 @@
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/memblock.h>
+#include <linux/of_address.h>
 #include <linux/of_fdt.h>
 #include <linux/of_platform.h>
 #include <linux/dma-mapping.h>
+#include <linux/efi.h>
 
+#include <asm/fixmap.h>
 #include <asm/cputype.h>
 #include <asm/elf.h>
 #include <asm/cputable.h>
@@ -55,6 +59,12 @@
 #include <asm/traps.h>
 #include <asm/memblock.h>
 #include <asm/psci.h>
+#include <asm/efi.h>
+
+#ifdef CONFIG_DUMP_SYS_INFO
+#include <linux/module.h>
+#include <linux/srecorder.h>
+#endif
 
 unsigned int processor_id;
 EXPORT_SYMBOL(processor_id);
@@ -68,6 +78,14 @@ EXPORT_SYMBOL(boot_reason);
 unsigned int cold_boot;
 EXPORT_SYMBOL(cold_boot);
 
+#ifdef CONFIG_HUAWEI_KERNEL
+#ifndef HIDE_PRODUCT_INFO_KERNEL
+//Define the valuable which declared in processor.h
+unsigned int hide_info;
+EXPORT_SYMBOL(hide_info);
+#endif
+#endif
+
 char* (*arch_read_hardware_id)(void);
 EXPORT_SYMBOL(arch_read_hardware_id);
 
@@ -79,11 +97,26 @@ EXPORT_SYMBOL(arch_read_hardware_id);
 				 COMPAT_HWCAP_VFPv3|COMPAT_HWCAP_VFPv4|\
 				 COMPAT_HWCAP_NEON|COMPAT_HWCAP_IDIV)
 unsigned int compat_elf_hwcap __read_mostly = COMPAT_ELF_HWCAP_DEFAULT;
+unsigned int compat_elf_hwcap2 __read_mostly;
 #endif
 
 static const char *cpu_name;
 static const char *machine_name;
 phys_addr_t __fdt_pointer __initdata;
+
+#ifdef CONFIG_DUMP_SYS_INFO
+unsigned long get_cpu_name(void)
+{
+    return (unsigned long)&cpu_name;
+}
+EXPORT_SYMBOL(get_cpu_name);
+
+unsigned long get_machine_name(void)
+{
+    return (unsigned long)&machine_name;
+}
+EXPORT_SYMBOL(get_machine_name);
+#endif
 
 /*
  * Standard memory resources
@@ -116,6 +149,16 @@ void __init early_print(const char *str, ...)
 	va_end(ap);
 
 	printk("%s", buf);
+}
+
+void __init smp_setup_processor_id(void)
+{
+	/*
+	 * clear __my_cpu_offset on boot CPU to avoid hang caused by
+	 * using percpu variable early, for example, lockdep will
+	 * access percpu variable inside lock_release
+	 */
+	set_my_cpu_offset(0);
 }
 
 bool arch_match_cpu_phys_id(int cpu, u64 phys_id)
@@ -195,12 +238,10 @@ static void __init smp_build_mpidr_hash(void)
 static void __init setup_processor(void)
 {
 	struct cpu_info *cpu_info;
+	u64 features, block;
+	u32 cwg;
+	int cls;
 
-	/*
-	 * locate processor in the list of supported processor
-	 * types.  The linker builds this table for us from the
-	 * entries in arch/arm/mm/proc.S
-	 */
 	cpu_info = lookup_processor_type(read_cpuid_id());
 	if (!cpu_info) {
 		printk("CPU configuration botched (ID %08x), unable to continue.\n",
@@ -215,6 +256,81 @@ static void __init setup_processor(void)
 
 	sprintf(init_utsname()->machine, ELF_PLATFORM);
 	elf_hwcap = 0;
+
+	/*
+	 * Check for sane CTR_EL0.CWG value.
+	 */
+	cwg = cache_type_cwg();
+	cls = cache_line_size();
+	if (!cwg)
+		pr_warn("No Cache Writeback Granule information, assuming cache line size %d\n",
+			cls);
+	if (L1_CACHE_BYTES < cls)
+		pr_warn("L1_CACHE_BYTES smaller than the Cache Writeback Granule (%d < %d)\n",
+			L1_CACHE_BYTES, cls);
+
+	/*
+	 * ID_AA64ISAR0_EL1 contains 4-bit wide signed feature blocks.
+	 * The blocks we test below represent incremental functionality
+	 * for non-negative values. Negative values are reserved.
+	 */
+	features = read_cpuid(ID_AA64ISAR0_EL1);
+	block = (features >> 4) & 0xf;
+	if (!(block & 0x8)) {
+		switch (block) {
+		default:
+		case 2:
+			elf_hwcap |= HWCAP_PMULL;
+		case 1:
+			elf_hwcap |= HWCAP_AES;
+		case 0:
+			break;
+		}
+	}
+
+	block = (features >> 8) & 0xf;
+	if (block && !(block & 0x8))
+		elf_hwcap |= HWCAP_SHA1;
+
+	block = (features >> 12) & 0xf;
+	if (block && !(block & 0x8))
+		elf_hwcap |= HWCAP_SHA2;
+
+	block = (features >> 16) & 0xf;
+	if (block && !(block & 0x8))
+		elf_hwcap |= HWCAP_CRC32;
+
+#ifdef CONFIG_COMPAT
+	/*
+	 * ID_ISAR5_EL1 carries similar information as above, but pertaining to
+	 * the Aarch32 32-bit execution state.
+	 */
+	features = read_cpuid(ID_ISAR5_EL1);
+	block = (features >> 4) & 0xf;
+	if (!(block & 0x8)) {
+		switch (block) {
+		default:
+		case 2:
+			compat_elf_hwcap2 |= COMPAT_HWCAP2_PMULL;
+		case 1:
+			compat_elf_hwcap2 |= COMPAT_HWCAP2_AES;
+		case 0:
+			break;
+		}
+	}
+
+	block = (features >> 8) & 0xf;
+	if (block && !(block & 0x8))
+		compat_elf_hwcap2 |= COMPAT_HWCAP2_SHA1;
+
+	block = (features >> 12) & 0xf;
+	if (block && !(block & 0x8))
+		compat_elf_hwcap2 |= COMPAT_HWCAP2_SHA2;
+
+	block = (features >> 16) & 0xf;
+	if (block && !(block & 0x8))
+		compat_elf_hwcap2 |= COMPAT_HWCAP2_CRC32;
+#endif
 }
 
 static void __init setup_machine_fdt(phys_addr_t dt_phys)
@@ -231,6 +347,8 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 	}
 
 	machine_name = of_flat_dt_get_machine_name();
+	if (machine_name)
+		pr_info("Machine: %s\n", machine_name);
 }
 
 /*
@@ -251,6 +369,41 @@ static int __init early_mem(char *p)
 	return 0;
 }
 early_param("mem", early_mem);
+
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+#define DATAMOUNT_FLAG_FAIL 0x0587C90A
+#define DATAMOUNT_FLAG_SUCCESS 0 // datamount_flag initialization value
+
+/*
+ * global variable datamount_flag has two values:
+ * 0 - init value
+ * 1 - reboot caused by ext4_handle_error, or sync_blockdev return EIO
+ */
+static unsigned int datamount_flag = DATAMOUNT_FLAG_SUCCESS;
+unsigned int get_datamount_flag(void)
+{
+    return datamount_flag;
+}
+EXPORT_SYMBOL(get_datamount_flag);
+void set_datamount_flag(int value)
+{
+    datamount_flag = value;
+}
+EXPORT_SYMBOL(set_datamount_flag);
+
+static int __init early_param_huaweitype(char * p)
+{
+    if (p)
+    {
+        if (!strcmp(p,"mountfail"))
+        {
+            datamount_flag = DATAMOUNT_FLAG_FAIL;
+        }
+    }
+    return 0;
+}
+early_param("androidboot.huawei_type", early_param_huaweitype);
+#endif
 
 static void __init request_standard_resources(void)
 {
@@ -282,6 +435,8 @@ static void __init request_standard_resources(void)
 
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
+void __init __weak init_random_pool(void) { }
+
 void __init setup_arch(char **cmdline_p)
 {
 	/*
@@ -300,12 +455,18 @@ void __init setup_arch(char **cmdline_p)
 
 	*cmdline_p = boot_command_line;
 
+	init_mem_pgprot();
+	early_ioremap_init();
+
 	parse_early_param();
 
+	efi_init();
 	arm64_memblock_init();
 
 	paging_init();
 	request_standard_resources();
+
+	efi_idmap_init();
 
 	unflatten_device_tree();
 
@@ -325,11 +486,11 @@ void __init setup_arch(char **cmdline_p)
 	conswitchp = &dummy_con;
 #endif
 #endif
+	init_random_pool();
 }
 
 static int __init arm64_device_init(void)
 {
-	of_clk_init(NULL);
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 	return 0;
 }
@@ -355,17 +516,25 @@ static const char *hwcap_str[] = {
 	"fp",
 	"asimd",
 	"evtstrm",
+	"aes",
+	"pmull",
+	"sha1",
+	"sha2",
+	"crc32",
 	NULL
 };
 
 static int c_show(struct seq_file *m, void *v)
 {
 	int i;
+#ifdef CONFIG_HUAWEI_KERNEL
+	static const char hide_machine_name[] = "unknown";
+#endif
 
 	seq_printf(m, "Processor\t: %s rev %d (%s)\n",
 		   cpu_name, read_cpuid_id() & 15, ELF_PLATFORM);
 
-	for_each_online_cpu(i) {
+	for_each_present_cpu(i) {
 		/*
 		 * glibc reads /proc/cpuinfo to determine the number of
 		 * online processors, looking for lines beginning with
@@ -382,20 +551,38 @@ static int c_show(struct seq_file *m, void *v)
 	for (i = 0; hwcap_str[i]; i++)
 		if (elf_hwcap & (1 << i))
 			seq_printf(m, "%s ", hwcap_str[i]);
+#ifdef CONFIG_ARMV7_COMPAT_CPUINFO
+	if (is_compat_task()) {
+		/* Print out the non-optional ARMv8 HW capabilities */
+		seq_printf(m, "wp half thumb fastmult vfp edsp neon vfpv3 tlsi ");
+		seq_printf(m, "vfpv4 idiva idivt ");
+	}
+#endif
 
 	seq_printf(m, "\nCPU implementer\t: 0x%02x\n", read_cpuid_id() >> 24);
-	seq_printf(m, "CPU architecture: AArch64\n");
+	seq_printf(m, "CPU architecture: 8\n");
 	seq_printf(m, "CPU variant\t: 0x%x\n", (read_cpuid_id() >> 20) & 15);
 	seq_printf(m, "CPU part\t: 0x%03x\n", (read_cpuid_id() >> 4) & 0xfff);
 	seq_printf(m, "CPU revision\t: %d\n", read_cpuid_id() & 15);
 
 	seq_puts(m, "\n");
-
-	if (!arch_read_hardware_id)
-		seq_printf(m, "Hardware\t: %s\n", machine_name);
+#ifdef CONFIG_HUAWEI_KERNEL
+#ifdef HIDE_PRODUCT_INFO_KERNEL
+//Masking the machine name
+	seq_printf(m, "Hardware\t: %sH\n", hide_machine_name);
+#else
+	if(hide_info)
+	{
+		seq_printf(m, "Hardware\t: %sL\n", hide_machine_name);
+	}
 	else
-		seq_printf(m, "Hardware\t: %s\n", arch_read_hardware_id());
-
+	{
+		seq_printf(m, "Hardware\t: %s\n", machine_name);
+	}
+#endif
+#else
+	seq_printf(m, "Hardware\t: %s\n", machine_name);
+#endif
 	return 0;
 }
 
@@ -426,3 +613,79 @@ void arch_setup_pdev_archdata(struct platform_device *pdev)
 	pdev->archdata.dma_mask = DMA_BIT_MASK(32);
 	pdev->dev.dma_mask = &pdev->archdata.dma_mask;
 }
+
+/* Used for 8994 Only */
+int msm8994_req_tlbi_wa = 1;
+#define SOC_MAJOR_REV(val) (((val) & 0xF00) >> 8)
+
+static int __init msm8994_check_tlbi_workaround(void)
+{
+	void __iomem *addr;
+	int major_rev;
+	struct device_node *dn = of_find_compatible_node(NULL,
+						NULL, "qcom,cpuss-8994");
+	if (dn) {
+		addr = of_iomap(dn, 0);
+		if (!addr)
+			return -ENOMEM;
+		major_rev  = SOC_MAJOR_REV((__raw_readl(addr)));
+		msm8994_req_tlbi_wa = (major_rev >= 2) ? 0 : 1;
+	} else {
+		/* If the node does not exist disable the workaround */
+		msm8994_req_tlbi_wa = 0;
+	}
+
+	return 0;
+}
+arch_initcall_sync(msm8994_check_tlbi_workaround);
+
+#ifdef CONFIG_HUAWEI_KERNEL
+
+typedef enum
+{
+    RUNMODE_FLAG_NORMAL,
+    RUNMODE_FLAG_FACTORY,
+    RUNMODE_FLAG_UNKNOW
+}hw_runmode_t;
+
+#define RUNMODE_FLAG_NORMAL_KEY     "normal"
+#define RUNMODE_FLAG_FACTORY_KEY    "factory"
+
+static hw_runmode_t runmode_factory = RUNMODE_FLAG_UNKNOW;
+
+static int __init init_runmode(char *str)
+{
+    if(!str || !(*str))
+    {
+        printk(KERN_CRIT"%s:get run mode fail\n",__func__);
+        return 0;
+    }
+
+    if(!strncmp(str, RUNMODE_FLAG_FACTORY_KEY, sizeof(RUNMODE_FLAG_FACTORY_KEY)-1))
+    {
+        runmode_factory = RUNMODE_FLAG_FACTORY;
+        printk(KERN_NOTICE "%s:run mode is factory\n", __func__);
+    }
+    else
+    {
+        runmode_factory = RUNMODE_FLAG_NORMAL;
+        printk(KERN_NOTICE "%s:run mode is normal\n", __func__);
+    }
+    return 1;
+}
+
+__setup("androidboot.huawei_swtype=", init_runmode);
+
+
+/* the function interface to check factory/normal mode in kernel */
+bool is_runmode_factory(void)
+{
+    if (RUNMODE_FLAG_FACTORY == runmode_factory)
+        return true;
+    else
+        return false;
+}
+
+EXPORT_SYMBOL(is_runmode_factory);
+
+#endif

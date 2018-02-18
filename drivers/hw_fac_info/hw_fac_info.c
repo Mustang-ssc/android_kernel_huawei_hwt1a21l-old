@@ -1,4 +1,3 @@
-/*< DTS2014041609079 liuzhefeng 20140417 begin */
 /*
  * Copyright (C) huawei company
  *
@@ -18,10 +17,8 @@
 #include <linux/string.h>
 #include <linux/of.h>
 #include <linux/config_interface.h>
-/* < DTS2014071605642 wanglili 20140716 begin */
 #include <hw_fac_info.h>
 int hw_fac_info_debug_mask = FAC_INFO;
-/* DTS2014071605642 wanglili 20140716 end > */
 
 #define NAME_LEN 32
 
@@ -74,10 +71,7 @@ static struct attribute *fac_attrs[] = {
     NULL,    /* need to NULL terminate the list of attributes */
 };
 
-/* < DTS2014071605642 wanglili 20140716 begin */
-/*<DTS2014042202464 zhanggong 20140422 begin*/
 static int  fac_info_probe(struct platform_device *pdev)
-/* DTS2014042202464 zhanggong 20140422 end >*/
 {
          int ret = 0;
         ret = get_product_name(product_name,NAME_LEN);
@@ -95,7 +89,6 @@ static int  fac_info_probe(struct platform_device *pdev)
         {
             fac_log_err("%s:get software version fail!\n", __func__);
         }
-		/*<DTS2013060302673 zhaorenjie 20130603 begin*/
 		ret = set_sbl1_ver_to_appinfo();
         if(ret)
         {
@@ -116,17 +109,13 @@ static int  fac_info_probe(struct platform_device *pdev)
         {
             fac_log_err("%s:get product name fail!\n", __func__);
         }
-		/*DTS2013060302673 zhaorenjie 20130603 end>*/
-		/*<DTS2013062902198 lishiliang 20130629 begin*/
 		ret = set_software_ver_to_appinfo();
         if(ret)
         {
             fac_log_err("%s:get software ver fail!\n", __func__);
         }
-		/*DTS2013062902198 lishiliang 20130629 end>*/
         return ret;
 }
-/* DTS2014071605642 wanglili 20140716 end > */
 
 struct attribute_group fac_group = {
                                  .name ="hw_fac_info",
@@ -170,4 +159,3 @@ MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("for getting Factory Info");
 MODULE_AUTHOR("zhaorenjie <zhaorenjie@huawei.com>");
 
-/*DTS2014041609079 liuzhefeng 20140417 end > */

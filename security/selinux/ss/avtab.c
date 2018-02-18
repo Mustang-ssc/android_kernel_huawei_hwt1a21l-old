@@ -135,10 +135,6 @@ struct avtab_datum *avtab_search(struct avtab *h, struct avtab_key *key)
 		return NULL;
 
 	hvalue = avtab_hash(key, h->mask);
-    /*Begin DTS2015011311888 add by c00217097 for system crash 2015/1/16*/
-    if( (hvalue < 0) || (hvalue  >= h->nslot))
-        return NULL;
-    /*End DTS2015011311888 add by c00217097 for system crash 2015/1/16*/
 	for (cur = h->htable[hvalue]; cur; cur = cur->next) {
 		if (key->source_type == cur->key.source_type &&
 		    key->target_type == cur->key.target_type &&
@@ -174,10 +170,6 @@ avtab_search_node(struct avtab *h, struct avtab_key *key)
 		return NULL;
 
 	hvalue = avtab_hash(key, h->mask);
-	/*Begin DTS2015011311888 add by c00217097 for system crash 2015/1/16*/
-       if( (hvalue < 0) || (hvalue  >= h->nslot))
-           return NULL;
-        /*End DTS2015011311888 add by c00217097 for system crash 2015/1/16*/
 	for (cur = h->htable[hvalue]; cur; cur = cur->next) {
 		if (key->source_type == cur->key.source_type &&
 		    key->target_type == cur->key.target_type &&

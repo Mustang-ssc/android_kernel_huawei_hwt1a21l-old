@@ -185,22 +185,16 @@ source "drivers/sensors/Kconfig"
 source "drivers/phy/Kconfig"
 
 source "drivers/soc/Kconfig"
-#/*<DTS2014042202464 zhanggong 20140422 begin*/
-#/* < DTS2014041705903 zhangmin 20140418 begin */
+
 source "drivers/devdetect/Kconfig"
 source "drivers/hw_fac_info/Kconfig"
-#/* DTS2014041705903 zhangmin 20140418 end > */
-#/*DTS2014042202464 zhanggong 20140422 end>*/
-#/* < DTS2014072906208 chenjikun 20140729 begin */
-#/*del DTS2014060603241 here temporary*/
-#/* DTS2014072906208 chenjikun 20140729 end > */
 
-#/* < DTS2014102104433 liwei 20141021 begin */
-source "drivers/cpu_stress/Kconfig"
-#/* DTS2014102104433 liwei 20141021 end > */
 source "drivers/huawei/Kconfig"
-# /* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
-source "drivers/srecorder/Kconfig"
-# /* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
 
+source "drivers/firmware/Kconfig"
+
+source "drivers/goldeneye/Kconfig"
+
+source "drivers/srecorder/Kconfig"
+source "drivers/huawei_platform/Kconfig"
 endmenu

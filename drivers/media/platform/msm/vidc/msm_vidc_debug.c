@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,6 +11,7 @@
  *
  */
 
+#define CREATE_TRACE_POINTS
 #include "msm_vidc_debug.h"
 #include "vidc_hfi_api.h"
 
@@ -22,6 +23,10 @@ int msm_fw_debug_mode = 0x1;
 int msm_fw_low_power_mode = 0x1;
 int msm_vidc_hw_rsp_timeout = 1000;
 u32 msm_fw_coverage = 0x0;
+int msm_vidc_vpe_csc_601_to_709 = 0x0;
+int msm_vidc_dcvs_mode = 0x1;
+int msm_vidc_sys_idle_indicator = 0x0;
+u32 msm_vidc_firmware_unload_delay = 15000;
 
 struct debug_buffer {
 	char ptr[MAX_DBG_BUF_SIZE];
@@ -63,7 +68,9 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 {
 	struct msm_vidc_core *core = file->private_data;
 	struct hfi_device *hdev;
-	int i = 0;
+	struct hal_fw_info fw_info;
+	int i = 0, rc = 0;
+
 	if (!core || !core->device) {
 		dprintk(VIDC_ERR, "Invalid params, core: %p\n", core);
 		return 0;
@@ -73,19 +80,20 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 	write_str(&dbg_buf, "===============================\n");
 	write_str(&dbg_buf, "CORE %d: 0x%p\n", core->id, core);
 	write_str(&dbg_buf, "===============================\n");
-	write_str(&dbg_buf, "state: %d\n", core->state);
-	write_str(&dbg_buf, "base addr: 0x%x\n",
-		call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data,
-					FW_BASE_ADDRESS));
-	write_str(&dbg_buf, "register_base: 0x%x\n",
-		call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data,
-					FW_REGISTER_BASE));
-	write_str(&dbg_buf, "register_size: %u\n",
-		call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data,
-					FW_REGISTER_SIZE));
-	write_str(&dbg_buf, "irq: %u\n",
-		call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data,
-					FW_IRQ));
+	write_str(&dbg_buf, "Core state: %d\n", core->state);
+	rc = call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data, &fw_info);
+	if (rc) {
+		dprintk(VIDC_WARN, "Failed to read FW info\n");
+		goto err_fw_info;
+	}
+
+	write_str(&dbg_buf, "FW version : %s\n", &fw_info.version);
+	write_str(&dbg_buf, "base addr: 0x%x\n", fw_info.base_addr);
+	write_str(&dbg_buf, "register_base: 0x%x\n", fw_info.register_base);
+	write_str(&dbg_buf, "register_size: %u\n", fw_info.register_size);
+	write_str(&dbg_buf, "irq: %u\n", fw_info.irq);
+
+err_fw_info:
 	for (i = SYS_MSG_START; i < SYS_MSG_END; i++) {
 		write_str(&dbg_buf, "completions[%d]: %s\n", i,
 			completion_done(&core->completions[SYS_MSG_INDEX(i)]) ?
@@ -155,6 +163,11 @@ struct dentry *msm_vidc_debugfs_init_drv(void)
 		dprintk(VIDC_WARN, "debugfs_create_file fw_coverage: fail\n");
 		goto failed_create_dir;
 	}
+	if (!debugfs_create_u32("dcvs_mode", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_dcvs_mode)) {
+		dprintk(VIDC_WARN, "debugfs_create_file dcvs_mode: fail\n");
+		goto failed_create_dir;
+	}
 	if (!debugfs_create_u32("fw_low_power_mode", S_IRUGO | S_IWUSR,
 			dir, &msm_fw_low_power_mode)) {
 		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
@@ -168,6 +181,23 @@ struct dentry *msm_vidc_debugfs_init_drv(void)
 	if (!debugfs_create_u32("hw_rsp_timeout", S_IRUGO | S_IWUSR,
 			dir, &msm_vidc_hw_rsp_timeout)) {
 		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_bool("enable_vpe_csc_601_709", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_vpe_csc_601_to_709)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_bool("sys_idle_indicator", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_sys_idle_indicator)) {
+		dprintk(VIDC_ERR,
+			"debugfs_create_file: sys_idle_indicator fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("firmware_unload_delay", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_firmware_unload_delay)) {
+		dprintk(VIDC_ERR,
+			"debugfs_create_file: firmware_unload_delay fail\n");
 		goto failed_create_dir;
 	}
 	return dir;
@@ -217,20 +247,18 @@ static int inst_info_open(struct inode *inode, struct file *file)
 static int publish_unreleased_reference(struct msm_vidc_inst *inst)
 {
 	struct buffer_info *temp = NULL;
-	struct buffer_info *dummy = NULL;
-	struct list_head *list = NULL;
 
 	if (!inst) {
 		dprintk(VIDC_ERR, "%s: invalid param\n", __func__);
 		return -EINVAL;
 	}
 
-	list = &inst->registered_bufs;
-	mutex_lock(&inst->lock);
 	if (inst->buffer_mode_set[CAPTURE_PORT] == HAL_BUFFER_MODE_DYNAMIC) {
-		list_for_each_entry_safe(temp, dummy, list, list) {
-			if (temp && temp->type ==
-			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
+		write_str(&dbg_buf, "Pending buffer references:\n");
+
+		mutex_lock(&inst->registeredbufs.lock);
+		list_for_each_entry(temp, &inst->registeredbufs.list, list) {
+			if (temp->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
 			!temp->inactive && atomic_read(&temp->ref_count)) {
 				write_str(&dbg_buf,
 				"\tpending buffer: 0x%lx fd[0] = %d ref_count = %d held by: %s\n",
@@ -240,8 +268,8 @@ static int publish_unreleased_reference(struct msm_vidc_inst *inst)
 				DYNAMIC_BUF_OWNER(temp));
 			}
 		}
+		mutex_unlock(&inst->registeredbufs.lock);
 	}
-	mutex_unlock(&inst->lock);
 	return 0;
 }
 
@@ -287,9 +315,16 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 		default:
 			write_str(&dbg_buf, "buffer mode : unsupported\n");
 		}
+
+		write_str(&dbg_buf, "count: %u\n",
+				inst->bufq[i].vb2_bufq.num_buffers);
+
 		for (j = 0; j < inst->fmts[i]->num_planes; j++)
 			write_str(&dbg_buf, "size for plane %d: %u\n", j,
 			inst->bufq[i].vb2_bufq.plane_sizes[j]);
+
+		if (i < MAX_PORT_NUM - 1)
+			write_str(&dbg_buf, "\n");
 	}
 	write_str(&dbg_buf, "-------------------------------\n");
 	for (i = SESSION_MSG_START; i < SESSION_MSG_END; i++) {
@@ -301,6 +336,7 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 	write_str(&dbg_buf, "EBD Count: %d\n", inst->count.ebd);
 	write_str(&dbg_buf, "FTB Count: %d\n", inst->count.ftb);
 	write_str(&dbg_buf, "FBD Count: %d\n", inst->count.fbd);
+
 	publish_unreleased_reference(inst);
 
 	return simple_read_from_buffer(buf, count, ppos,

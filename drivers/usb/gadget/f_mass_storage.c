@@ -219,11 +219,10 @@
 #include <linux/usb/composite.h>
 
 #include "gadget_chips.h"
-/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifdef CONFIG_HUAWEI_USB_DSM
 #include <linux/usb/dsm_usb.h>
 #endif
-/* DTS2014112103275 wenshuai 20141121 end > */
+
 
 /*------------------------------------------------------------------------*/
 
@@ -233,9 +232,6 @@
 static const char fsg_string_interface[] = "Mass Storage";
 
 #include "storage_common.c"
-/* < DTS2014120402917 yesiping 20141205 begin */
-/* < DTS2014091901805 chenxi 20140920 begin */
-/* < DTS2014050804174 wanghui 20140523 begin */
 #ifdef CONFIG_HUAWEI_USB
 #define SUITESTATE_INIT_VALUE       0xff
 #define SUITESTATE_LEN              1
@@ -243,11 +239,11 @@ static int nluns = USB_MAX_LUNS;
 static int cdrom_index = 0;
 static int suitestate = SUITESTATE_INIT_VALUE;
 #endif
-/* DTS2014050804174 wanghui 20140523 end > */
-/* DTS2014091901805 chenxi 20140920 end > */
+
 
 #ifdef CONFIG_USB_CSW_HACK
 static int write_error_after_csw_sent;
+static int must_report_residue;
 static int csw_hack_sent;
 #endif
 /*-------------------------------------------------------------------------*/
@@ -539,13 +535,7 @@ static int fsg_setup(struct usb_function *f,
 	req->context = NULL;
 	req->length = 0;
 	dump_msg(fsg, "ep0-setup", (u8 *) ctrl, sizeof(*ctrl));
-       
-        /* < DTS2014101506332 yesiping 20141120 begin */
-	if((NULL!=cdrom_filp)&&(1== fsg->common->curlun->cdrom))
-	{
-	     fsg->common->curlun->filp = cdrom_filp;
-	}
-	 /* DTS2014101506332 yesiping 20141120 end > */
+
 	switch (ctrl->bRequest) {
 
 	case US_BULK_RESET_REQUEST:
@@ -574,7 +564,6 @@ static int fsg_setup(struct usb_function *f,
 		if (w_index != fsg->interface_number || w_value != 0 ||
 				w_length != 1)
 			return -EDOM;
-        /* < DTS2014050804174 wanghui 20140523 begin */
 #ifdef CONFIG_HUAWEI_USB
         VDBG(fsg, "get max LUN=%d\n", nluns);
         *(u8 *) req->buf = nluns - 1;
@@ -582,8 +571,6 @@ static int fsg_setup(struct usb_function *f,
 		VDBG(fsg, "get max LUN\n");
 		*(u8 *)req->buf = fsg->common->nluns - 1;
 #endif
-        /* DTS2014050804174 wanghui 20140523 end > */
-
 
 		/* Respond with data/status */
 		req->length = min((u16)1, w_length);
@@ -1039,6 +1026,16 @@ write_error:
 			if ((nwritten == amount) && !csw_hack_sent) {
 				if (write_error_after_csw_sent)
 					break;
+
+				/*
+				 * If residue still exists and nothing left to
+				 * write, device must send correct residue to
+				 * host in this case.
+				 */
+				if (!amount_left_to_write && common->residue) {
+					must_report_residue = 1;
+					break;
+				}
 				/*
 				 * Check if any of the buffer is in the
 				 * busy state, if any buffer is in busy state,
@@ -1219,9 +1216,7 @@ static int do_inquiry(struct fsg_common *common, struct fsg_buffhd *bh)
 		buf[4] = 31;		/* Additional length */
 		return 36;
 	}
-    /* < DTS2014091105439 chenxi 20140911 begin */
     /* curlun->cdrom is already set */
-    /* DTS2014091105439 chenxi 20140911 end > */
 
 	buf[0] = curlun->cdrom ? TYPE_ROM : TYPE_DISK;
 	buf[1] = curlun->removable ? 0x80 : 0;
@@ -1329,8 +1324,6 @@ static int do_read_header(struct fsg_common *common, struct fsg_buffhd *bh)
 	return 8;
 }
 
-/* < DTS2014050804174 wanghui 20140523 begin */
-/* import DTS2011082403937 to support cdrom in mac system */
 #ifndef CONFIG_HUAWEI_USB
 static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
 {
@@ -1470,7 +1463,6 @@ static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
     return response_length;
 }
 #endif
-/* DTS2014050804174 wanghui 20140523 end > */
 
 static int do_mode_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 {
@@ -1519,7 +1511,6 @@ static int do_mode_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 	 * The mode pages, in numerical order.  The only page we support
 	 * is the Caching page.
 	 */
-    /* < DTS2014050804174 wanghui 20140523 begin */
     /* to support multiple disks */
 #ifndef CONFIG_HUAWEI_USB
 	if (page_code == 0x08 || all_pages) {
@@ -1545,7 +1536,6 @@ static int do_mode_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 #else
 	valid_page=1;
 #endif
-    /* DTS2014050804174 wanghui 20140523 end > */
 
 	/*
 	 * Check that a valid page was requested and the mode data length
@@ -1608,14 +1598,7 @@ static int do_start_stop(struct fsg_common *common)
 
 	up_read(&common->filesem);
 	down_write(&common->filesem);
-	 /* < DTS2014101506332 yesiping 20141120 begin */
-	if(curlun->cdrom == 1){
-		fsg_lun_cdrom_close(curlun);
-	}
-	else{
-		fsg_lun_close(curlun);
-	}
-	 /* DTS2014101506332 yesiping 20141120 end > */
+	fsg_lun_close(curlun);
 	up_write(&common->filesem);
 	down_read(&common->filesem);
 
@@ -1720,7 +1703,6 @@ static int wedge_bulk_in_endpoint(struct fsg_dev *fsg)
 	return rc;
 }
 
-/* < DTS2014050804174 wanghui 20140523 begin */
 /* to solve the problem that some host reset usb ports continuously 
  * when there is cdrom
  */
@@ -1733,9 +1715,7 @@ static int pad_with_zeros(struct fsg_dev *fsg)
 	int			rc;
 
 	bh->state = BUF_STATE_EMPTY;		/* For the first iteration */
-   /* < DTS2014081503723  yesiping 20140815 begin */
-      fsg->common->usb_amount_left =(int)(fsg->common->residue)>0 ? (nkeep + fsg->common->residue):nkeep;
-	/* DTS2014081503723  yesiping 20140815 end >*/
+	fsg->common->usb_amount_left = nkeep + fsg->common->residue;
 	while (fsg->common->usb_amount_left > 0) {
 
 		/* Wait for the next buffer to be free */
@@ -1758,7 +1738,6 @@ static int pad_with_zeros(struct fsg_dev *fsg)
 	return 0;
 }
 #endif
-/* DTS2014050804174 wanghui 20140523 end > */
 
 static int throw_away_data(struct fsg_common *common)
 {
@@ -1843,7 +1822,6 @@ static int finish_reply(struct fsg_common *common)
 
 	/* All but the last buffer of data must have already been sent */
 	case DATA_DIR_TO_HOST:
-        /* < DTS2014050804174 wanghui 20140523 begin */
         /* to solve the problem that some host reset usb ports continuously 
          * when there is cdrom
          */
@@ -1909,7 +1887,6 @@ static int finish_reply(struct fsg_common *common)
 				rc = halt_bulk_in_endpoint(common->fsg);
 		}
 #endif
-        /* DTS2014050804174 wanghui 20140523 end > */
 
 		break;
 
@@ -2008,8 +1985,9 @@ static int send_status(struct fsg_common *common)
 	 * writing on to storage media, need to set
 	 * residue to zero,assuming that write will succeed.
 	 */
-	if (write_error_after_csw_sent) {
+	if (write_error_after_csw_sent || must_report_residue) {
 		write_error_after_csw_sent = 0;
+		must_report_residue = 0;
 		csw->Residue = cpu_to_le32(common->residue);
 	} else
 		csw->Residue = 0;
@@ -2162,7 +2140,6 @@ static int check_command(struct fsg_common *common, int cmnd_size,
 
 	return 0;
 }
-/* < DTS2014091901805 chenxi 20140920 begin */
 #ifdef CONFIG_HUAWEI_USB
 static int do_get_suitestate(struct fsg_common *common, struct fsg_buffhd *bh)
 {
@@ -2171,7 +2148,6 @@ static int do_get_suitestate(struct fsg_common *common, struct fsg_buffhd *bh)
     return SUITESTATE_LEN;
 }
 #endif
-/* DTS2014091901805 chenxi 20140920 end > */
 
 /* wrapper of check_command for data size in blocks handling */
 static int check_command_size_in_blocks(struct fsg_common *common,
@@ -2222,7 +2198,6 @@ static int do_scsi_command(struct fsg_common *common)
 		if (reply == 0)
 			reply = do_inquiry(common, bh);
 		break;
-    /* < DTS2014091901805 chenxi 20140920 begin */
 #ifdef CONFIG_HUAWEI_USB
 	/* deal with the scsi command from Hisuite on the PC */
     case SEEK_6:
@@ -2235,8 +2210,7 @@ static int do_scsi_command(struct fsg_common *common)
         common->usb_amount_left = reply;
         break;
 #endif
-    /* DTS2014091901805 chenxi 20140920 end > */
-    /* DTS2014120402917  yesiping 20141205 end >*/
+
 	case MODE_SELECT:
 		common->data_size_from_cmnd = common->cmnd[4];
 		reply = check_command(common, 6, DATA_DIR_FROM_HOST,
@@ -2344,14 +2318,12 @@ static int do_scsi_command(struct fsg_common *common)
 		common->data_size_from_cmnd =
 			get_unaligned_be16(&common->cmnd[7]);
 		reply = check_command(common, 10, DATA_DIR_TO_HOST,
-    /* < DTS2014050804174 wanghui 20140523 begin */
                       /* to support cdrom in mac system */
 #ifndef CONFIG_HUAWEI_USB
 				      (7<<6) | (1<<1), 1,
 #else
 				      (3<<1) | (7<<7), 1,
 #endif
-    /* DTS2014050804174 wanghui 20140523 end > */
 
 				      "READ TOC");
 		if (reply == 0)
@@ -2447,7 +2419,6 @@ static int do_scsi_command(struct fsg_common *common)
 		if (reply == 0)
 			reply = do_write(common);
 		break;
-    /* < DTS2014050804174 wanghui 20140523 begin */
 #ifdef CONFIG_HUAWEI_USB
     case SC_REWIND:
     case SC_REWIND_11:
@@ -2458,7 +2429,6 @@ static int do_scsi_command(struct fsg_common *common)
     	usb_port_switch_request(ORI_INDEX);
 		break;
 #endif
-    /* DTS2014050804174 wanghui 20140523 end > */
 
 
 	/*
@@ -2475,17 +2445,6 @@ static int do_scsi_command(struct fsg_common *common)
 
 	default:
 unknown_cmnd:
-	/* < DTS2014120204525 shukai/wx221430 20141206 begin */
-#if 0
-	/* < DTS2014112103275 wenshuai 20141121 begin */
-#ifdef CONFIG_HUAWEI_USB_DSM
-		DSM_USB_LOG(DSM_USB_DEVICE, NULL, DSM_USB_DEVICE_MS_SCSI_ERR,
-			"%s: usb device mass storage unknown scsi command %d\n",
-			__FUNCTION__, common->cmnd[0]);
-#endif
-	/* DTS2014112103275 wenshuai 20141121 end > */
-#endif
-	/* DTS2014120204525 shukai/wx221430 20141206 end > */
 		common->data_size_from_cmnd = 0;
 		sprintf(unknown, "Unknown x%02x", common->cmnd[0]);
 		reply = check_command(common, common->cmnd_size,
@@ -2938,13 +2897,10 @@ static void handle_exception(struct fsg_common *common)
 static int fsg_main_thread(void *common_)
 {
 	struct fsg_common	*common = common_;
-	/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifdef CONFIG_HUAWEI_USB_DSM
 	int ret_command  = 0;
 	int ret_reply = 0;
 #endif
-	/* DTS2014112103275 wenshuai 20141121 end > */
-
 	/*
 	 * Allow the thread to be killed by a signal, but set the signal mask
 	 * to block everything but INT, TERM, KILL, and USR1.
@@ -2983,7 +2939,6 @@ static int fsg_main_thread(void *common_)
 		if (!exception_in_progress(common))
 			common->state = FSG_STATE_DATA_PHASE;
 		spin_unlock_irq(&common->lock);
-		/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifndef CONFIG_HUAWEI_USB_DSM
 		if (do_scsi_command(common) || finish_reply(common))
 			continue;
@@ -3005,7 +2960,6 @@ static int fsg_main_thread(void *common_)
 			continue;
 		}
 #endif
-		/* DTS2014112103275 wenshuai 20141121 end > */
 		spin_lock_irq(&common->lock);
 		if (!exception_in_progress(common))
 			common->state = FSG_STATE_STATUS_PHASE;
@@ -3510,7 +3464,6 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 	return rc;
 }
 
-/* < DTS2014050804174 wanghui 20140523 begin */
 #ifdef CONFIG_HUAWEI_USB
 /*
  * fsg_close_all_file: close all stored file in each lun
@@ -3542,7 +3495,6 @@ static void fsg_close_all_file(struct fsg_common *common)
     up_write(&common->filesem);
 }
 #endif
-/* DTS2014050804174 wanghui 20140523 end > */
 
 /************************* Module parameters *************************/
 

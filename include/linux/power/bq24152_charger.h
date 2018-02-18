@@ -72,7 +72,9 @@
  * is possible that pointer to hook function will not be valid and calling
  * will cause undefined result.
  */
-/*<DTS2014061605512 liyuping 20140617 begin */
+#include <linux/regulator/driver.h>
+#include <linux/regulator/of_regulator.h>
+#include <linux/regulator/machine.h>
 enum bq2415x_command {
 	BQ2415X_TIMER_RESET,
 	BQ2415X_OTG_STATUS,
@@ -143,12 +145,18 @@ struct bq2415x_platform_data {
 	int (*set_mode_hook)(void (*hook)(enum bq2415x_mode mode, void *data),
 			     void *data);
 };
+struct bq24152_otg_regulator
+{
+    struct regulator_desc    rdesc;
+    struct regulator_dev    *rdev;
+};
 
 struct bq2415x_device {
 	struct device *dev;
 	struct bq2415x_platform_data init_data;
 	struct power_supply charger;
 	struct delayed_work work;
+	struct delayed_work otg_id_check_work;
 	enum bq2415x_mode reported_mode;/* mode reported by hook function */
 	enum bq2415x_mode mode;		/* current configured mode */
 	enum bq2415x_chip chip;
@@ -158,33 +166,24 @@ struct bq2415x_device {
 	int autotimer;	/* 1 - if driver automatically reset timer, 0 - not */
 	int automode;	/* 1 - enabled, 0 - disabled; -1 - not supported */
 	int id;
-	/* <DTS2014052906550 liyuping 20140530 begin */
 	int iusb_limit;
 	spinlock_t ibat_change_lock;
-	struct power_supply *qcom_charger_psy;
 	struct power_supply *qcom_bms_psy;
 	struct power_supply *ti_bms_psy;
 	struct power_supply *usb_psy;
 	struct work_struct iusb_work;
-	/* < DTS2014080804732 yuanzhen 20140815 begin */
-	/* <DTS2014073007208 jiangfei 20140801 begin */
 	struct delayed_work lower_power_charger_work;
-	/* DTS2014073007208 jiangfei 20140801 end> */
-	/* DTS2014080804732 yuanzhen 20140815 end > */
 	int charge_status;
 	int charge_full_count;
-	/* < DTS2014072101379  yuanzhen 20140728 begin */
 	int charge_done_flag;
 	bool charge_disable;
-/* < DTS2015010904246  mapengfei 20150105 begin */
+    struct bq24152_otg_regulator    otg_vreg;
+    struct mutex    current_change_lock;
+    bool charging_disabled;
+    int soc_resume_charging;
     int use_only_charge;
-    bool soc_resume_charging;
-/* DTS2015010904246  mapengfei 20150105 end > */
-	/* DTS2014072101379  yuanzhen 20140728 end > */
-	/* DTS2014052906550 liyuping 20140530 end> */
 };
 
-/*<DTS2014070404260 liyuping 20140704 begin */
 typedef enum jeita_thermal_zone
 {
 	COLD,
@@ -195,7 +194,6 @@ typedef enum jeita_thermal_zone
 	ZONE_MAX
 }jeita_thermal_zone;
 
-/*<DTS2014080704371 liyuping 20140815 begin */
 typedef struct jeita_entry 
 {
 	int t_low;
@@ -205,7 +203,6 @@ typedef struct jeita_entry
 	int selected;
 	struct jeita_entry * last_zone;
 }jeita_entry;
-/* DTS2014080704371 liyuping 20140815 end> */
 
 typedef struct jeita_spec
 {
@@ -216,8 +213,6 @@ typedef struct jeita_spec
 	jeita_entry  hot;
 }jeita_spec;
 
-/*<DTS2014080704371 liyuping 20140815 begin */
 extern jeita_spec jeita_batt_param;
-/* DTS2014080704371 liyuping 20140815 end> */
+#define BATTERY_TEMP_MAX   600
 #endif
-/* DTS2014061605512 liyuping 20140617 end> */

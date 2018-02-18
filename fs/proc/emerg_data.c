@@ -1,4 +1,3 @@
-/* < DTS2014042500397 shiguojun 20140425 begin */
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
@@ -15,38 +14,36 @@ struct proc_dir_entry *emerg_data = NULL;
 extern unsigned int get_datamount_flag(void);
 extern void set_datamount_flag(int value);
 
-static int proc_emergdata_read(struct file * file,char *data,size_t len,loff_t *off)
+static ssize_t proc_emergdata_read(struct file * file,char *data,size_t len,loff_t *off)
 {
     /*
      * return the value of datamount_flag(definition in setup.c)
-     */ 
+     */
 	char buffer[32] = {0};
-	
-	/* < DTS2014072205798 shiguojun 20140722 begin */
+
 	if(*off > 0LL)
-	/* DTS2014072205798 shiguojun 20140722 end > */
 	{
 	    return 0;
     }
-	
+
 	memset(buffer, 0x00, sizeof(buffer));
 	snprintf(buffer, sizeof(buffer) - 1, "%d\n", get_datamount_flag());
-	
+
 	if(copy_to_user(data, buffer, strlen(buffer)))
 	{
 	    return -EFAULT;
     }
-	
+
 	*off += strlen(buffer);
 	return strlen(buffer);
-	 
+
 }
 
-static int proc_emergdata_write(struct file *file, const char *buffer, size_t count, loff_t *off)
+static ssize_t proc_emergdata_write(struct file *file, const char *buffer, size_t count, loff_t *off)
 {
     long value = -1;
     int strtol_ret = -1;
-    int ret = -EINVAL;
+    ssize_t ret = -EINVAL;
     char *tmp_buf = NULL;
 
     if ((tmp_buf = kzalloc(count, GFP_KERNEL)) == NULL)
@@ -56,9 +53,7 @@ static int proc_emergdata_write(struct file *file, const char *buffer, size_t co
         return -EFAULT;
     }
 
-    /* < DTS2014072205798 shiguojun 20140722 begin */
     tmp_buf[count - 1] = '\0';
-    /* DTS2014072205798 shiguojun 20140722 end > */
 
     strtol_ret = strict_strtol(tmp_buf, 10, &value);
 
@@ -94,4 +89,3 @@ static void __exit emergdata_proc_exit(void) {
 module_init(emergdata_proc_init);
 module_exit(emergdata_proc_exit);
 
-/* DTS2014042500397 shiguojun 20140425 end > */

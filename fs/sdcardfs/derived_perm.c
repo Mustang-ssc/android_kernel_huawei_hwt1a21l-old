@@ -203,7 +203,6 @@ int is_obbpath_invalid(struct dentry *dent)
 		} else {
 			path_get(&di->lower_path);
 			//lower_parent = lock_parent(lower_path->dentry);
-/* < DTS2014062403486 wenshuai 20140625 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 			path_buf = kmalloc(PATH_MAX, GFP_ATOMIC);
 			if(!path_buf)
@@ -216,7 +215,6 @@ int is_obbpath_invalid(struct dentry *dent)
 #else
 			path_buf = kmalloc(PATH_MAX, GFP_KERNEL);
 #endif
-/*  DTS2014062403486 wenshuai 20140625 end >*/
 			obbpath_s = d_path(&di->lower_path, path_buf, PATH_MAX);
 			if (d_unhashed(di->lower_path.dentry) ||
 				strcasecmp(sbi->obbpath_s, obbpath_s)) {

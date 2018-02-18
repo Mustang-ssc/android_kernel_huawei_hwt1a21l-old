@@ -1,4 +1,4 @@
-/* < DTS2014062704895 zhaoyingchun 20140628 begin */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */
 /*
  *
  *  swrm_mmc_api.h
@@ -35,4 +35,4 @@ enum swrm_error {
 };
 
 #endif /* SWRM_UTILITIES_H_ */
-/* DTS2014062704895 zhaoyingchun 20140628 end > */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update end */

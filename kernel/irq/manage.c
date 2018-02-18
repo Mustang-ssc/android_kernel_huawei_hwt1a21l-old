@@ -150,7 +150,7 @@ int irq_do_set_affinity(struct irq_data *data, const struct cpumask *mask,
 	struct irq_chip *chip = irq_data_get_irq_chip(data);
 	int ret;
 
-	ret = chip->irq_set_affinity(data, mask, false);
+	ret = chip->irq_set_affinity(data, mask, force);
 	switch (ret) {
 	case IRQ_SET_MASK_OK:
 		cpumask_copy(data->affinity, mask);
@@ -162,7 +162,8 @@ int irq_do_set_affinity(struct irq_data *data, const struct cpumask *mask,
 	return ret;
 }
 
-int __irq_set_affinity_locked(struct irq_data *data, const struct cpumask *mask)
+int irq_set_affinity_locked(struct irq_data *data, const struct cpumask *mask,
+			    bool force)
 {
 	struct irq_chip *chip = irq_data_get_irq_chip(data);
 	struct irq_desc *desc = irq_data_to_desc(data);
@@ -172,7 +173,7 @@ int __irq_set_affinity_locked(struct irq_data *data, const struct cpumask *mask)
 		return -EINVAL;
 
 	if (irq_can_move_pcntxt(data)) {
-		ret = irq_do_set_affinity(data, mask, false);
+		ret = irq_do_set_affinity(data, mask, force);
 	} else {
 		irqd_set_move_pending(data);
 		irq_copy_pending(desc, mask);
@@ -187,13 +188,7 @@ int __irq_set_affinity_locked(struct irq_data *data, const struct cpumask *mask)
 	return ret;
 }
 
-/**
- *	irq_set_affinity - Set the irq affinity of a given irq
- *	@irq:		Interrupt to set affinity
- *	@mask:		cpumask
- *
- */
-int irq_set_affinity(unsigned int irq, const struct cpumask *mask)
+int __irq_set_affinity(unsigned int irq, const struct cpumask *mask, bool force)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
 	unsigned long flags;
@@ -203,10 +198,11 @@ int irq_set_affinity(unsigned int irq, const struct cpumask *mask)
 		return -EINVAL;
 
 	raw_spin_lock_irqsave(&desc->lock, flags);
-	ret =  __irq_set_affinity_locked(irq_desc_get_irq_data(desc), mask);
+	ret = irq_set_affinity_locked(irq_desc_get_irq_data(desc), mask, force);
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
 	return ret;
 }
+EXPORT_SYMBOL(irq_set_affinity);
 
 int irq_set_affinity_hint(unsigned int irq, const struct cpumask *m)
 {
@@ -240,7 +236,7 @@ static void irq_affinity_notify(struct work_struct *work)
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
 
 	notify->notify(notify, cpumask);
-
+	pr_err("%s completed for irq %d \n", __func__, desc->irq_data.irq);
 	free_cpumask_var(cpumask);
 out:
 	kref_put(&notify->kref, notify->release);
@@ -365,8 +361,11 @@ void __disable_irq(struct irq_desc *desc, unsigned int irq, bool suspend)
 		desc->istate |= IRQS_SUSPENDED;
 	}
 
-	if (!desc->depth++)
+	if (!desc->depth++){
+		if(irq == 215)
+			pr_err("IRQ=%d %pS \n", desc->irq_data.irq, __builtin_return_address(0));
 		irq_disable(desc);
+	}
 }
 
 static int __disable_irq_nosync(unsigned int irq)
@@ -441,6 +440,8 @@ void __enable_irq(struct irq_desc *desc, unsigned int irq, bool resume)
 			goto err_out;
 		/* Prevent probing on this irq: */
 		irq_settings_set_noprobe(desc);
+		if(irq == 215)
+			pr_err("IRQ=%d %pS \n", desc->irq_data.irq, __builtin_return_address(0));
 		irq_enable(desc);
 		check_irq_resend(desc, irq);
 		/* fall-through */
@@ -528,6 +529,8 @@ int irq_set_irq_wake(unsigned int irq, unsigned int on)
 		if (desc->wake_depth == 0) {
 			WARN(1, "Unbalanced IRQ %d wake disable\n", irq);
 		} else if (--desc->wake_depth == 0) {
+			if(irq == 215)
+				pr_err("IRQ=%d %pS \n", desc->irq_data.irq, __builtin_return_address(0));
 			ret = set_irq_wake_real(irq, on);
 			if (ret)
 				desc->wake_depth = 1;
@@ -828,8 +831,7 @@ static irqreturn_t irq_thread_fn(struct irq_desc *desc,
 
 static void wake_threads_waitq(struct irq_desc *desc)
 {
-	if (atomic_dec_and_test(&desc->threads_active) &&
-	    waitqueue_active(&desc->wait_for_threads))
+	if (atomic_dec_and_test(&desc->threads_active))
 		wake_up(&desc->wait_for_threads);
 }
 
@@ -893,8 +895,8 @@ static int irq_thread(void *data)
 		irq_thread_check_affinity(desc, action);
 
 		action_ret = handler_fn(desc, action);
-		if (!noirqdebug)
-			note_interrupt(action->irq, desc, action_ret);
+		if (action_ret == IRQ_HANDLED)
+			atomic_inc(&desc->threads_handled);
 
 		wake_threads_waitq(desc);
 	}
@@ -1376,6 +1378,8 @@ void free_irq(unsigned int irq, void *dev_id)
 	if (WARN_ON(desc->affinity_notify))
 		desc->affinity_notify = NULL;
 #endif
+	if(irq == 215)
+		pr_err("IRQ=%d %pS \n", desc->irq_data.irq, __builtin_return_address(0));
 
 	chip_bus_lock(desc);
 	kfree(__free_irq(irq, dev_id));
@@ -1466,6 +1470,8 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 	action->name = devname;
 	action->dev_id = dev_id;
 
+	if(irq == 215)
+		pr_err("IRQ=%d %pS \n", desc->irq_data.irq, __builtin_return_address(0));
 	chip_bus_lock(desc);
 	retval = __setup_irq(irq, desc, action);
 	chip_bus_sync_unlock(desc);

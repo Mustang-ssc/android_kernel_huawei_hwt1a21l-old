@@ -1,6 +1,4 @@
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 //modify debug log in hw style
-/* <DTS2014080900552 chenyuanquan 20140825 begin */
 /*
  * Flash-led driver for Maxim MAX77819
  *
@@ -26,19 +24,15 @@
 #include "msm_camera_io_util.h"
 #include "msm_led_flash.h"
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 #include <linux/power_supply.h>
 
 //#define HW_CMR_LOGSWC 0   //file log switch set 0 off,default is 1 on
 #define HW_CMR_LOG_TAG "max77819_flash"
 #include <linux/hw_camera_common.h>
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
-/* <DTS2014101702056 luozhi/wx217218 20141020 begin*/
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <linux/hw_dev_dec.h>
 #endif
-/* DTS2014101702056 luozhi/wx217218 20141020 end>*/
 
 #define M2SH  __CONST_FFS
 
@@ -130,13 +124,12 @@
 #define CAM_FLASH_PINCTRL_STATE_SLEEP "cam_flash_suspend"
 #define CAM_FLASH_PINCTRL_STATE_DEFAULT "cam_flash_default"
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 #define MAX77819_POWR_SUPPLY_BATTERY_NAME "battery"
-/* <DTS2014120203098 xiongtao/wx217212 20141202 begin*/
-//change usb present detect node from max77819-charger to usb
-#define MAX77819_POWR_SUPPLY_CHARGER_NAME "usb"
-/* DTS2014120203098 xiongtao/wx217212 20141202 end>*/
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
+#define MAX77819_POWR_SUPPLY_CHARGER_NAME "battery"
+
+#ifndef MAXIM_ERROR_NO
+#define MAXIM_ERROR_NO (5555)
+#endif
 
 #define CONFIG_MSMB_CAMERA_DEBUG
 #undef CDBG
@@ -149,15 +142,94 @@
 
 struct max77819_flash{
 	struct regmap *regmap;
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	struct power_supply *max77819_charger;
 	struct power_supply *max77819_battery;
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 };
 
 static struct msm_led_flash_ctrl_t fctrl;
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
+static int max77819_flash_iic_error_proc(struct msm_led_flash_ctrl_t *fctrl,
+	struct max77819_flash *flash)
+{
+	struct regmap *regmap = flash->regmap;
+	int ret = 0;
+
+	CMR_LOGE("%s:%d enter",__func__, __LINE__);
+	/* to reinit reg */
+	/* Disable flash and torch by default */
+	ret = regmap_write(regmap, MAX77819_IFLASH, 0);
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+	ret = regmap_write(regmap, MAX77819_ITORCH, 0);
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+
+	/* Torch Safty Timer Disabled, run for MAX timer */
+	ret = regmap_write(regmap, MAX77819_TORCH_TMR,
+			MAX77819_TORCH_TMR_DUR | MAX77819_DIS_TORCH_TMR | MAX77819_TORCH_TMR_MODE);
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+
+	/* Flash Safty Timer = 1000ms, run for MAX timer */
+	ret = regmap_write(regmap, MAX77819_FLASH_TMR,
+			MAX77819_FLASH_TMR_DUR | MAX77819_FLASH_TMR_MAXTIMER);
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+
+	/* flash mode setting */
+	ret = regmap_write(regmap, MAX77819_FLASH_EN,0x40);//default flash mode
+
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+
+	/* Max Flash setting */
+	//ret = regmap_write(regmap, MAX77819_MAX_FLASH1, 0xfc);
+	//0xe0 1 11000 00 3192mV : 0xe4 1 11001 00 3225mV : 0xcc 1 10011 00 3027mV : 0x00 close protect
+	//0xce 1 10011 10 3027mV detection hysteresis 300mV:
+	//0xe7 1 11001 11 3225mV 0x03 = Hysteresis disabled. Flash current is only reduced.:
+	//0xe3 1 11000 11 3192mV 0x03 = Hysteresis disabled. Flash current is only reduced.:
+	ret = regmap_write(regmap, MAX77819_MAX_FLASH1, 0xe3);
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+
+	/* Low battery mask timer for Max Flash */
+	//0x3f 00 111 111 rising 2048us falling 2048us
+	//0x38 00 111 000 rising 2048us falling 0us
+	ret = regmap_write(regmap, MAX77819_MAX_FLASH2, 0x3f);
+
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+		return ret;
+	}
+
+	/* recommended boost mode: adaptive*/
+	ret = regmap_write(regmap, MAX77819_VOUT_CNTL, MAX77819_BOOST_FLASH_MODE_ADAPTIVE);
+	if (IS_ERR_VALUE(ret))
+	{
+		CMR_LOGE("%s:%d rc %d",__func__, __LINE__,ret);
+	}
+	return ret;
+}
+
 //charger is present return 1
 //charger is not present return 0
 //error return < 0
@@ -242,7 +314,6 @@ static int max77819_flash_set_charger_enable(struct max77819_flash *flash, int o
 
 	return 0;
 }
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
 static int max77819_flash_led_init(struct msm_led_flash_ctrl_t *fctrl, 
 	struct max77819_flash *flash)
@@ -280,7 +351,6 @@ static int max77819_flash_led_init(struct msm_led_flash_ctrl_t *fctrl,
 	/*Clear status register*/
 	rc = regmap_read(flash->regmap, MAX77819_FLASH_INT, &value);
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	//move set flash led enable after gpio set
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
@@ -288,11 +358,18 @@ static int max77819_flash_led_init(struct msm_led_flash_ctrl_t *fctrl,
 	/*Enable Flash LED*/
 	rc = regmap_update_bits(flash->regmap, MAX77819_FLASH_EN,MAX77819_FLASH_FLED_EN,
 			(MAX77819_BY_FLASHEN << M2SH(MAX77819_FLASH_FLED_EN)));
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+		}
+	}
 
 	//clear the err and unlock IC, this function must be called before read and write register
 	//msm_flash_clear_err_and_unlock(fctrl);
 
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 	return rc;
 }
 
@@ -302,23 +379,28 @@ static int max77819_flash_led_release(struct msm_led_flash_ctrl_t *fctrl,
 	int rc = 0;
 	struct msm_camera_sensor_board_info *flashdata = NULL;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
-/* coverity scans camera-LCD code modify  */
+
+	flashdata = fctrl->flashdata;
+	power_info = &flashdata->power_info;
 	CMR_LOGE("%s:%d called\n", __func__, __LINE__);
-	if (!(fctrl&&fctrl->flashdata)) {
+	if (!fctrl) {
 		CMR_LOGE("%s:%d fctrl NULL\n", __func__, __LINE__);
 		return -EINVAL;
 	}
-		flashdata = fctrl->flashdata;
-		power_info = &flashdata->power_info;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
+
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
 		GPIO_OUT_LOW);
 
 	rc = regmap_update_bits(flash->regmap, MAX77819_FLASH_EN, MAX77819_FLASH_FLED_EN|MAX77819_TORCH_FLED_EN, 0);
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+		}
+	}
 
 	rc = msm_camera_request_gpio_table(
 		power_info->gpio_conf->cam_gpio_req_tbl,
@@ -346,26 +428,33 @@ static int max77819_flash_led_off(struct msm_led_flash_ctrl_t *fctrl,
 	struct msm_camera_sensor_board_info *flashdata = NULL;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
 	unsigned int value;
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
-/* coverity scans camera-LCD code modify  */
+
+	flashdata = fctrl->flashdata;
+	power_info = &flashdata->power_info;
+	
 	CMR_LOGE("%s:%d called\n", __func__, __LINE__);
 
-	if (!(fctrl&&fctrl->flashdata)) {
+	if (!fctrl) {
 		CMR_LOGE("%s:%d fctrl NULL\n", __func__, __LINE__);
 		return -EINVAL;
 	}
-	flashdata = fctrl->flashdata;
-	power_info = &flashdata->power_info;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
+
 	/*Clear status register*/
 	rc = regmap_read(flash->regmap, MAX77819_FLASH_INT, &value);
 	
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
 		GPIO_OUT_LOW);
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	rc = regmap_update_bits(flash->regmap, MAX77819_FLASH_EN, MAX77819_FLASH_FLED_EN|MAX77819_TORCH_FLED_EN, 0);
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+		}
+	}
+
 	return rc;
 }
 
@@ -373,36 +462,47 @@ static int  max77819_flash_led_low(struct msm_led_flash_ctrl_t *fctrl,
 	struct max77819_flash *flash)
 {
 	int rc = 0;
-	/* <DTS2014091804483 xiongtao/wx217212 20140918 begin*/
 	unsigned int brightness = 0x06;//0x06=164.05mA
-	/* DTS2014091804483 xiongtao/wx217212 20140918 end>*/
 	struct msm_camera_sensor_board_info *flashdata = NULL;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
 	CMR_LOGE("%s:%d called\n", __func__, __LINE__);
 
 	flashdata = fctrl->flashdata;
 	power_info = &flashdata->power_info;
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	CMR_LOGE("%s:%d set brightness 0x%x\n", __func__, __LINE__,brightness);
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
-/* <DTS2014091804483 xiongtao/wx217212 20140918 begin*/
 //do not use flash_led mode,
 //now replaced by torch_led mode
 //To prevent flash auto shut down if the focusing time more than 1s
 #if 1
 	rc = regmap_update_bits(flash->regmap, MAX77819_ITORCH, MAX77819_TORCH_I,
 			brightness << M2SH(MAX77819_TORCH_I));
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+			return rc;
+		}
+	}
 
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	/*Enable Torch LED*/
 	//rc = regmap_update_bits(flash->regmap, MAX77819_FLASH_EN,MAX77819_TORCH_FLED_EN,
 	//		(MAX77819_BY_FLASHEN << M2SH(MAX77819_TORCH_FLED_EN))); //MAX77819_BY_I2C
 	rc = regmap_write(flash->regmap, MAX77819_FLASH_EN,0x04);//set to torch mode ,disable flash mode
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+			return rc;
+		}
+	}
 
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
 		GPIO_OUT_HIGH);
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 #else
 	rc = regmap_update_bits(flash->regmap, MAX77819_IFLASH, MAX77819_FLASH_I,
 			brightness << M2SH(MAX77819_FLASH_I));
@@ -411,7 +511,6 @@ static int  max77819_flash_led_low(struct msm_led_flash_ctrl_t *fctrl,
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
 		GPIO_OUT_HIGH);
 #endif
-/* DTS2014091804483 xiongtao/wx217212 20140918 end>*/
 
 	//clear the err and unlock IC, this function must be called before read and write register
 	//msm_flash_clear_err_and_unlock(fctrl);
@@ -423,12 +522,8 @@ static int max77819_flash_led_high(struct msm_led_flash_ctrl_t *fctrl,
 	struct max77819_flash *flash)
 {
 	int rc = 0;
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	int rc_present = 0;
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
-	/* <DTS2014091804483 xiongtao/wx217212 20140918 begin*/
 	unsigned int brightness = 0x1F; //0x1F=749.95mA
-	/* DTS2014091804483 xiongtao/wx217212 20140918 end>*/
 	struct msm_camera_sensor_board_info *flashdata = NULL;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
 	CMR_LOGE("%s:%d called\n", __func__, __LINE__);
@@ -436,7 +531,6 @@ static int max77819_flash_led_high(struct msm_led_flash_ctrl_t *fctrl,
 	flashdata = fctrl->flashdata;
 	power_info = &flashdata->power_info;
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	rc_present = max77819_flash_get_charger_present(flash);
 	CMR_LOGI("%s:%d rc_present %d\n", __func__, __LINE__,rc_present);
 	if(rc_present == 0)//cable is not present
@@ -444,29 +538,43 @@ static int max77819_flash_led_high(struct msm_led_flash_ctrl_t *fctrl,
 		brightness = 0x1F; //0x1F=749.95mA
 		CMR_LOGD("%s:%d set brightness current 749mA\n", __func__, __LINE__);
 	}
-	/* <DTS2014120203098 xiongtao/wx217212 20141202 begin*/
-	else if(rc_present == 1)//cable is present, setting a lower current
+	else if(rc_present == 1)//cable is present set current to 500mA
 	{
-		//change current from 500mA to 450mA
-		brightness = 0x12; //0x14=492.16mA 0x12=445.28mA
-		CMR_LOGD("%s:%d set brightness current 445mA\n", __func__, __LINE__);
+		brightness = 0x14; //0x14=492.16mA
+		CMR_LOGD("%s:%d set brightness current 492mA\n", __func__, __LINE__);
 	}
 	else
 	{
-		brightness = 0x12; //0x14=492.16mA 0x12=445.28mA
-		CMR_LOGD("%s:%d check present error set current to 445mA\n", __func__, __LINE__);
+		brightness = 0x14; //0x14=492.16mA
+		CMR_LOGD("%s:%d check present error set current to 492mA\n", __func__, __LINE__);
 	}
-	/* DTS2014120203098 xiongtao/wx217212 20141202 end>*/
 	CMR_LOGE("%s:%d set brightness 0x%x\n", __func__, __LINE__,brightness);
 
 	rc = regmap_update_bits(flash->regmap, MAX77819_IFLASH, MAX77819_FLASH_I,
 			brightness << M2SH(MAX77819_FLASH_I));
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+			return rc;
+		}
+	}
 
 	/*Enable Flash LED*/
 	//rc = regmap_update_bits(flash->regmap, MAX77819_FLASH_EN,MAX77819_FLASH_FLED_EN,
 	//		(MAX77819_BY_FLASHEN << M2SH(MAX77819_FLASH_FLED_EN)));
 	rc = regmap_write(flash->regmap, MAX77819_FLASH_EN,0x40);//open flash mode, disable torch mode
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+			return rc;
+		}
+	}
 
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
@@ -488,10 +596,7 @@ static int max77819_torch_led_on(struct msm_led_flash_ctrl_t *fctrl,
 	struct max77819_flash *flash)
 {
 	int rc = 0;
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
-	/* <DTS2014091804483 xiongtao/wx217212 20140918 begin*/
 	unsigned int brightness = 0x06; //0x06=164.05mA 0x03=93.744mA
-	/* DTS2014091804483 xiongtao/wx217212 20140918 end>*/
 	struct msm_camera_sensor_board_info *flashdata = NULL;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
 	CMR_LOGE("%s:%d called\n", __func__, __LINE__);
@@ -501,17 +606,34 @@ static int max77819_torch_led_on(struct msm_led_flash_ctrl_t *fctrl,
 	CMR_LOGE("%s:%d set brightness 0x%x\n", __func__, __LINE__,brightness);
 	rc = regmap_update_bits(flash->regmap, MAX77819_ITORCH, MAX77819_TORCH_I,
 			brightness << M2SH(MAX77819_TORCH_I));
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+			return rc;
+		}
+	}
 
 	/*Enable Torch LED*/
 	//change torch led control by gpio FLASH_NOW
 	//rc = regmap_update_bits(flash->regmap, MAX77819_FLASH_EN,MAX77819_TORCH_FLED_EN,
 	//		(MAX77819_BY_FLASHEN << M2SH(MAX77819_TORCH_FLED_EN))); //MAX77819_BY_I2C
 	rc = regmap_write(flash->regmap, MAX77819_FLASH_EN,0x04);//enable torch mode, disable flash mode
+	if (IS_ERR_VALUE(rc))
+	{
+		CMR_LOGE("%s:%d write iic error rc %d",__func__, __LINE__,rc);
+		if(-MAXIM_ERROR_NO == rc)
+		{
+			max77819_flash_iic_error_proc(fctrl, flash);
+			return rc;
+		}
+	}
 
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_NOW],
 		GPIO_OUT_HIGH);
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 	/*
 	gpio_set_value_cansleep(
 		power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_EN],
@@ -775,7 +897,6 @@ static int max77819_flash_hw_setup(struct max77819_io *io)
 	if (IS_ERR_VALUE(ret))
 		return ret;
 
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	/*flash mode setting*/
 	//ret = regmap_write(regmap, MAX77819_FLASH_EN,0x48);
 	ret = regmap_write(regmap, MAX77819_FLASH_EN,0x40);//default flash mode
@@ -801,7 +922,6 @@ static int max77819_flash_hw_setup(struct max77819_io *io)
 
 	if (IS_ERR_VALUE(ret))
 		return ret;
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
  	/* recommended boost mode: adaptive*/
  	ret = regmap_write(regmap, MAX77819_VOUT_CNTL, MAX77819_BOOST_FLASH_MODE_ADAPTIVE);
@@ -854,7 +974,6 @@ int32_t max77819_flash_config(struct msm_led_flash_ctrl_t *fctrl,
 		rc = max77819_flash_led_init(fctrl, flash);
 		break;
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	case MSM_CAMERA_LED_RELEASE:
 		rc = max77819_flash_led_release(fctrl, flash);
 		max77819_flash_set_charger_enable(flash,1);
@@ -879,7 +998,6 @@ int32_t max77819_flash_config(struct msm_led_flash_ctrl_t *fctrl,
 		max77819_flash_set_charger_enable(flash,0);
 		rc = max77819_torch_led_on(fctrl, flash);
 		break;
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
 	default:
 		rc = -EFAULT;
@@ -900,7 +1018,6 @@ static struct of_device_id max77819_flash_of_ids[] = {
 MODULE_DEVICE_TABLE(of, max77819_flash_of_ids);
 #endif /* CONFIG_OF */
 
-/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 static void max77819_flash_shutdown(struct platform_device *pdev)
 {
 	const struct of_device_id *match;
@@ -935,7 +1052,6 @@ static void max77819_flash_shutdown(struct platform_device *pdev)
 ERROR_TO_EXIT:
 	CMR_LOGI("%s:%d exit\n", __func__, __LINE__);
 }
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
 static struct platform_driver max77819_flash_driver = {
 	.driver = {
@@ -945,9 +1061,7 @@ static struct platform_driver max77819_flash_driver = {
 		.of_match_table  = max77819_flash_of_ids,
 #endif /* CONFIG_OF */	
 	},
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	.shutdown = max77819_flash_shutdown,
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 };
 
 
@@ -963,7 +1077,6 @@ static int32_t max77819_flash_probe(struct platform_device *pdev)
 	struct device_node *of_node = NULL;
 	int rc = 0;
 
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	CMR_LOGI("in max77819_flash_probe\n");
 	if((NULL == chip)||(NULL == io))
 	{
@@ -983,7 +1096,6 @@ static int32_t max77819_flash_probe(struct platform_device *pdev)
 		CMR_LOGE("alloc memory error\n");
 		return -ENOMEM;
 	}
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
 	max77819_flash->regmap = io->regmap;
 	
@@ -1011,7 +1123,6 @@ static int32_t max77819_flash_probe(struct platform_device *pdev)
 	fctrl->flash_device_type = MSM_CAMERA_PLATFORM_DEVICE;
 	
 	rc = max77819_flash_hw_setup(io);
-	/* <DTS2014101400722 xiongtao/wx217212 20141020 begin*/
 	if (IS_ERR_VALUE(rc))
 	{
 		CMR_LOGE("hw init error\n");
@@ -1030,13 +1141,10 @@ static int32_t max77819_flash_probe(struct platform_device *pdev)
 		CMR_LOGE("%s: call dev_set_drvdata error\n", __func__);
 		goto probe_failure;
 	}
-	/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/
 
-	/* <DTS2014101702056 luozhi/wx217218 20141020 begin*/
 	#ifdef CONFIG_HUAWEI_HW_DEV_DCT
 	set_hw_dev_flag(DEV_I2C_FLASH);
 	#endif
-	/* DTS2014101702056 luozhi/wx217218 20141020 end>*/
 
 	CMR_LOGE("%s: probe success\n", __func__);
 	return rc;
@@ -1068,5 +1176,3 @@ static struct msm_led_flash_ctrl_t fctrl = {
 module_init(max77819_flash_add_driver);
 MODULE_DESCRIPTION("Maxim77819 FLASH LED");
 MODULE_LICENSE("GPL v2");
-/* DTS2014080900552 chenyuanquan 20140825 end> */
-/* DTS2014101400722 xiongtao/wx217212 20141020 end>*/

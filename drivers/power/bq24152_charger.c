@@ -27,12 +27,8 @@
  * http://www.ti.com/product/bq24153a
  * http://www.ti.com/product/bq24155
  */
-/*<DTS2014070404260 liyuping 20140704 begin */
 //#define DEBUG
-/* DTS2014061605512 liyuping 20140617 end> */
-/* <DTS2014071803033 liyuping 20140724 begin */
 #define pr_fmt(fmt)	"Ti-CHARGER: %s: " fmt, __func__
-/* DTS2014071803033 liyuping 20140724 end> */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -45,92 +41,63 @@
 #include <linux/idr.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
-/* <DTS2014073007208 jiangfei 20140801 begin */
 #include <linux/delay.h>
-/* DTS2014073007208 jiangfei 20140801 end> */
 
 #include <linux/power/bq24152_charger.h>
 
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
-#include <linux/dsm_pub.h>
+/* <DTS201505289999M chendeng 20150603 begin */
+#include <linux/power/huawei_charger.h>
+#include <linux/charger_core.h>
+#ifdef CONFIG_HUAWEI_PMU_DSM
+#include <linux/power/huawei_dsm_charger.h>
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
-/* <DTS2014071803033 liyuping 20140724 begin */
+/* DTS201505289999M chendeng 20150603 end> */
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <linux/hw_dev_dec.h>
 #endif
-/* DTS2014071803033 liyuping 20140724 end> */
-/* < DTS2014072101379  yuanzhen 20140728 begin */
 #include <linux/power/bq27510_bms.h>
-/* DTS2014072101379  yuanzhen 20140728 end > */
-/*<DTS2014070404260 liyuping 20140704 begin */
 #include <linux/batterydata-lib.h>
-/* < DTS2014072101379  yuanzhen 20140728 begin */
 #define STATUS_FULL 4
-/* DTS2014072101379  yuanzhen 20140728 end > */
-/*<DTS2014073008081 liyuping 20140804 begin */
 #define STATUS_DISCHARGING 0
 #define STATUS_CHARGING 1
-/* DTS2014073008081 liyuping 20140804 end> */
-/*<DTS2014080704371 liyuping 20140815 begin */
 /*temperature hysteresis is 2 centigrade*/
 #define TEMP_HYSTERESIS 20
-/*<DTS2015010904246 mapengfei 20150105 begin */
 #define  VOLTAGE_NOW_DEFULT  (1000)
 #define  CURRENT_NOW_DEFULT  (-1)
 #define  CHARGE_FULL_DESIGN_DEFULT  (1500)
 #define  CAPACITY_DEFAULT  (50)
-/* DTS2015010904246 mapengfei 20150105 end> */
 /*default temp is 9 centigrade*/
 #define TEMP_DEFAULT 90
 #define STATUS_MIGRATE 1
 #define STATUS_KEEP 0
+#define TERM_CUR (-100)
+#define CHARGE_FULL_COUNT (30)
 
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
-/* <DTS2015020301877 tanyanying 20150209 begin */
 jeita_spec jeita_batt_param =
 {
 	.normal	= {100,420,1250,4340},
 	.hot.t_high = -1
 };
-/* DTS2015020301877 tanyanying 20150209 end> */
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
-
-/* < DTS2015012009434  tanyanying 20150120 begin */
-#ifdef CONFIG_HUAWEI_HLTHERM_CHARGING_1
-extern int get_high_low_temp_flag(void);
-#endif
-/* DTS2015012009434 tanyanying 20150120 end > */
 static int g_current_config = 0;
 static bool current_config_changed = false;
 static DEFINE_SPINLOCK(current_config_changed_lock);
-/* DTS2014080704371 liyuping 20140815 end> */
 
 static bool user_ctl_status = true;
-/*<DTS2015010904246 mapengfei 20150105 begin */
 #define BAT_CAPACITY_FULL    (100)
 static struct bq2415x_device *g_bq;
 extern int get_true_bms_soc(void);
 extern int get_ui_bms_soc(void);
-/* DTS2015010904246 mapengfei 20150105 end> */
-/*<DTS2014080704371 liyuping 20140815 begin */
+static int factory_diag_flag = 0;
+static int factory_diag_last_current_ma = 0;
 //delete dead code.
-/* DTS2014080704371 liyuping 20140815 end> */
-extern int hot_design_current;
-
+static int bq2415x_set_in_thermal(int val);
 static void bq2415x_set_appropriate_jeita(struct bq2415x_device *bq);
-/*<DTS2014080704371 liyuping 20140815 begin */
 static int jeita_find_running_zone(jeita_entry **r_entry,jeita_spec *batt_param);
-/* DTS2014080704371 liyuping 20140815 end> */
-extern int hot_design_current;
+#define HOT_MAX_CURRENT 1440
+static int hot_current = HOT_MAX_CURRENT;
 /* timeout for resetting chip timer */
 #define BQ2415X_TIMER_TIMEOUT		2
 #define HYSTERTSIS_TIME 20  //sec
-/* < DTS2014080804732 yuanzhen 20140815 begin */
-/* <DTS2014071608042 jiangfei 20140716 begin */
-/* <DTS2014073007208 jiangfei 20140801 begin */
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 #define USB_CURRENT_LIMIT	540
 #define USB_CHARGE_CURRENT	550
 #define CURRENT_LIMIT_100MA	100
@@ -143,16 +110,9 @@ extern int hot_design_current;
 #define BQ24152_REG_0_STAT_MASK		0x30
 #define BQ24152_CHG_STAT_FAULT	3
 #define POOR_INPUT_FAULT_STATUS	3
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
-/* DTS2014073007208 jiangfei 20140801 end> */
-/* DTS2014071608042 jiangfei 20140716 end> */
-/* DTS2014070404260 liyuping 20140704 end> */
 #define CHARGE_CURRENT_STEP	100
-/* DTS2014080804732 yuanzhen 20140815 end > */
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 #define DELAYED_TIME	2500
 #define SLEEP_MODE		2
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 
 #define BQ2415X_REG_STATUS		0x00
 #define BQ2415X_REG_CONTROL		0x01
@@ -209,9 +169,7 @@ extern int hot_design_current;
 #define BQ2415X_SHIFT_VI_TERM		0
 
 
-/*<DTS2014061605512 liyuping 20140617 begin */
 //move code to bq24152_charger.h
-/* DTS2014061605512 liyuping 20140617 end> */
 
 static char *bq2415x_chip_name[] = {
 	"unknown",
@@ -228,9 +186,7 @@ static char *bq2415x_chip_name[] = {
 	"bq24158",
 };
 
-/*<DTS2014061605512 liyuping 20140617 begin */
 //move code to bq24152_charger.h
-/* DTS2014061605512 liyuping 20140617 end> */
 
 /* each registered chip must have unique id */
 static DEFINE_IDR(bq2415x_id);
@@ -239,24 +195,21 @@ static DEFINE_MUTEX(bq2415x_id_mutex);
 static DEFINE_MUTEX(bq2415x_timer_mutex);
 static DEFINE_MUTEX(bq2415x_i2c_mutex);
 
-/* < DTS2015012104961 taohanwen 20150121 begin */
-extern struct qpnp_lbc_chip *g_lbc_chip;
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
 extern struct dsm_client *charger_dclient;
-/*<DTS2015010904246 mapengfei 20150105 begin */
-/* DTS2015010904246 mapengfei 20150105 end> */
-void bq2415x_dump_regs(struct dsm_client *dclient);
-extern int dump_registers_and_adc(struct dsm_client *dclient, struct qpnp_lbc_chip *chip, int type);
-#endif
-/* DTS2015012104961 taohanwen 20150121 end > */
-/* DTS2014062100152 jiangfei 20140623 end> */
-/* <DTS2014073007208 jiangfei 20140801 begin */
-extern int is_usb_chg_exist(void);
-extern int qpnp_lbc_is_in_vin_min_loop(struct qpnp_lbc_chip *chip);
 
+void bq2415x_dump_regs(struct dsm_client *dclient);
+
+#endif
+extern int huawei_charger_get_battery_temperature(void);
+extern int huawei_charger_get_battery_voltage_now(void);
+extern int set_running_test_flag(int value);
+extern int is_usb_chg_exist(void);
+extern int huawei_lbc_is_in_vin_min_loop(void);
+static int bq2415x_enable_charge(int val);
 static int poor_input_enable = 0;
-/* DTS2014073007208 jiangfei 20140801 end> */
+/* DTS201505289999M chendeng 20150603 end> */
 
 /**** i2c read functions ****/
 
@@ -290,9 +243,9 @@ static int bq2415x_i2c_read(struct bq2415x_device *bq, u8 reg)
 	return val;
 }
 
-/* <DTS2015010904246 mapengfei 20150105begin */
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+/* DTS201505289999M chendeng 20150603 end> */
 void bq2415x_dump_regs(struct dsm_client *dclient)
 {
 	int ret = 0;
@@ -309,29 +262,6 @@ void bq2415x_dump_regs(struct dsm_client *dclient)
 	}
 }
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
-
-/*<DTS2014090201517 jiangfei 20140902 begin */
-/*===========================================
-FUNCTION: get_bq2415x_reg_values
-DESCRIPTION: to get bq2415x Reg0 to Reg4 values for NFF log feature
-IPNUT: reg number
-RETURN:	a int value, the value of bq2415x reg
-=============================================*/
-int get_bq2415x_reg_values(u8 reg)
-{
-	int ret = 0;
-	if(g_bq){
-		ret = bq2415x_i2c_read(g_bq, reg);
-		return ret;
-	}else{
-		pr_info("bq_device is not init, do nothing!\n");
-		return -1;
-	}
-}
-EXPORT_SYMBOL(get_bq2415x_reg_values);
-/* DTS2014090201517 jiangfei 20140902 end> */
-/* DTS2015010904246 mapengfei 20150105 end> */
 
 /* read value from register, apply mask and right shift it */
 static int bq2415x_i2c_read_mask(struct bq2415x_device *bq, u8 reg,
@@ -392,18 +322,27 @@ static int bq2415x_i2c_write_mask(struct bq2415x_device *bq, u8 reg, u8 val,
 				  u8 mask, u8 shift)
 {
 	int ret;
+	int rc;
 
 	if (shift > 8)
 		return -EINVAL;
 
 	ret = bq2415x_i2c_read(bq, reg);
 	if (ret < 0)
+	{
+		pr_info("bq24152 i2c read faild!\n");
 		return ret;
+	}
 
 	ret &= ~mask;
 	ret |= val << shift;
 
-	return bq2415x_i2c_write(bq, reg, ret);
+	rc = bq2415x_i2c_write(bq, reg, ret);
+	if(rc < 0)
+	{
+		pr_info("bq24152 i2c write faild!\n");
+	}
+	return rc;
 }
 
 /* change only one bit in register */
@@ -637,7 +576,6 @@ static void bq2415x_reset_chip(struct bq2415x_device *bq)
 
 /**** properties functions ****/
 
-/* <DTS2014071608042 jiangfei 20140716 begin */
 /* set current limit in mA */
 static int bq2415x_set_current_limit(struct bq2415x_device *bq, int mA)
 {
@@ -655,7 +593,6 @@ static int bq2415x_set_current_limit(struct bq2415x_device *bq, int mA)
 	return bq2415x_i2c_write_mask(bq, BQ2415X_REG_CONTROL, val,
 			BQ2415X_MASK_LIMIT, BQ2415X_SHIFT_LIMIT);
 }
-/* DTS2014071608042 jiangfei 20140716 end> */
 
 /* get current limit in mA */
 static int bq2415x_get_current_limit(struct bq2415x_device *bq)
@@ -743,13 +680,11 @@ static int bq2415x_set_charge_current(struct bq2415x_device *bq, int mA)
 		return -ENOSYS;
 
 	val = (mA * bq->init_data.resistor_sense - 37400) / 6800;
-	/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 	/* limit the max charge current as 1150 for msm8916*/
 	if (val < 0)
 		val = 0;
 	else if (val > 6)
 		val = 6;
-	/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 
 	return bq2415x_i2c_write_mask(bq, BQ2415X_REG_CURRENT, val,
 			BQ2415X_MASK_VI_CHRG | BQ2415X_MASK_RESET,
@@ -818,7 +753,6 @@ static int bq2415x_get_termination_current(struct bq2415x_device *bq)
 /* set default values of all properties */
 static int bq2415x_set_defaults(struct bq2415x_device *bq)
 {
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	int rc = 0;
 
 	rc = bq2415x_exec_command(bq, BQ2415X_STAT_PIN_DISABLE);
@@ -853,14 +787,10 @@ static int bq2415x_set_defaults(struct bq2415x_device *bq)
 	bq2415x_set_default_value(bq, battery_regulation_voltage);
 
 	if (bq->init_data.resistor_sense > 0) {
-		/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 		/* remove the code of setting 1.25A charging current when driver init*/
-		/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 		bq2415x_set_default_value(bq, termination_current);
-		/* < DTS2014072101379  yuanzhen 20140728 begin */
 		/* disable termination of charger */
 		rc = bq2415x_exec_command(bq, BQ2415X_CHARGE_TERMINATION_DISABLE);
-		/* DTS2014072101379  yuanzhen 20140728 end > */
 		if(rc < 0)
 		{
 			pr_info("charge termination enable set failed\n");
@@ -874,7 +804,6 @@ static int bq2415x_set_defaults(struct bq2415x_device *bq)
 		pr_info("charge enable set failed\n");
 		return rc;
 	}
-	/* DTS2014062506205 liyuping 20140625 end> */
 	return 0;
 }
 
@@ -920,7 +849,8 @@ static int bq2415x_set_mode(struct bq2415x_device *bq, enum bq2415x_mode mode)
 		break;
 	case BQ2415X_MODE_BOOST: /* Boost mode */
 		dev_dbg(bq->dev, "changing mode to: Boost\n");
-		ret = bq2415x_set_current_limit(bq, 100);
+		ret = bq2415x_set_current_limit(bq, 500);
+
 		break;
 	}
 
@@ -945,8 +875,6 @@ static int bq2415x_set_mode(struct bq2415x_device *bq, enum bq2415x_mode mode)
 
 }
 
-/*<DTS2015010904246 mapengfei 20150105 begin */
-/*<DTS2014072501338 jiangfei 20140725 begin */
 /*===========================================
 FUNCTION: get_bq2415x_fault_status
 DESCRIPTION: to get bq2415x Reg0 fault bits value
@@ -968,9 +896,7 @@ int get_bq2415x_fault_status(void)
 	return error;
 }
 EXPORT_SYMBOL(get_bq2415x_fault_status);
-/* DTS2014072501338 jiangfei 20140725 end> */
 
-/* <DTS2014070701815 jiangfei 20140707 begin */
 /*===========================================
 FUNCTION: is_bq24152_in_boost_mode
 DESCRIPTION:
@@ -988,40 +914,43 @@ int is_bq24152_in_boost_mode(void)
 	ret = bq2415x_exec_command(g_bq, BQ2415X_BOOST_STATUS);
 	if (ret < 0)
 		return ret;
-	if(0 == ret)
-		return 0;
-	if(1 == ret)
-		return 1;
-	return 0;
+	return ((1 == ret) ? 1 : 0);
 }
-EXPORT_SYMBOL(is_bq24152_in_boost_mode);
 
-/* <DTS2014070101099 jiangfei 20140701 begin */
-void notify_bq24152_to_control_otg(bool enable)
+void bq24152_control_otg(struct bq2415x_device *bq, bool enable)
 {
-	int mode = 0;
-	if(g_bq == NULL)
+	if(NULL == bq)
 	{
-		pr_info("%s:device not init,do nothing!\n",__func__);
+		pr_err("%s:device is null,do nothing!\n",__func__);
 		return;
 	}
-	mode = is_bq24152_in_boost_mode();
-	if(enable){
+
+	if (enable == otg_enabled)
+	{
+		pr_info("otg control(otg_enabled = %s) do not change, do nothing!!\n",
+				enable ? "enabled" : "disabled");
+		return;
+	}
+	otg_enabled = enable;
+
+	if (enable == !!(is_bq24152_in_boost_mode()))
+	{
+		pr_info("boost mode (%s) do not change, do nothing!!\n",
+				enable ? "enabled" : "disabled");
+		return;
+	}
+
+	if (enable)
+	{
 		pr_info("bq2415x_set_mode: boost mode, enable=%d\n", enable);
-		if(1 == mode)
-			return;
-		bq2415x_set_mode(g_bq, BQ2415X_MODE_BOOST);
-	}else{
+		bq2415x_set_mode(bq, BQ2415X_MODE_BOOST);
+	}
+	else
+	{
 		pr_info("bq2415x_set_mode: normal mode, enable=%d\n", enable);
-		if(0 == mode)
-			return;
-		bq2415x_set_mode(g_bq, BQ2415X_MODE_OFF);
+		bq2415x_set_mode(bq, BQ2415X_MODE_OFF);
 	}
 }
-EXPORT_SYMBOL(notify_bq24152_to_control_otg);
-/* DTS2014070101099 jiangfei 20140701 end> */
-/* DTS2014070701815 jiangfei 20140707 end> */
-/* DTS2015010904246 mapengfei 20150105 end> */
 
 /* hook function called by other driver which set reported mode */
 static void bq2415x_hook_function(enum bq2415x_mode mode, void *data)
@@ -1069,7 +998,6 @@ static void bq2415x_set_autotimer(struct bq2415x_device *bq, int state)
 }
 
 /* called by bq2415x_timer_work on timer error */
-/* <DTS2014071803033 liyuping 20140724 begin */
 #ifndef CONFIG_HUAWEI_KERNEL
 static void bq2415x_timer_error(struct bq2415x_device *bq, const char *msg)
 {
@@ -1083,92 +1011,43 @@ static void bq2415x_timer_error(struct bq2415x_device *bq, const char *msg)
 }
 #endif
 
-/* DTS2014071803033 liyuping 20140724 end> */
-/*<DTS2015010904246 mapengfei 20150105 begin */
-static void bq2451x_check_charge_status_by_charger(struct bq2415x_device *bq)
-{
-    int rc;
-    if(bq == NULL)
-    {
-        pr_debug("TI chip uninitialized\n");
-        return;
-    }
-    if(!is_usb_chg_exist())
-    {
-        bq->charge_done_flag = 0;
-        return;
-    }
-    if(bq->charge_done_flag==1)
-    {
-        rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_DISABLE);
-        if(rc < 0)
-        {
-            pr_info("disable charger failed\n");
-            return;
-        }
-        pr_debug("charge full, stop charege!\n");
-       if(bq->soc_resume_charging)
-       {
-            bq->charge_done_flag = 0;
-       }
-    }
-    else
-    {
-        rc = bq2415x_exec_command(bq, BQ2415X_HIGH_IMPEDANCE_STATUS);
-        if(rc < 0)
-        {
-            pr_info("get hzmode failed\n");
-            return;
-        }
-        else if(rc == 0)
-        {
-            if(!bq->charge_disable)
-            {
-                //if battery is not full, enable charge
-                rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_ENABLE);
-                if(rc < 0)
-                {
-                    pr_info("charge enable set failed\n");
-                    return;
-                }
-             }
-         }
-         else
-         {
-              pr_info("High impedance mode!\n");
-              bq->charge_done_flag = 0;
-        }
-    }
-}
-/* DTS2015010904246 mapengfei 20150105 end> */
-/* < DTS2014072101379  yuanzhen 20140728 begin */
 /* to check whether charge is done by gasgauge */
+/*solve the problem of recharge condition is not accurate*/
 static void bq2451x_check_charge_status(struct bq2415x_device *bq)
 {
 	int battery_full = 0;
 	int rc;
-/*<DTS2015010904246 mapengfei 20150105 begin */
+	int real_capacity = 0;
+	int term_cur = 0;
+	static int charge_full_count = 0;
+	static int enter_recharge_flag = true;
 	if((g_bq == NULL) || (g_battery_measure_by_bq27510_device == NULL))
 	{
 		pr_debug("TI chip uninitialized\n");
 		return;
 	}
-/* DTS2015010904246 mapengfei 20150105 end> */
-	/*<DTS2014080704371 liyuping 20140815 begin */
 	//remove reduntant code.
-	/* DTS2014080704371 liyuping 20140815 end> */
 	//check if charger is online
 	if(!is_usb_chg_exist())
 	{
 		bq->charge_done_flag = 0;
+		charge_full_count = 0;
+		enter_recharge_flag = true;
 		return;
 	}
 
 	//get battery full status from gasgauge
 	battery_full = is_bq27510_battery_full(g_battery_measure_by_bq27510_device);
+	real_capacity = bq27510_battery_capacity(g_battery_measure_by_bq27510_device);
+	term_cur = -1*bq27510_battery_current(g_battery_measure_by_bq27510_device);
 	if(battery_full)
 	{
-		if( g_battery_measure_by_bq27510_device->capacity == CAPACITY_FULL)
+		if((TERM_CUR < term_cur) && (term_cur < 0))
+		{
+			charge_full_count++;
+		}
+		if(( g_battery_measure_by_bq27510_device->capacity == CAPACITY_FULL) && (real_capacity > CAPACITY_CLEAR_FULL) \
+			&& (enter_recharge_flag == true) && (CHARGE_FULL_COUNT <= charge_full_count))
 		{
 			rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_DISABLE);
 			if(rc < 0)
@@ -1178,10 +1057,24 @@ static void bq2451x_check_charge_status(struct bq2415x_device *bq)
 			}
 			bq->charge_done_flag = 1;
 			pr_debug("charge full, stop charege!\n");
+			enter_recharge_flag = false;
+			charge_full_count = 0;
 		}
+		else if((real_capacity <= CAPACITY_CLEAR_FULL) && (!factory_diag_flag))
+			{
+				rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_ENABLE);
+				if(rc < 0){
+							pr_info("charge enable set failed\n");
+							return;
+						}
+				enter_recharge_flag = true;
+				charge_full_count = 0;
+			}
 	}
 	else
 	{
+		charge_full_count = 0;
+		enter_recharge_flag = true;
 		//check hzmode for running test
 		rc = bq2415x_exec_command(bq, BQ2415X_HIGH_IMPEDANCE_STATUS);
 		if(rc < 0)
@@ -1191,8 +1084,7 @@ static void bq2451x_check_charge_status(struct bq2415x_device *bq)
 		}
 		else if(rc == 0)
 		{
-			/*<DTS2014080704371 liyuping 20140815 begin */
-			if(!bq->charge_disable)
+			if((!bq->charge_disable) && (!factory_diag_flag))
 			{
 				//if battery is not full, enable charge
 				rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_ENABLE);
@@ -1202,14 +1094,11 @@ static void bq2451x_check_charge_status(struct bq2415x_device *bq)
 					return;
 				}
 			}
-			/* DTS2014080704371 liyuping 20140815 end> */
-			/* < DTS2014080603531 yuanzhen 20140806 begin */
 			/* capacity under clear threshold, clear charge done flag */
 			if(g_battery_measure_by_bq27510_device->capacity < CAPACITY_CLEAR_FULL)
 			{
 				bq->charge_done_flag = 0;
 			}
-			/* DTS2014080603531 yuanzhen 20140806 end > */
 		}
 		else
 		{
@@ -1218,7 +1107,6 @@ static void bq2451x_check_charge_status(struct bq2415x_device *bq)
 		}
 	}
 }
-/* DTS2014072101379  yuanzhen 20140728 end > */
 
 /* delayed work function for auto resetting chip timer */
 static void bq2415x_timer_work(struct work_struct *work)
@@ -1228,49 +1116,32 @@ static void bq2415x_timer_work(struct work_struct *work)
 	int ret;
 	int error;
 	int boost;
-	/*<DTS2014070404260 liyuping 20140704 begin */
 	int now_charge_status = -1;
 	static int last_charge_status = -1;
-	/* DTS2014070404260 liyuping 20140704 end> */
-	/* <DTS2014071803033 liyuping 20140724 begin */
 	ret = bq2415x_exec_command(bq, BQ2415X_TIMER_RESET);
 	if (ret < 0) {
-		/* <DTS2014072905230 liyuping 20140729 begin */
 		pr_info("Resetting timer failed %d\n",ret);
-		/* DTS2014072905230 liyuping 20140729 end> */
 	}
 
 	boost = bq2415x_exec_command(bq, BQ2415X_BOOST_MODE_STATUS);
 	if (boost < 0) {
-		/* <DTS2014072905230 liyuping 20140729 begin */
 		pr_info("Unknown boost error %d\n",boost);
-		/* DTS2014072905230 liyuping 20140729 end> */
 	}
 
 	error = bq2415x_exec_command(bq, BQ2415X_FAULT_STATUS);
 	if (error < 0) {
-		/* <DTS2014072905230 liyuping 20140729 begin */
 		pr_info("Unknown error %d\n",error);
-		/* DTS2014072905230 liyuping 20140729 end> */
 	}
-	/* DTS2014071803033 liyuping 20140724 end> */
-	/* <DTS2014062100152 jiangfei 20140623 begin */
-	/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
-#ifdef CONFIG_HUAWEI_DSM
+
 	if(boost && error){
 		pr_err("find boost mode fault! such as overload(OTG OCP), VBUS OVP, VBUS < UVLO,"
 			"battery OVP, thermal shutdown and so on\n");
-		dump_registers_and_adc(charger_dclient,g_lbc_chip,DSM_CHARGER_BQ_BOOST_FAULT_ERROR_NO);
 	}
 
-	if(!boost && error && (SLEEP_MODE != error)){
+	if(!boost && error){
 		pr_err("find charge mode fault! such as poor input source, VBUS OVP, battery is too"
-			"low, timer fault, thermal shutdown and so on\n");
-		dump_registers_and_adc(charger_dclient,g_lbc_chip,DSM_CHARGER_BQ_NORMAL_FAULT_ERROR_NO);
+			"low, timer fault, thermal shutdown and so on\n");	
 	}
-#endif
-	/* DTS2014122601446 zhaoxiaoli 20141227 end> */
-	/* DTS2014062100152 jiangfei 20140623 end> */
 
 	if (boost) {
 		switch (error) {
@@ -1285,8 +1156,6 @@ static void bq2415x_timer_work(struct work_struct *work)
 			break;
 
 		/* Fatal errors, disable and reset chip */
-		/* <DTS2014071803033 liyuping 20140724 begin */
-		/* <DTS2014072905230 liyuping 20140729 begin */
 		case 1: /* Overvoltage protection (chip fried) */
 			pr_info("Overvoltage protection (chip fried)\n");
 			break;
@@ -1302,8 +1171,6 @@ static void bq2415x_timer_work(struct work_struct *work)
 		case 7: /* N/A */
 			pr_info("Unknown error\n");
 			break;
-		/* DTS2014072905230 liyuping 20140729 end> */
-		/* DTS2014071803033 liyuping 20140724 end> */
 		}
 	} else {
 		switch (error) {
@@ -1324,8 +1191,6 @@ static void bq2415x_timer_work(struct work_struct *work)
 			break;
 
 		/* Fatal errors, disable and reset chip */
-		/* <DTS2014071803033 liyuping 20140724 begin */
-		/* <DTS2014072905230 liyuping 20140729 begin */
 		case 1: /* Overvoltage protection (chip fried) */
 			pr_info("Overvoltage protection (chip fried)\n");
 			break;
@@ -1335,33 +1200,17 @@ static void bq2415x_timer_work(struct work_struct *work)
 		case 5: /* Thermal shutdown (too hot) */
 			pr_info("Thermal shutdown (too hot)\n");
 			break;
-		/* DTS2014072905230 liyuping 20140729 end> */
-		/* DTS2014071803033 liyuping 20140724 end> */
 		}
 	}
-	/*<DTS2014070404260 liyuping 20140704 begin */
 	bq2415x_set_appropriate_jeita(bq);
-    /*<DTS2015010904246 mapengfei 20150105 begin */
-	/* < DTS2014072101379  yuanzhen 20140728 begin */
-    if(!bq->use_only_charge)
-    {
-       bq2451x_check_charge_status(bq);
-    }
-    else
-    {
-       bq2451x_check_charge_status_by_charger(bq);
-    }
-	/* DTS2014072101379  yuanzhen 20140728 end > */
-    /* DTS2015010904246 mapengfei 20150105 end> */
+
+	bq2451x_check_charge_status(bq);
 
 	now_charge_status = bq2415x_exec_command(bq, BQ2415X_CHARGE_STATUS);
-	/* < DTS2014072101379  yuanzhen 20140728 begin */
 	if(bq->charge_done_flag)
 	{
 		now_charge_status = STATUS_FULL;
 	}
-	/* DTS2014072101379  yuanzhen 20140728 end > */
-	/*<DTS2014073008081 liyuping 20140804 begin */
 	if(now_charge_status == STATUS_DISCHARGING)
 	{
 		bq->charge_status = POWER_SUPPLY_STATUS_DISCHARGING;
@@ -1370,29 +1219,22 @@ static void bq2415x_timer_work(struct work_struct *work)
 	{
 		bq->charge_status = POWER_SUPPLY_STATUS_CHARGING;
 	}
-	/* DTS2014073008081 liyuping 20140804 end> */
 	//update charge status so that charge icon change.
 	if(now_charge_status != last_charge_status)
 	{
 		power_supply_changed(&bq->charger);
 	}
 	last_charge_status = now_charge_status;
-	/* DTS2014070404260 liyuping 20140704 end> */
 
 	schedule_delayed_work(&bq->work, BQ2415X_TIMER_TIMEOUT * HZ);
 }
 
-/* <DTS2014052906550 liyuping 20140530 begin */
 static void bq2415x_iusb_work(struct work_struct *work)
 {
-	/*<DTS2014062506205 liyuping 20140625 begin */
-	/* <DTS2014071608042 jiangfei 20140716 begin */
 	int rc = 0;
 	struct bq2415x_device *bq = container_of(work, struct bq2415x_device,
 						 iusb_work);
-	/* <DTS2014072905230 liyuping 20140729 begin */
 	pr_info("usb current is %d\n",bq->iusb_limit);
-	/* DTS2014072905230 liyuping 20140729 end> */
 	rc = bq2415x_set_current_limit(bq,bq->iusb_limit);
 	if(rc < 0)
 	{
@@ -1403,12 +1245,9 @@ static void bq2415x_iusb_work(struct work_struct *work)
 		rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_DISABLE);
 		if(rc < 0){
 			pr_info("disable charger failed\n");
-	/*<DTS2014080704371 liyuping 20140815 begin */
 	//remove redundant code
-	/* DTS2014080704371 liyuping 20140815 end> */
 			return;
 		}
-	/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 	}else{
 		/* enable charging otherwise high/cold temperature or high impedance */
 		if((!bq->charge_disable)
@@ -1429,14 +1268,8 @@ static void bq2415x_iusb_work(struct work_struct *work)
 	}
 	msleep(DELAYED_TIME);
 	power_supply_changed(&bq->charger);
-	/* DTS2014122601446 zhaoxiaoli 20141227 end> */
-	/* DTS2014071608042 jiangfei 20140716 end> */
-	/* DTS2014062506205 liyuping 20140625 end> */
 }
-/* DTS2014052906550 liyuping 20140530 end> */
 
-/* < DTS2014080804732 yuanzhen 20140815 begin */
-/* <DTS2014073007208 jiangfei 20140801 begin */
 /*===========================================
 FUNCTION: increase_usb_ma_step
 DESCRIPTION: to increase charge current step by step
@@ -1466,7 +1299,6 @@ static int increase_usb_ma_step(struct bq2415x_device *bq)
 
 	return rc;
 }
-/*<DTS2015010904246 mapengfei 20150105 begin */
 /*===========================================
 FUNCTION: bq2415x_get_charge_type
 DESCRIPTION: get charge type
@@ -1492,7 +1324,14 @@ int bq2415x_get_charge_type(struct bq2415x_device *bq)
     }
     return POWER_SUPPLY_CHARGE_TYPE_NONE;
 }
-/* DTS2015010904246 mapengfei 20150105 end> */
+static bool bq24152_charger_present(void)
+{
+    if(is_bq24152_in_boost_mode()){
+        return false;
+    }else{
+        return (1 == is_usb_chg_exist());
+    }
+}
 
 /*===========================================
 FUNCTION: bq2415x_usb_low_power_work
@@ -1509,11 +1348,9 @@ static void bq2415x_usb_low_power_work(struct work_struct *work)
 	int chg_status = 0, chg_fault = 0;
 	u8 reg_val = 0;
 	union power_supply_propval val = {0};
+	/*delete some lines*/
 
-	if(g_lbc_chip == NULL){
-		pr_info("not init, do nothing!\n");
-		return;
-	}
+
 
 	/* exit when usb absent*/
 	usb_present = is_usb_chg_exist();
@@ -1538,12 +1375,10 @@ static void bq2415x_usb_low_power_work(struct work_struct *work)
 		pr_err("charge current setting failed\n");
 		return;
 	}
-	/*<DTS2014080704371 liyuping 20140815 begin */
 	spin_lock(&current_config_changed_lock);
 	current_config_changed = true;
 	spin_unlock(&current_config_changed_lock);
 	g_current_config = usb_ma;
-	/* DTS2014080704371 liyuping 20140815 end> */
 	/* enable charging otherwise high temperature or high impedance */
 	if((!bq->charge_disable) 
 		&& (!bq2415x_exec_command(bq, BQ2415X_HIGH_IMPEDANCE_STATUS)))
@@ -1556,24 +1391,9 @@ static void bq2415x_usb_low_power_work(struct work_struct *work)
 	}
 
 	/* Get battery voltage in mV*/
-/*<DTS2015010904246 mapengfei 20150105 begin */
-    if(bq->use_only_charge)
-    {
-       if (bq->qcom_charger_psy){
-       rc = bq->qcom_charger_psy->get_property(bq->qcom_charger_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val);
-        }
-        else{
-           val.intval=VOLTAGE_NOW_DEFULT;
-           pr_info("get battery voltage default %d\n",val.intval);
-        }
-    }
-    else
-    {
-        if (bq->ti_bms_psy){
-        rc = bq->ti_bms_psy->get_property(bq->ti_bms_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val);
-        }
-    }
-/* DTS2015010904246 mapengfei 20150105 end> */
+	if (bq->ti_bms_psy){
+		rc = bq->ti_bms_psy->get_property(bq->ti_bms_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val);
+	}
 	vbatt = val.intval /1000;
 
 	/* if battery voltage low, use default current to charge */
@@ -1605,17 +1425,15 @@ static void bq2415x_usb_low_power_work(struct work_struct *work)
 		/* Increase charge current by step 100mA, from 550mA to 1250mA,*/
 		increase_usb_ma_step(bq);
 
-		/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 		msleep(200);
 
 		/* check vin_min status */
-		if(qpnp_lbc_is_in_vin_min_loop(g_lbc_chip)){
+		if(huawei_lbc_is_in_vin_min_loop()){
 			pr_info("charger is in vin_min loop! final charge_current = %d\n", usb_ma);
 			bq2415x_set_charge_current(bq, USB_CHARGE_CURRENT);
 			msleep(200);
 			break;
 		}
-		/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 
 		/* Read Reg0 bit0 to bit3(fault status) and bit 4 to bit5(chg_sts) */
 		reg_val = bq2415x_i2c_read(bq, BQ2415X_REG_STATUS);
@@ -1638,13 +1456,12 @@ static void bq2415x_usb_low_power_work(struct work_struct *work)
 	}
 
 	/*Set output current for DCP charger*/
-	rc = bq2415x_set_charge_current(bq, min(usb_ma, hot_design_current));
+	rc = bq2415x_set_charge_current(bq, min(usb_ma, hot_current));
 	if(rc < 0){
 		pr_err("set charge current failed\n");
 		return;
 	}
 
-	/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 	/* disable stat pin for turn off the led */
 	rc = bq2415x_exec_command(bq, BQ2415X_STAT_PIN_DISABLE);
 	if(rc < 0)
@@ -1652,26 +1469,19 @@ static void bq2415x_usb_low_power_work(struct work_struct *work)
 		pr_info("disable pin failed\n");
 		return;
 	}
-	/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 
-	/*<DTS2014080704371 liyuping 20140815 begin */
 	spin_lock(&current_config_changed_lock);
 	current_config_changed = true;
 	spin_unlock(&current_config_changed_lock);
-	g_current_config = min(usb_ma, hot_design_current);
-	/* DTS2014080704371 liyuping 20140815 end> */
+	g_current_config = min(usb_ma, hot_current);
 }
-/* DTS2014073007208 jiangfei 20140801 end> */
-/* DTS2014080804732 yuanzhen 20140815 end > */
 
 /**** power supply interface code ****/
-/*<DTS2015010904246 mapengfei 20150105 begin */
-/* <DTS2014072905230 liyuping 20140729 begin */
+
 static enum power_supply_property bq2415x_power_supply_props[] = {
 	/* TODO: maybe add more power supply properties */
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_MODEL_NAME,
-/* <DTS2014052906550 liyuping 20140530 begin */
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
@@ -1679,40 +1489,33 @@ static enum power_supply_property bq2415x_power_supply_props[] = {
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
-/* DTS2014052906550 liyuping 20140530 end> */
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-/*<DTS2014080807172 jiangfei 20140813 begin */
 	POWER_SUPPLY_PROP_TECHNOLOGY,
-/* DTS2014080807172 jiangfei 20140813 end> */
     POWER_SUPPLY_PROP_CHARGE_TYPE,
     POWER_SUPPLY_PROP_RESUME_CHARGING,
+    POWER_SUPPLY_PROP_RUNNING_TEST_STATUS,
+    POWER_SUPPLY_PROP_FACTORY_DIAG,
+    POWER_SUPPLY_PROP_HOT_IBAT_LIMIT,
+    
 };
-	/* DTS2014072905230 liyuping 20140729 end> */
-
 static int bq2415x_power_supply_get_property(struct power_supply *psy,
 					     enum power_supply_property psp,
 					     union power_supply_propval *val)
 {
 	struct bq2415x_device *bq = container_of(psy, struct bq2415x_device,
 						 charger);
-	/* <DTS2014052906550 liyuping 20140530 begin */
 	int ret = 0;
-    int result=0;
-	/* DTS2014052906550 liyuping 20140530 end> */
+	int result=0;
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		result = bq2415x_exec_command(bq, BQ2415X_CHARGE_STATUS);
-        /* < DTS2015011506075 zhaoxiaoli 20150115 begin */
 		if (result < 0)
 		{
-            pr_err("bq24152 get charge status error\n");
+			pr_err("bq24152 get charge status error\n");
 			return result;
 		}
-        /* DTS2015011506075 zhaoxiaoli 20150115 end > */
-		/*<DTS2014072501338 jiangfei 20140725 begin */
 		else if (result == 0) /* Ready */
 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-		/* DTS2014072501338 jiangfei 20140725 end> */
 		else if (result == 1) /* Charge in progress */
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 		else if (result == 2) /* Charge done */
@@ -1720,26 +1523,6 @@ static int bq2415x_power_supply_get_property(struct power_supply *psy,
 		else
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 
-
-        if(bq->use_only_charge)
-        {
-            if(bq->qcom_bms_psy)
-            {
-               pr_debug("get real soc :%d\n",get_true_bms_soc());
-               if((BAT_CAPACITY_FULL==get_true_bms_soc())&&is_usb_chg_exist())
-               {
-                   bq->charge_done_flag=1;
-               }
-               if((bq->charge_done_flag)||((get_ui_bms_soc()==BAT_CAPACITY_FULL)&&is_usb_chg_exist()))
-               {
-                   val->intval = POWER_SUPPLY_STATUS_FULL;
-               }
-            }
-        }
-        else
-        {
-		/* < DTS2014072101379  yuanzhen 20140728 begin */
-		/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 		if(bq->charge_done_flag \
 			|| ((g_battery_measure_by_bq27510_device == NULL ? 0 \
 				: g_battery_measure_by_bq27510_device->capacity == CAPACITY_FULL) \
@@ -1747,206 +1530,75 @@ static int bq2415x_power_supply_get_property(struct power_supply *psy,
 		{
 			val->intval = POWER_SUPPLY_STATUS_FULL;
 		}
-		/* DTS2014122601446 zhaoxiaoli 20141227 end> */
-		/* DTS2014072101379  yuanzhen 20140728 end > */
-       }
 		break;
 	case POWER_SUPPLY_PROP_MODEL_NAME:
 		val->strval = bq->model;
 		ret = 0;
 		break;
-	/* <DTS2014052906550 liyuping 20140530 begin */
 	case POWER_SUPPLY_PROP_TEMP:
-        if(!bq->use_only_charge)
-        {
-          if (bq->ti_bms_psy)
-          {
+		if (bq->ti_bms_psy)
 			ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_TEMP,val);
-          }
-          else
-          {
-             val->intval = TEMP_DEFAULT;
-               pr_info("get   error status :%d\n",val->intval);
-          }
-        }
-        else
-        {
-            if (bq->qcom_charger_psy)
-            {
-               ret = bq->qcom_charger_psy->get_property(bq->qcom_charger_psy,POWER_SUPPLY_PROP_TEMP,val);
-            }
-           else
-           {
-             val->intval = TEMP_DEFAULT;
-               pr_info("get   error status :%d\n",val->intval);
-           }
-        }
-		 break;
+		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-        if(!bq->use_only_charge)
-        {
-             if (bq->ti_bms_psy)
-             {
-                ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_VOLTAGE_NOW,val);
-             }
-           else
-           {
-             val->intval = VOLTAGE_NOW_DEFULT;
-               pr_info("get   error status :%d\n",val->intval);
-           }
-        }
-        else
-        {
-           if (bq->qcom_charger_psy)
-           {
-              ret = bq->qcom_charger_psy->get_property(bq->qcom_charger_psy,POWER_SUPPLY_PROP_VOLTAGE_NOW,val);
-           }
-           else
-           {
-             val->intval = VOLTAGE_NOW_DEFULT;
-               pr_info("get   error status :%d\n",val->intval);
-           }
-        }
+		if (bq->ti_bms_psy)
+			ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_VOLTAGE_NOW,val);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-        if(!bq->use_only_charge)
-        {
-            if (bq->ti_bms_psy){
-             ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_CURRENT_NOW,val);
-            }
-           else
-           {
-               val->intval = CURRENT_NOW_DEFULT;
-               pr_info("get   error status :%d\n",val->intval);
-           }
-        }
-        else
-        {
-           if (bq->qcom_bms_psy)
-           {
-            ret = bq->qcom_bms_psy->get_property(bq->qcom_bms_psy,POWER_SUPPLY_PROP_CURRENT_NOW,val);
-           }
-           else
-           {
-             val->intval = CURRENT_NOW_DEFULT;
-               pr_info("get   error status :%d\n",val->intval);
-           }
-        }
+		if (bq->ti_bms_psy)
+			ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_CURRENT_NOW,val);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-        if(!bq->use_only_charge)
-        {
-            if (bq->ti_bms_psy)
-               ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_HEALTH,val);
-		/* <DTS2014061303728 liyuping 20140613 begin */
+		if (bq->ti_bms_psy)
+			ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_HEALTH,val);
 		//if ti fuel gauge is not ready,val return UNKNOWN.
-            else
-            val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
-        }
-        else
-        {
-           if (bq->qcom_charger_psy)
-            {
-                ret = bq->qcom_charger_psy->get_property(bq->qcom_charger_psy,POWER_SUPPLY_PROP_HEALTH,val);
-            }
-           else
-           {
-            val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
-            pr_info("get   error status :%d\n",val->intval);
-           }
-        }
-		/* DTS2014061303728 liyuping 20140613 end> */
+		else
+			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
-		if(bq->qcom_charger_psy)
-			ret = bq->qcom_charger_psy->get_property(bq->qcom_charger_psy,POWER_SUPPLY_PROP_PRESENT,val);
-		/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
-		/* if qcom_charger_psy is not ready, should return 1(present in default) */
-		else
-			val->intval = 1;
-		/* DTS2014122601446 zhaoxiaoli 20141227 end> */
+		/* <DTS201505289999M chendeng 20150603 begin */
+		val->intval = huawei_charger_battery_is_exist();
+		/* DTS201505289999M chendeng 20150603 end> */
 		break;
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		val->intval= bq2415x_exec_command(bq,BQ2415X_CHARGER_STATUS);
 		ret = 0;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-        if(!bq->use_only_charge)
-        {
-            if(bq->ti_bms_psy){
-              ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_CAPACITY,val);
-            }
-            else
-            {
-               val->intval=CAPACITY_DEFAULT;
-               pr_info("get   error status :%d\n",val->intval);
-            }
-         }
-        else
-        {
-            if(bq->qcom_bms_psy)
-            {
-               ret = bq->qcom_bms_psy->get_property(bq->qcom_bms_psy,POWER_SUPPLY_PROP_CAPACITY,val);
-            }
-            else
-            {
-              val->intval=CAPACITY_DEFAULT;
-               pr_info("get   error status :%d\n",val->intval);
-            }
-        }
-        if(bq->charge_done_flag)
-        {
-             val->intval = BAT_CAPACITY_FULL;
-        }
+		if(bq->ti_bms_psy)
+			ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_CAPACITY,val);
+		if(bq->charge_done_flag)
+		{
+			val->intval = BAT_CAPACITY_FULL;
+		}
 		break;
-	/* DTS2014052906550 liyuping 20140530 end> */
-	/* <DTS2014072905230 liyuping 20140729 begin */
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-        if(!bq->use_only_charge)
-        {
-           if(bq->ti_bms_psy)
-           {
-               ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,val);
-           }
-           else
-           {
-               val->intval = CHARGE_FULL_DESIGN_DEFULT;
-               pr_info("get   error status :%d\n",val->intval);
-           }
-        }
-       else
-       {
-           if(bq->qcom_bms_psy)
-             {
-                ret = bq->qcom_bms_psy->get_property(bq->qcom_bms_psy,POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,val);
-             }
-            else
-            {
-               val->intval = CHARGE_FULL_DESIGN_DEFULT;
-               pr_info("get   error status :%d\n",val->intval);
-            }
-       }
+		if(bq->ti_bms_psy)
+			ret = bq->ti_bms_psy->get_property(bq->ti_bms_psy,POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,val);
 		break;
-	/* DTS2014072905230 liyuping 20140729 end> */
-	/*<DTS2014080807172 jiangfei 20140813 begin */
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LIPO;
 		break;
-	/* DTS2014080807172 jiangfei 20140813 end> */
-    case POWER_SUPPLY_PROP_CHARGE_TYPE:
-        val->intval = bq2415x_get_charge_type(bq);
-        break;
-    case POWER_SUPPLY_PROP_RESUME_CHARGING:
-         val->intval = bq->soc_resume_charging;
-     break;
+	case POWER_SUPPLY_PROP_CHARGE_TYPE:
+		val->intval = bq2415x_get_charge_type(bq);
+		break;
+	case POWER_SUPPLY_PROP_RESUME_CHARGING:
+		val->intval = bq->soc_resume_charging;
+		break;
+	case POWER_SUPPLY_PROP_HOT_IBAT_LIMIT:
+		val->intval = hot_current;
+	break;
+	case POWER_SUPPLY_PROP_RUNNING_TEST_STATUS:
+		val->intval = get_running_test_status();
+		break;
+	case POWER_SUPPLY_PROP_FACTORY_DIAG:
+		val->intval = !(factory_diag_flag);
+		break;
 	default:
-        ret = -EINVAL;
-        break;
+		ret = -EINVAL;
+		break;
 	}
 	return ret;
 }
-
-/* <DTS2014052906550 liyuping 20140530 begin */
 static int bq2415x_power_supply_set_property(struct power_supply *psy,
 				enum power_supply_property psp,
 				const union power_supply_propval *val)
@@ -1956,51 +1608,40 @@ static int bq2415x_power_supply_set_property(struct power_supply *psy,
 	int rc = 0;
 
 	switch (psp) {
-	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		/* <DTS2014082301223 liyuping 20140823 begin */
-		if(bq->iusb_limit == val->intval)
-		{
-			pr_debug("ignore current setting %d\n",val->intval);
-			break;
-		}
-		/* DTS2014082301223 liyuping 20140823 end> */
-		bq->iusb_limit = val->intval;
-		/* < DTS2014080804732 yuanzhen 20140815 begin */
-		/* <DTS2014073007208 jiangfei 20140801 begin */
-		if(bq->iusb_limit <= USB_CURRENT_LIMIT){
-			schedule_work(&bq->iusb_work);
-		}else{
-			schedule_delayed_work(&bq->lower_power_charger_work, 0);
-		}
-		/* DTS2014073007208 jiangfei 20140801 end> */
-		/* DTS2014080804732 yuanzhen 20140815 end > */
-		break;
+
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-		/*<DTS2014072501338 jiangfei 20140725 begin */
-		if(val->intval)
+		bq->charging_disabled = !(val->intval);
+		pr_info("set charging_enabled value is %d\n",val->intval);
+		set_running_test_flag(bq->charging_disabled);
+		if(!bq->charging_disabled)
 			rc = bq2415x_exec_command(bq, BQ2415X_HIGH_IMPEDANCE_DISABLE);
 		else
 			rc = bq2415x_exec_command(bq, BQ2415X_HIGH_IMPEDANCE_ENABLE);
-		/* DTS2014072501338 jiangfei 20140725 end> */
-		/*<DTS2014070404260 liyuping 20140704 begin */
 		user_ctl_status = val->intval;
-		/* DTS2014070404260 liyuping 20140704 end> */
 		break;
-    case POWER_SUPPLY_PROP_RESUME_CHARGING:
-            bq->soc_resume_charging = val->intval;
-      break;
+	case POWER_SUPPLY_PROP_RESUME_CHARGING:
+		bq->soc_resume_charging = val->intval;
+		break;
+	case POWER_SUPPLY_PROP_HOT_IBAT_LIMIT:
+		bq2415x_set_in_thermal(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_FACTORY_DIAG:
+		bq2415x_enable_charge(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_STATUS:
 	case POWER_SUPPLY_PROP_COOL_TEMP:
 	case POWER_SUPPLY_PROP_WARM_TEMP:
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN:
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
+		pr_info("bq24152 no need to set this prop: %d\n",psp);
+		break;
 	default:
-        rc = -EINVAL;
-        break;
+		rc = -EINVAL;
+		break;
 	}
 	return rc;
 }
-
 static int bq2415x_property_is_writeable(struct power_supply *psy,
 					enum power_supply_property psp)
 {
@@ -2013,6 +1654,8 @@ static int bq2415x_property_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
     case POWER_SUPPLY_PROP_RESUME_CHARGING:
+	case POWER_SUPPLY_PROP_FACTORY_DIAG:
+    case POWER_SUPPLY_PROP_HOT_IBAT_LIMIT:		
 		return 1;
 	default:
 		break;
@@ -2020,46 +1663,93 @@ static int bq2415x_property_is_writeable(struct power_supply *psy,
 
 	return 0;
 }
+static void set_charging_by_current_limit(struct bq2415x_device *bq)
+{
+		if(bq->iusb_limit <= USB_CURRENT_LIMIT){
+			schedule_work(&bq->iusb_work);
+		}else{
+			schedule_delayed_work(&bq->lower_power_charger_work, 0);
+		}
+}
+#define OTG_RETRY_ENABLE_DELAY_MS	10
+#define OTG_RETRY_ERR_COUNT			3
+extern bool get_usb_id_status(void);
+static void check_otg_id_work(struct work_struct *work)
+{
+	struct bq2415x_device *bq = container_of(work, struct bq2415x_device,
+						 otg_id_check_work.work);
+	static unsigned int otg_err_count = 0;
+	if (get_usb_id_status() == true)
+	{
+		otg_err_count = 0;
+		return;
+	}
 
+	if (otg_err_count >= OTG_RETRY_ERR_COUNT)
+	{
+		pr_info("retry time out, open otg failed\n");
+		otg_err_count = 0;
+		return;
+	}
+
+	otg_err_count++;
+	pr_info("retry to open otg, count is %d\n", otg_err_count);
+	bq24152_control_otg(bq, true);
+}
 static void bq2415x_external_power_changed(struct power_supply *psy)
 {
 	struct bq2415x_device *bq = container_of(psy, struct bq2415x_device,
 								charger);
 	unsigned long flags;
+	int current_ma = 0, charger_present = 0;
+	int usb_present = 0;
+	union power_supply_propval ret = {0,};
 	spin_lock_irqsave(&bq->ibat_change_lock, flags);
-/* <DTS2015010904246 mapengfei 20140110 begin */
-    if(!bq->use_only_charge)
-    {
-       if (!bq->ti_bms_psy)
-          bq->ti_bms_psy = power_supply_get_by_name("ti-bms");
-    }
-    else
-    {
-      if (!bq->qcom_bms_psy)
-        bq->qcom_bms_psy = power_supply_get_by_name("bms");
-    }
-    /* DTS2015010904246 mapengfei  20150110 end> */
-	if (!bq->qcom_charger_psy)
-		bq->qcom_charger_psy = power_supply_get_by_name("battery");
+	
+	if (!bq->ti_bms_psy)
+		bq->ti_bms_psy = power_supply_get_by_name("ti-bms");
+	
+	/* <DTS201505289999M chendeng 20150603 begin */
+	/* Delete qcom_charger_psy */
+	/* DTS201505289999M chendeng 20150603 end> */
 
 	spin_unlock_irqrestore(&bq->ibat_change_lock, flags);
-
+	usb_present = is_usb_chg_exist();
+	if ((usb_present == 0))
+	{
+		schedule_delayed_work(&bq->otg_id_check_work,
+				msecs_to_jiffies(OTG_RETRY_ENABLE_DELAY_MS));
+	}
+	charger_present = bq24152_charger_present();
+	if(charger_present)
+	{
+		bq->usb_psy->get_property(bq->usb_psy,
+									POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
+		current_ma = ret.intval / 1000;
+		current_ma = min(current_ma, hot_current);
+		if(current_ma != bq->iusb_limit)
+		{
+			mutex_lock(&bq->current_change_lock);
+			bq->iusb_limit = current_ma;
+			mutex_unlock(&bq->current_change_lock);
+			pr_info("get iusb_limit :%d\n",bq->iusb_limit);
+			set_charging_by_current_limit(bq);
+		}
+	}
 }
-
 static char *bq2415x_supplied_to[] = {
 	"ti-bms",
      "bms"
 };
-/* DTS2015010904246 mapengfei 20150110 end> */
-/* DTS2014052906550 liyuping 20140530 end> */
 static int bq2415x_power_supply_init(struct bq2415x_device *bq)
 {
 	int ret;
 	int chip;
 	char revstr[8];
 
-	/* <DTS2014052906550 liyuping 20140530 begin */
-	bq->charger.name = "ti-charger";
+	/* <DTS201505289999M chendeng 20150603 begin */
+	bq->charger.name = "battery";
+	/* DTS201505289999M chendeng 20150603 end> */
 	bq->charger.type = POWER_SUPPLY_TYPE_BATTERY;
 	bq->charger.properties = bq2415x_power_supply_props;
 	bq->charger.num_properties = ARRAY_SIZE(bq2415x_power_supply_props);
@@ -2069,7 +1759,6 @@ static int bq2415x_power_supply_init(struct bq2415x_device *bq)
 	bq->charger.external_power_changed = bq2415x_external_power_changed;
 	bq->charger.supplied_to = bq2415x_supplied_to;
 	bq->charger.num_supplicants =ARRAY_SIZE(bq2415x_supplied_to);
-	/* DTS2014052906550 liyuping 20140530 end> */
 
 	ret = bq2415x_detect_chip(bq);
 	if (ret < 0)
@@ -2078,12 +1767,10 @@ static int bq2415x_power_supply_init(struct bq2415x_device *bq)
 		chip = ret;
 
 	ret = bq2415x_detect_revision(bq);
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	if (ret < 0)
 		strncpy(revstr, "unknown",sizeof revstr);
 	else
 		snprintf(revstr,sizeof revstr, "1.%d", ret);
-	/* DTS2014062506205 liyuping 20140625 end> */
 
 	bq->model = kasprintf(GFP_KERNEL,
 				"chip %s, revision %s, vender code %.3d",
@@ -2140,9 +1827,7 @@ static ssize_t bq2415x_sysfs_show_status(struct device *dev,
 	ret = bq2415x_exec_command(bq, command);
 	if (ret < 0)
 		return ret;
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	return snprintf(buf, PAGE_SIZE,"%d\n", ret);
-	/* DTS2014062506205 liyuping 20140625 end> */
 }
 
 /*
@@ -2182,14 +1867,12 @@ static ssize_t bq2415x_sysfs_show_timer(struct device *dev,
 	struct bq2415x_device *bq = container_of(psy, struct bq2415x_device,
 						 charger);
 
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	if (bq->timer_error)
 		return snprintf(buf, PAGE_SIZE,"%s\n", bq->timer_error);
 
 	if (bq->autotimer)
 		return snprintf(buf, PAGE_SIZE,"auto\n");
 	return snprintf(buf, PAGE_SIZE,"off\n");
-	/* DTS2014062506205 liyuping 20140625 end> */
 }
 
 /*
@@ -2253,7 +1936,6 @@ static ssize_t bq2415x_sysfs_set_mode(struct device *dev,
 	return count;
 }
 
-/*<DTS2014072301355 jiangfei 20140723 begin */
 /* show mode entry (auto, none, host, dedicated or boost) */
 static ssize_t bq2415x_sysfs_show_mode(struct device *dev,
 				       struct device_attribute *attr,
@@ -2288,12 +1970,9 @@ static ssize_t bq2415x_sysfs_show_mode(struct device *dev,
 	if (bq->automode > 0)
 		ret += snprintf(buf+ret, PAGE_SIZE, ")");
 
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	ret += snprintf(buf+ret, PAGE_SIZE,"\n");
-	/* DTS2014062506205 liyuping 20140625 end> */
 	return ret;
 }
-/* DTS2014072301355 jiangfei 20140723 end> */
 /* show reported_mode entry (none, host, dedicated or boost) */
 static ssize_t bq2415x_sysfs_show_reported_mode(struct device *dev,
 						struct device_attribute *attr,
@@ -2306,7 +1985,6 @@ static ssize_t bq2415x_sysfs_show_reported_mode(struct device *dev,
 	if (bq->automode < 0)
 		return -EINVAL;
 
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	switch (bq->reported_mode) {
 	case BQ2415X_MODE_OFF:
 		return snprintf(buf, PAGE_SIZE,"off\n");
@@ -2318,15 +1996,12 @@ static ssize_t bq2415x_sysfs_show_reported_mode(struct device *dev,
 		return snprintf(buf, PAGE_SIZE,"dedicated\n");
 	case BQ2415X_MODE_BOOST:
 		return snprintf(buf, PAGE_SIZE,"boost\n");
-	/* DTS2014062506205 liyuping 20140625 end> */
 	}
 
 	return -EINVAL;
 }
 
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	//remove redundant code
-	/* DTS2014062506205 liyuping 20140625 end> */
 /* print value of chip register, format: 'register=value' */
 static ssize_t bq2415x_sysfs_print_reg(struct bq2415x_device *bq,
 				       u8 reg,
@@ -2334,13 +2009,9 @@ static ssize_t bq2415x_sysfs_print_reg(struct bq2415x_device *bq,
 {
 	int ret = bq2415x_i2c_read(bq, reg);
 
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	if (ret < 0)
 		return snprintf(buf, PAGE_SIZE, "%#.2x=error %d\n", reg, ret);	
-	/*<DTS2014061605512 liyuping 20140617 begin */
 	return snprintf(buf, PAGE_SIZE, "%#.2x ", ret);
-	/* DTS2014062506205 liyuping 20140625 end> */
-	/* DTS2014061605512 liyuping 20140617 end> */
 }
 
 /* show all raw values of chip register, format per line: 'register=value' */
@@ -2358,11 +2029,7 @@ static ssize_t bq2415x_sysfs_show_registers(struct device *dev,
 	ret += bq2415x_sysfs_print_reg(bq, BQ2415X_REG_VOLTAGE, buf+ret);
 	ret += bq2415x_sysfs_print_reg(bq, BQ2415X_REG_VENDER, buf+ret);
 	ret += bq2415x_sysfs_print_reg(bq, BQ2415X_REG_CURRENT, buf+ret);
-	/*<DTS2014061605512 liyuping 20140617 begin */
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	ret += snprintf(buf+ret, PAGE_SIZE,"\n");
-	/* DTS2014062506205 liyuping 20140625 end> */
-	/* DTS2014061605512 liyuping 20140617 end> */
 	return ret;
 }
 
@@ -2424,9 +2091,7 @@ static ssize_t bq2415x_sysfs_show_limit(struct device *dev,
 
 	if (ret < 0)
 		return ret;
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	return snprintf(buf, PAGE_SIZE,"%d\n", ret);
-	/* DTS2014062506205 liyuping 20140625 end> */
 }
 
 /* set *_enable entries */
@@ -2491,9 +2156,7 @@ static ssize_t bq2415x_sysfs_show_enable(struct device *dev,
 	ret = bq2415x_exec_command(bq, command);
 	if (ret < 0)
 		return ret;
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	return snprintf(buf, PAGE_SIZE, "%d\n", ret);
-	/* DTS2014062506205 liyuping 20140625 end> */
 }
 
 static DEVICE_ATTR(current_limit, S_IWUSR | S_IRUGO,
@@ -2523,10 +2186,8 @@ static DEVICE_ATTR(mode, S_IWUSR | S_IRUGO,
 static DEVICE_ATTR(timer, S_IWUSR | S_IRUGO,
 		bq2415x_sysfs_show_timer, bq2415x_sysfs_set_timer);
 
-/*<DTS2014062506205 liyuping 20140625 begin */
 static DEVICE_ATTR(registers, S_IWUSR | S_IRUGO,
 		bq2415x_sysfs_show_registers, NULL);
-/* DTS2014062506205 liyuping 20140625 end> */
 
 static DEVICE_ATTR(otg_status, S_IRUGO, bq2415x_sysfs_show_status, NULL);
 static DEVICE_ATTR(charge_status, S_IRUGO, bq2415x_sysfs_show_status, NULL);
@@ -2562,12 +2223,11 @@ static struct attribute *bq2415x_sysfs_attributes[] = {
 	NULL,
 };
 
-/*<DTS2014070404260 liyuping 20140704 begin */
-/*<DTS2014080704371 liyuping 20140815 begin */
 static int jeita_param_init_check(jeita_spec *batt_param)
 {
 	if(!batt_param)
 	{
+		pr_info("jeita param init encounter bad address\n");
 		return -EFAULT;
 	}
 
@@ -2601,6 +2261,7 @@ static int jeita_select_zone(jeita_entry **r_entry,int temp,jeita_spec *batt_par
 
 	if(!entry || !r_entry)
 	{
+		pr_info("jeita select zone encounter bad address\n");
 		return -EFAULT;
 	}
 
@@ -2610,14 +2271,6 @@ static int jeita_select_zone(jeita_entry **r_entry,int temp,jeita_spec *batt_par
 			break;
 	}
 
-/* < DTS2015012009434 tanyanying 20150120 begin */
-#ifdef CONFIG_HUAWEI_HLTHERM_CHARGING_1
-	if(get_high_low_temp_flag())
-	{
-		i = NORMAL;
-	}
-#endif
-/* DTS2015012009434 tanyanying 20150120 end > */
 	if(i < ZONE_MAX)
 	{
 		*r_entry = entry + i;
@@ -2639,6 +2292,7 @@ static int jeita_find_running_zone(jeita_entry **r_entry,jeita_spec *batt_param)
 
 	if(!entry || !r_entry)
 	{
+		pr_info("jeita find running zone encounter bad address\n");
 		return -EFAULT;
 	}
 
@@ -2677,35 +2331,19 @@ static int jeita_check_status_migrate(jeita_entry **r_selected_zone, jeita_entry
 	jeita_param_init_check(batt_param);
 	jeita_find_running_zone(&running_zone,batt_param);
 	*r_running_zone = running_zone;
-/*< DTS2015010904246 mapengfei 20150110 start */
-    if(!g_bq->use_only_charge)
-    {
-	   if(g_battery_measure_by_bq27510_device)
-	   {
-		    union power_supply_propval val;
-		    g_battery_measure_by_bq27510_device->ti_bms_psy.get_property( \
-			    &g_battery_measure_by_bq27510_device->ti_bms_psy,POWER_SUPPLY_PROP_TEMP,&val);
-		    temp = val.intval;
-	   }
-	   else
-	   {
-		    temp = TEMP_DEFAULT;
-       }
-    }
-    else
-    {
-       if (g_bq->qcom_charger_psy)
-       {
-            union power_supply_propval val;
-            g_bq->qcom_charger_psy->get_property(g_bq->qcom_charger_psy,POWER_SUPPLY_PROP_TEMP,&val);
-            temp = val.intval;
-       }
-       else
-       {
-          temp = TEMP_DEFAULT;
-       }
-    }
-/* DTS2015010904246 mapengfei  20150110 end> */
+
+	if(g_battery_measure_by_bq27510_device)
+	{
+		union power_supply_propval val;
+		g_battery_measure_by_bq27510_device->ti_bms_psy.get_property( \
+			&g_battery_measure_by_bq27510_device->ti_bms_psy,POWER_SUPPLY_PROP_TEMP,&val);
+		temp = val.intval;
+	}
+	else
+	{
+		temp = TEMP_DEFAULT;
+	}
+
 	pr_debug("current temp is [%d]\n",temp);
 
 	jeita_select_zone(&selected_zone,temp,batt_param);
@@ -2757,12 +2395,10 @@ static void bq2415x_set_appropriate_jeita(struct bq2415x_device *bq)
 		pr_debug("need jeita adjust\n");
 
 		/* cold or hot, stop charging directly,ignore IUSB worker, LOW_POWER worker current setting */
-		/* <DTS2014123119209 zhaoxiaoli 20141231 begin */
 		if(NULL == selected_zone)
 		{
-		    return;
+			return;
 		}
-		/* DTS2014123119209 zhaoxiaoli 20141231 end> */
 		if(!selected_zone->i_max)
 		{
 			ret = bq2415x_exec_command(bq,BQ2415X_CHARGER_DISABLE);
@@ -2783,7 +2419,7 @@ static void bq2415x_set_appropriate_jeita(struct bq2415x_device *bq)
 		if(user_ctl_status)
 		{
 			ret = bq2415x_set_charge_current(bq, \
-				min(min(selected_zone->i_max,hot_design_current),g_current_config));
+				min(min(selected_zone->i_max,hot_current),g_current_config));
 			if(ret < 0)
 				pr_err("set charge current failed\n");
 
@@ -2803,23 +2439,16 @@ static void bq2415x_set_appropriate_jeita(struct bq2415x_device *bq)
 			running_zone->selected = 0;
 			selected_zone->selected = 1;
 			selected_zone->last_zone = running_zone;
-
 			pr_debug("adjust current %d voltage %d\n", \
-				min(min(selected_zone->i_max,hot_design_current),g_current_config), \
+				min(min(selected_zone->i_max,hot_current),g_current_config), \
 				selected_zone->v_max);
 		}
 	}
 }
-/* DTS2014080704371 liyuping 20140815 end> */
-/* DTS2014072101379  yuanzhen 20140728 end > */
-/* DTS2014072301355 jiangfei 20140723 end> */
-/* DTS2014070404260 liyuping 20140704 end> */
-/* <DTS2014052906550 liyuping 20140530 begin */
 static const struct attribute_group bq2415x_sysfs_attr_group = {
 	.name = "ti-charger-prop",
 	.attrs = bq2415x_sysfs_attributes,
 };
-/* DTS2014052906550 liyuping 20140530 end> */
 
 static int bq2415x_sysfs_init(struct bq2415x_device *bq)
 {
@@ -2832,6 +2461,188 @@ static void bq2415x_sysfs_exit(struct bq2415x_device *bq)
 	sysfs_remove_group(&bq->charger.dev->kobj, &bq2415x_sysfs_attr_group);
 }
 
+/* <DTS201505289999M chendeng 20150603 begin */
+/* Add charger driver interfaces for bq24152. */
+static int bq2415x_set_runningtest(int val)
+{
+    if(!g_bq){
+        pr_info("cd_debug bq_device is null, do nothing\n");
+        return -1;
+    }
+
+    return 0;
+}
+static int bq2415x_enable_charge(int val)
+{
+	union power_supply_propval val_factory_diag = {0,};
+	if(!g_bq){
+		pr_info("cd_debug bq_device is null, do nothing\n");
+		return -1;
+	}
+	factory_diag_flag = !val;
+	/* if set discharging when PT, set 90mA, as lbc have no BATFET*/
+	if (factory_diag_flag) {
+		g_bq->usb_psy->get_property(g_bq->usb_psy,
+					POWER_SUPPLY_PROP_CURRENT_MAX, &val_factory_diag);
+		factory_diag_last_current_ma = val_factory_diag.intval;
+		val_factory_diag.intval = 90;
+		g_bq->usb_psy->set_property(g_bq->usb_psy,
+				POWER_SUPPLY_PROP_CURRENT_MAX, &val_factory_diag);
+		pr_info("set factory diag to %d\n",val_factory_diag.intval);
+	} else {
+		if (factory_diag_last_current_ma) {
+			val_factory_diag.intval = factory_diag_last_current_ma;
+			g_bq->usb_psy->set_property(g_bq->usb_psy,
+					POWER_SUPPLY_PROP_CURRENT_MAX, &val_factory_diag);
+			pr_info("set factory diag to %d\n",val_factory_diag.intval);
+		}
+		factory_diag_last_current_ma = 0;
+	}
+	bq2415x_external_power_changed(&g_bq->charger);
+
+	return 0;
+}
+static int bq2415x_set_in_thermal(int val)
+{
+	if(!g_bq){
+		pr_info("cd_debugbq_device is null, do nothing\n");
+		return -1;
+	}
+
+	if (val) {
+		hot_current = val;
+	} else {
+		hot_current = HOT_MAX_CURRENT;
+	}
+	pr_info("bq24152 set thermal:%d\n",hot_current);
+	bq2415x_external_power_changed(&g_bq->charger);
+	return 0;
+}
+static int bq2415x_set_usb_current(int val)
+{
+    if(!g_bq){
+        pr_info("bq_device is null, do nothing\n");
+        return -1;
+    }
+
+    return bq2415x_set_current_limit(g_bq, val);
+}
+static int bq2415x_get_chargelog(char *reg_value)
+{
+    int ret = 0;
+    u8 reg;
+    char reg_val[3] = {0};
+    if(!g_bq){
+        pr_info("bq_device is null, do nothing\n");
+        return -1;
+    }
+
+    memset(reg_value, 0, CHARGELOG_SIZE);
+
+    if (CHARGELOG_SIZE < (2 * (BQ2415X_REG_CURRENT + 1) + 2))
+    {
+        pr_err("the reg_value buffer is not enough!\n");
+        return -1;
+    }
+
+    for(reg = BQ2415X_REG_STATUS; reg <= BQ2415X_REG_CURRENT; reg++){
+        ret = bq2415x_i2c_read(g_bq, reg);
+        if (ret < 0) {
+            pr_err("bq24152 i2c read reg 0x%02x faild\n", reg);
+            break;
+        }
+        snprintf(reg_val, 3, "%02x", ret);
+        strncat(reg_value, reg_val, strlen(reg_val));
+    }
+
+    return ((ret < 0) ? ret : 0);
+}
+
+static int bq24152_otg_regulator_enable(struct regulator_dev *rdev)
+{
+    struct bq2415x_device *bq = rdev_get_drvdata(rdev);
+    bq24152_control_otg(bq,true);
+    return 0;
+}
+
+static int bq24152_otg_regulator_disable(struct regulator_dev *rdev)
+{
+    struct bq2415x_device *bq = rdev_get_drvdata(rdev);
+    bq24152_control_otg(bq,false);
+    return 0;
+}
+
+static int bq24152_otg_regulator_is_enable(struct regulator_dev *rdev)
+{
+    int ret = 0;
+    struct bq2415x_device *bq = rdev_get_drvdata(rdev);
+    ret = bq2415x_exec_command(bq, BQ2415X_BOOST_STATUS);
+    if (ret < 0)
+    {
+        pr_err("get otg eable status failed!!\n");
+        return ret;
+    }
+    return ((1 == ret) ? 1 : 0);
+}
+struct regulator_ops bq24152_otg_reg_ops =
+{
+    .enable = bq24152_otg_regulator_enable,
+    .disable = bq24152_otg_regulator_disable,
+    .is_enabled = bq24152_otg_regulator_is_enable,
+};
+
+static int bq24152_regulator_init(struct bq2415x_device *bq)
+{
+    int rc = 0;
+    struct regulator_init_data *init_data;
+    struct regulator_config cfg = {};
+
+    init_data = of_get_regulator_init_data(bq->dev, bq->dev->of_node);
+    if (!init_data)
+    {
+        dev_err(bq->dev, "Unable to allocate memory\n");
+        return -ENOMEM;
+    }
+
+    if (init_data->constraints.name)
+    {
+        bq->otg_vreg.rdesc.owner = THIS_MODULE;
+        bq->otg_vreg.rdesc.type = REGULATOR_VOLTAGE;
+        bq->otg_vreg.rdesc.ops = &bq24152_otg_reg_ops;
+        bq->otg_vreg.rdesc.name = init_data->constraints.name;
+
+        cfg.dev = bq->dev;
+        cfg.init_data = init_data;
+        cfg.driver_data = bq;
+        cfg.of_node = bq->dev->of_node;
+
+        init_data->constraints.valid_ops_mask
+        |= REGULATOR_CHANGE_STATUS;
+
+        bq->otg_vreg.rdev = regulator_register(&bq->otg_vreg.rdesc, &cfg);
+        if (IS_ERR(bq->otg_vreg.rdev))
+        {
+            rc = PTR_ERR(bq->otg_vreg.rdev);
+            bq->otg_vreg.rdev = NULL;
+            if (rc != -EPROBE_DEFER)
+            dev_err(bq->dev, "OTG reg failed, rc=%d\n", rc);
+        }
+        }
+    return rc;
+}
+
+struct charge_device_ops bq2415x_ops = {
+    .set_runningtest = bq2415x_set_runningtest,
+    .set_enable_charger = bq2415x_enable_charge,
+    .set_in_thermal = bq2415x_set_in_thermal,
+    .shutdown_q4 = NULL,
+    .shutdown_wd = NULL,
+    .set_usb_current = bq2415x_set_usb_current,
+    .dump_register = bq2415x_get_chargelog,
+    .get_ibus = NULL,
+};
+/* DTS201505289999M chendeng 20150603 end> */
+
 /* main bq2415x probe function */
 static int bq2415x_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
@@ -2841,15 +2652,16 @@ static int bq2415x_probe(struct i2c_client *client,
 	char *name;
 	struct bq2415x_device *bq;
 	struct device_node *np = client->dev.of_node;
-	/* <DTS2014052906550 liyuping 20140530 begin */
 	struct power_supply *usb_psy;
+	/* <DTS201505289999M chendeng 20150603 begin */
+	struct charge_device_ops *ops = NULL;
+	/* DTS201505289999M chendeng 20150603 end> */
 
 	usb_psy = power_supply_get_by_name("usb");
 	if (!usb_psy) {
 		pr_err("usb supply not found deferring probe\n");
 		return -EPROBE_DEFER;
 	}
-	/* DTS2014052906550 liyuping 20140530 end> */
 	/* Get new ID for the new device */
 	mutex_lock(&bq2415x_id_mutex);
 	num = idr_alloc(&bq2415x_id, client, 0, 0, GFP_KERNEL);
@@ -2873,9 +2685,7 @@ static int bq2415x_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, bq);
 
-	/* <DTS2014052906550 liyuping 20140530 begin */
 	bq->usb_psy = usb_psy;
-	/* DTS2014052906550 liyuping 20140530 end> */
 	bq->id = num;
 	bq->dev = &client->dev;
 	bq->chip = id->driver_data;
@@ -2884,21 +2694,20 @@ static int bq2415x_probe(struct i2c_client *client,
 	bq->reported_mode = BQ2415X_MODE_OFF;
 	bq->autotimer = 0;
 	bq->automode = 0;
-	/* < DTS2014072101379  yuanzhen 20140728 begin */
 	bq->charge_done_flag = 0;
 	bq->charge_disable = false;
-/* < DTS2015010904246  mapengfei 20150110 begin */
-    bq->soc_resume_charging = false;
-/* DTS2015010904246  mapengfei 20150110 end > */
-	/* DTS2014072101379  yuanzhen 20140728 end > */
-	/* <DTS2014052906550 liyuping 20140530 begin */
+	bq->soc_resume_charging = false;
+	/* <DTS201505289999M chendeng 20150603 begin */
+	ops = &bq2415x_ops;
+	ret = charge_ops_register(ops);
+	if(ret)
+	{
+		pr_err("register charge ops failed!\n");
+		goto error_2;
+	}
+	/* DTS201505289999M chendeng 20150603 end> */
 	spin_lock_init(&bq->ibat_change_lock);
-	/* DTS2014052906550 liyuping 20140530 end> */
-    /* < DTS2015010904246  mapengfei 20140728 begin */
-    ret = of_property_read_u32(np, "ti,use-only-charger",
-       &bq->use_only_charge);
-    /* DTS2015010904246  mapengfei 20140728 end > */
-
+	mutex_init(&bq->current_change_lock);
 	ret = of_property_read_u32(np, "ti,current-limit",
 			&bq->init_data.current_limit);
 	if (ret)
@@ -2925,6 +2734,13 @@ static int bq2415x_probe(struct i2c_client *client,
 		return ret;
 
 	bq2415x_reset_chip(bq);
+
+	ret = bq24152_regulator_init(bq);
+	if (ret)
+	{
+		dev_err(&client->dev,"Couldn't initialize bq24152 regulator rc=%d\n", ret);
+		goto error_2;
+	}
 
 	ret = bq2415x_power_supply_init(bq);
 	if (ret) {
@@ -2959,27 +2775,16 @@ static int bq2415x_probe(struct i2c_client *client,
 		dev_info(bq->dev, "automode not supported\n");
 	}
 
-    /* < DTS2015010904246  mapengfei 20140728 begin */
-    g_bq=bq;
-   /* DTS2015010904246  mapengfei 20140728 end > */
+	g_bq=bq;
+	INIT_DELAYED_WORK(&bq->otg_id_check_work, check_otg_id_work);
 	INIT_DELAYED_WORK(&bq->work, bq2415x_timer_work);
-	/* <DTS2014052906550 liyuping 20140530 begin */
-	/*<DTS2014061605512 liyuping 20140617 begin */
 	bq2415x_set_autotimer(bq, 1);
-	/* DTS2014061605512 liyuping 20140617 end> */
 	INIT_WORK(&bq->iusb_work,bq2415x_iusb_work);
-	/* < DTS2014080804732 yuanzhen 20140815 begin */
-	/* <DTS2014073007208 jiangfei 20140801 begin */
 	INIT_DELAYED_WORK(&bq->lower_power_charger_work,
 			bq2415x_usb_low_power_work);
-	/* DTS2014073007208 jiangfei 20140801 end> */
-	/* DTS2014080804732 yuanzhen 20140815 end > */
-	/* DTS2014052906550 liyuping 20140530 end> */
-	/* <DTS2014071803033 liyuping 20140724 begin */
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 	set_hw_dev_flag(DEV_I2C_CHARGER);
 #endif
-	/* DTS2014071803033 liyuping 20140724 end> */
 	dev_info(bq->dev, "driver registered\n");
 	return 0;
 
@@ -2990,6 +2795,7 @@ error_3:
 error_2:
 	kfree(name);
 error_1:
+	mutex_destroy(&bq->current_change_lock);
 	mutex_lock(&bq2415x_id_mutex);
 	idr_remove(&bq2415x_id, num);
 	mutex_unlock(&bq2415x_id_mutex);
@@ -3005,16 +2811,14 @@ static int bq2415x_remove(struct i2c_client *client)
 
 	if (bq->init_data.set_mode_hook)
 		bq->init_data.set_mode_hook(NULL, NULL);
-	/* < DTS2014080804732 yuanzhen 20140815 begin */
-	/* <DTS2014073007208 jiangfei 20140801 begin */
 	cancel_delayed_work_sync(&bq->lower_power_charger_work);
-	/* DTS2014073007208 jiangfei 20140801 end> */
-	/* DTS2014080804732 yuanzhen 20140815 end > */
+	cancel_delayed_work_sync(&bq->otg_id_check_work);
+	regulator_unregister(bq->otg_vreg.rdev);
 	bq2415x_sysfs_exit(bq);
 	bq2415x_power_supply_exit(bq);
 
 	bq2415x_reset_chip(bq);
-
+	mutex_destroy(&bq->current_change_lock);
 	mutex_lock(&bq2415x_id_mutex);
 	idr_remove(&bq2415x_id, bq->id);
 	mutex_unlock(&bq2415x_id_mutex);
@@ -3025,8 +2829,6 @@ static int bq2415x_remove(struct i2c_client *client)
 
 	return 0;
 }
-/* < DTS2014080202036 yuanzhen 20140804 begin */
-/* <DTS2014052906550 liyuping 20140530 begin */
 static int bq24152_suspend(struct i2c_client *client,pm_message_t state)
 {
     struct bq2415x_device *bq = i2c_get_clientdata(client);
@@ -3040,8 +2842,6 @@ static int bq24152_resume(struct i2c_client *client)
     schedule_delayed_work(&bq->work, 0);
     return 0;
 }
-/* DTS2014052906550 liyuping 20140530 end> */
-/* DTS2014080202036 yuanzhen 20140804 end > */
 
 static const struct i2c_device_id bq2415x_i2c_id_table[] = {
        { "bq2415x", BQUNKNOWN },
@@ -3058,29 +2858,39 @@ static const struct i2c_device_id bq2415x_i2c_id_table[] = {
        { "bq24158", BQ24158 },
        {},
 };
+static void bq24152_shutdown(struct i2c_client *client)
+{
+    int rc =0;
+    struct bq2415x_device *bq = i2c_get_clientdata(client);
+    if(is_usb_chg_exist())
+    {
+        rc = bq2415x_exec_command(bq, BQ2415X_CHARGER_DISABLE);
+        if(rc < 0)
+        {
+            pr_info("disable charger failed\n");
+            return;
+        }
+    }
+    return;
+}
 
 static struct of_device_id bq2419x_charger_match_table[] =
 {
    { .compatible = "ti,bq24152",},
 };
 
-/* < DTS2014080202036 yuanzhen 20140804 begin */
 static struct i2c_driver bq2415x_driver = {
 	.driver = {
-		/*<DTS2014061605512 liyuping 20140617 begin */
 		.name = "ti,bq24152",			
-		/* DTS2014061605512 liyuping 20140617 end> */
         .of_match_table = bq2419x_charger_match_table,
 	},
 	.probe = bq2415x_probe,
 	.remove = bq2415x_remove,
-/* <DTS2014052906550 liyuping 20140530 begin */
 	.suspend = bq24152_suspend,
 	.resume = bq24152_resume,
-/* DTS2014052906550 liyuping 20140530 end> */
+	.shutdown = bq24152_shutdown,
 	.id_table = bq2415x_i2c_id_table,
 };
-/* DTS2014080202036 yuanzhen 20140804 end > */
 module_i2c_driver(bq2415x_driver);
 
 MODULE_AUTHOR("Pali Rohár <pali.rohar@gmail.com>");

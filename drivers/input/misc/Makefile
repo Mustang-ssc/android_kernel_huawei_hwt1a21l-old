@@ -29,6 +29,7 @@ obj-$(CONFIG_INPUT_DM355EVM)		+= dm355evm_keys.o
 obj-$(CONFIG_INPUT_GP2A)		+= gp2ap002a00f.o
 obj-$(CONFIG_INPUT_GPIO_TILT_POLLED)	+= gpio_tilt_polled.o
 obj-$(CONFIG_INPUT_GPIO)		+= gpio_event.o gpio_matrix.o gpio_input.o gpio_output.o gpio_axis.o
+obj-$(CONFIG_INPUT_HBTP_INPUT)		+= hbtp_input.o
 obj-$(CONFIG_HP_SDC_RTC)		+= hp_sdc_rtc.o
 obj-$(CONFIG_INPUT_IMS_PCU)		+= ims-pcu.o
 obj-$(CONFIG_INPUT_IXP4XX_BEEPER)	+= ixp4xx-beeper.o
@@ -70,31 +71,14 @@ obj-$(CONFIG_SENSORS_STK3X1X)		+= stk3x1x.o
 obj-$(CONFIG_SENSORS_CAPELLA_CM36283)	+= cm36283.o
 obj-$(CONFIG_SENSORS_MPU6050)		+= mpu6050.o
 obj-$(CONFIG_SENSORS_AKM8963)		+= akm8963.o
-obj-$(CONFIG_SENSORS_AKM09911)		+= akm09911.o
-#/* < DTS2014072201656 yangzhonghua 20140722 begin */
-obj-$(CONFIG_SENSORS_LIS3DH)		+= lis3dh_acc.o lis3dh_acc_monitor.o
-#/* < DTS2014042306752 yangxiaomei 20140424 begin */
-obj-$(CONFIG_SENSORS_KIONIX)	+= kionix_accel.o kionix_acc_monitor.o
-#/* DTS2014042306752 yangxiaomei 20140424 end > */
-#/* DTS2014072201656 yangzhonghua 20140722 end > */
-#/* < DTS2015072707140 chendong wx241705 begin */
-obj-$(CONFIG_SENSORS_ADUX1050)	+= adux1050.o
-#/* DTS2015072707140 chendong wx241705 end > */
-#/* < DTS2014052206888 yangxiaomei 20140523 begin */
-obj-$(CONFIG_HUAWEI_HALL_AK8789) += ak8789.o
-#/* DTS2014052206888 yangxiaomei 20140523 end > */
-#/* < DTS2014051304400 caowei 201400513 begin */
-obj-$(CONFIG_APDS993X)		+= apds993x_ls.o
-#/* DTS2014051304400 caowei 201400513 end >*/
-#/* < DTS2014072402059 wanghang 20140806 begin */
-obj-$(CONFIG_RPR521)            += rohm_rpr521.o
-#/* DTS2014072402059 wanghang 20140806 end > */
+#obj-$(CONFIG_SENSORS_AKM09911)		+= akm09911.o
+# delete huawei define
 obj-$(CONFIG_SENSORS_BMA2X2)	+= bstclass.o
 
+# delete huawei define
+
 obj-$(CONFIG_SENSORS_BMA2X2)	+= bma2x2.o
-#/* < DTS2014081805982 yangxiaomei 20140829 begin */
-obj-$(CONFIG_HUAWEI_SENSOR_SELF_ADAPT) += hw_sensor_info.o
-#/* DTS2014081805982 yangxiaomei 20140829 end > */
+# delete huawei define
 ifeq ($(CONFIG_SENSORS_BMA2X2_ENABLE_INT1),y)
 	EXTRA_CFLAGS += -DBMA2X2_ENABLE_INT1
 endif
@@ -102,3 +86,5 @@ endif
 ifeq ($(CONFIG_BOSCH_BMA2X2_ENABLE_INT2),y)
 	EXTRA_CFLAGS += -DBMA2X2_ENABLE_INT2
 endif
+# delete huawei define
+

@@ -65,6 +65,10 @@
 
 #include <asm/uaccess.h>
 #include <asm/processor.h>
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/qpnp/power-on.h>
+extern u32 huawei_pon_regs[MAX_REG_TYPE];
+#endif
 
 #ifdef CONFIG_X86
 #include <asm/nmi.h>
@@ -145,6 +149,11 @@ static int min_percpu_pagelist_fract = 8;
 
 static int ngroups_max = NGROUPS_MAX;
 static const int cap_last_cap = CAP_LAST_CAP;
+
+/*this is needed for proc_doulongvec_minmax of sysctl_hung_task_timeout_secs */
+#ifdef CONFIG_DETECT_HUNG_TASK
+static unsigned long hung_task_timeout_max = (LONG_MAX/HZ);
+#endif
 
 #ifdef CONFIG_INOTIFY_USER
 #include <linux/inotify.h>
@@ -289,32 +298,51 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+	{
+		.procname	= "sched_wakeup_load_threshold",
+		.data		= &sysctl_sched_wakeup_load_threshold,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
 #ifdef CONFIG_SCHED_FREQ_INPUT
 	{
-		.procname	= "sched_freq_inc_notify_slack_pct",
-		.data		= &sysctl_sched_freq_inc_notify_slack_pct,
+		.procname	= "sched_freq_inc_notify",
+		.data		= &sysctl_sched_freq_inc_notify,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &zero,
+		.proc_handler	= proc_dointvec,
 	},
 	{
-		.procname	= "sched_freq_dec_notify_slack_pct",
-		.data		= &sysctl_sched_freq_dec_notify_slack_pct,
+		.procname	= "sched_freq_dec_notify",
+		.data		= &sysctl_sched_freq_dec_notify,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &zero,
+		.proc_handler	= proc_dointvec,
 	},
-#endif
-#if defined(CONFIG_SCHED_FREQ_INPUT) || defined(CONFIG_SCHED_HMP)
 	{
-		.procname       = "sched_freq_legacy_mode",
-		.data           = &sysctl_sched_freq_legacy_mode,
+		.procname       = "sched_migration_fixup",
+		.data           = &sysctl_sched_migration_fixup,
 		.maxlen         = sizeof(unsigned int),
 		.mode           = 0644,
 		.proc_handler   = sched_window_update_handler,
 	},
+	{
+		.procname       = "sched_freq_account_wait_time",
+		.data           = &sysctl_sched_freq_account_wait_time,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = sched_window_update_handler,
+	},
+	{
+		.procname       = "sched_heavy_task",
+		.data           = &sysctl_sched_heavy_task_pct,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = sched_hmp_proc_update_handler,
+	},
+#endif
+#ifdef CONFIG_SCHED_HMP
 	{
 		.procname       = "sched_account_wait_time",
 		.data           = &sysctl_sched_account_wait_time,
@@ -337,34 +365,11 @@ static struct ctl_table kern_table[] = {
 		.proc_handler   = sched_window_update_handler,
 	},
 	{
-		.procname	= "sched_wakeup_load_threshold",
-		.data		= &sysctl_sched_wakeup_load_threshold,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-#endif
-#ifdef CONFIG_SCHED_HMP
-	{
 		.procname	= "sched_small_task",
 		.data		= &sysctl_sched_small_task_pct,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= sched_hmp_proc_update_handler,
-	},
-	{
-		.procname	= "sched_mostly_idle_load",
-		.data		= &sysctl_sched_mostly_idle_load_pct,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= sched_hmp_proc_update_handler,
-	},
-	{
-		.procname	= "sched_mostly_idle_nr_run",
-		.data		= &sysctl_sched_mostly_idle_nr_run,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
 	},
 	{
 		.procname	= "sched_spill_load",
@@ -378,8 +383,7 @@ static struct ctl_table kern_table[] = {
 		.data		= &sysctl_sched_spill_nr_run,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &zero,
+		.proc_handler	= proc_dointvec,
 	},
 	{
 		.procname	= "sched_upmigrate",
@@ -935,7 +939,6 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &two,
 	},
 
-	/* < DTS2014070303497 shenjinming 20140703 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	{
 		.procname	= "huawei_flow_level",
@@ -945,7 +948,6 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
-	/* DTS2014070303497 shenjinming 20140703 end > */
 
 #endif
 	{
@@ -1130,6 +1132,7 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned long),
 		.mode		= 0644,
 		.proc_handler	= proc_dohung_task_timeout_secs,
+		.extra2		= &hung_task_timeout_max,
 	},
 	{
 		.procname	= "hung_task_warnings",
@@ -1207,6 +1210,16 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(sysctl_perf_event_sample_rate),
 		.mode		= 0644,
 		.proc_handler	= perf_proc_update_handler,
+		.extra1		= &one,
+	},
+	{
+		.procname	= "perf_cpu_time_max_percent",
+		.data		= &sysctl_perf_cpu_time_max_percent,
+		.maxlen		= sizeof(sysctl_perf_cpu_time_max_percent),
+		.mode		= 0644,
+		.proc_handler	= perf_cpu_time_max_percent_handler,
+		.extra1		= &zero,
+		.extra2		= &one_hundred,
 	},
 #endif
 #ifdef CONFIG_KMEMCHECK
@@ -1244,19 +1257,17 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
-/* < DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #ifndef HIDE_PRODUCT_INFO_KERNEL
 	{
-		.procname	= "hide_info",
-		.data		= &hide_info,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.procname = "hide_info",
+		.data = &hide_info,
+		.maxlen = sizeof(int),
+		.mode = 0664,
+		.proc_handler = proc_dointvec,
 	},
 #endif
 #endif
-/* DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 end > */
 /*
  * NOTE: do not add new entries to this table unless you have read
  * Documentation/sysctl/ctl_unnumbered.txt
@@ -1853,6 +1864,15 @@ static struct ctl_table debug_table[] = {
 		.extra2		= &one,
 	},
 #endif
+#ifdef CONFIG_HUAWEI_KERNEL
+    {
+            .procname   = "poweronoff_reason",
+            .data       = huawei_pon_regs,
+            .maxlen     = sizeof(huawei_pon_regs),
+            .mode       = 0644,
+            .proc_handler   = proc_dointvec,
+    },
+#endif	
 	{ }
 };
 

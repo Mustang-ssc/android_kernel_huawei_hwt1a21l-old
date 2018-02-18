@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,68 +30,75 @@
 
 #include <soc/qcom/scm.h>
 #include <soc/qcom/restart.h>
+#include <soc/qcom/watchdog.h>
 
-/*< DTS2015012007753 wangyuantao 20150120 begin*/
-#ifdef CONFIG_HUAWEI_KERNEL
-#include <linux/huawei_apanic.h>
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+#include <linux/huawei_reset_detect.h>
 #endif
-/*DTS2015012007753 wangyuantao 20150120 end >*/
-
-/* < DTS2014060408745 roopesh 20140604 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/fcntl.h>
+#include <linux/syscalls.h>
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
 #include <linux/huawei_boot_log.h>
 #endif
-/* DTS2014060408745 roopesh 20140604 end > */
+
+#define MISC_DEVICE "/dev/block/bootdevice/by-name/misc"
+#define USB_UPDATE_POLL_TIME  2000
+struct bootloader_message {
+    char command[32];
+    char status[32];
+    char recovery[768];
+    char stage[32];
+};
+#endif
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
 #define EMERGENCY_DLOAD_MAGIC3    0x77777777
 
 #define SCM_IO_DISABLE_PMIC_ARBITER	1
+#define SCM_IO_DEASSERT_PS_HOLD		2
 #define SCM_WDOG_DEBUG_BOOT_PART	0x9
 #define SCM_DLOAD_MODE			0X10
 #define SCM_EDLOAD_MODE			0X01
 #define SCM_DLOAD_CMD			0x10
 
-/* < DTS2014041607756 zhaoyingchun 20140416 begin */
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+#define MOUNTFAIL_MAGIC_NUM 0x77665527
+#endif
+
+static int restart_mode;
+#ifdef CONFIG_HUAWEI_KERNEL
+void *restart_reason = NULL;
+#else
+void *restart_reason;
+#endif
+#ifdef CONFIG_HUAWEI_KERNEL
+#define RESTART_FLAG_MAGIC_NUM    0x20890206
+void *restart_flag_addr = NULL;
+#endif
+#ifdef CONFIG_HUAWEI_DEBUG_MODE
+extern char *saved_command_line;
+#endif
+static bool scm_pmic_arbiter_disable_supported;
+static bool scm_deassert_ps_hold_supported;
+/* Download mode master kill-switch */
+static void __iomem *msm_ps_hold;
+static phys_addr_t tcsr_boot_misc_detect;
+
+#ifdef CONFIG_MSM_DLOAD_MODE
+#define EDL_MODE_PROP "qcom,msm-imem-emergency_download_mode"
+#define DL_MODE_PROP "qcom,msm-imem-download_mode"
+
 #ifdef CONFIG_HUAWEI_KERNEL
 #define SDUPDATE_FLAG_MAGIC_NUM  0x77665528
 #define USBUPDATE_FLAG_MAGIC_NUM  0x77665523
 #define SD_UPDATE_RESET_FLAG   "sdupdate"
 #define USB_UPDATE_RESET_FLAG   "usbupdate"
 #endif
-/* DTS2014041607756 zhaoyingchun 20140416 end > */
 
-/* < DTS2014042500397 shiguojun 20140425 begin */
-#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
-#define MOUNTFAIL_MAGIC_NUM 0x77665527
+#ifdef CONFIG_HUAWEI_FEATURE_NFF
+static uint32_t *reboot_flag_addr;
 #endif
-/* DTS2014042500397 shiguojun 20140425 end > */
-
-/* < DTS2014082001912 z00202435 2014/8/19 begin */
-/* < DTS2014052905391 gaoxu 20140610 begin */
-#if defined(CONFIG_HUAWEI_DEBUG_MODE) || defined(CONFIG_HUAWEI_FACTORY_MODE_ENABLE_DUMP)
-extern char *saved_command_line;
-#endif
-/* DTS2014052905391 gaoxu 20140610 end > */
-/* DTS2014082001912 z00202435 2014/8/19 end > */
-
-static int restart_mode;
-void *restart_reason;
-/* < DTS2014061109220 dongjinguang 20140611 begin */
-/* < DTS2014060909145 mapengfei 20140609 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-#define RESTART_FLAG_MAGIC_NUM    0x20890206
-void *restart_flag_addr = NULL;
-#endif
-/* DTS2014060909145 mapengfei 20140609 end > */
-/* DTS2014061109220 dongjinguang 20140611 end > */
-static bool scm_pmic_arbiter_disable_supported;
-/* Download mode master kill-switch */
-static void __iomem *msm_ps_hold;
-
-#ifdef CONFIG_MSM_DLOAD_MODE
-#define EDL_MODE_PROP "qcom,msm-imem-emergency_download_mode"
-#define DL_MODE_PROP "qcom,msm-imem-download_mode"
 
 static int in_panic;
 static void *dload_mode_addr;
@@ -100,16 +107,11 @@ static void *emergency_dload_mode_addr;
 static bool scm_dload_supported;
 
 static int dload_set(const char *val, struct kernel_param *kp);
-/* < DTS2014091604882  zengwei 20140917 begin */
-/* < DTS2015031002248  zhanglei 20150311 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-static int download_mode = 0;
-#else
+#ifndef CONFIG_HUAWEI_KERNEL
 static int download_mode = 1;
+#else
+static int download_mode = 0;
 #endif
-/* DTS2015031002248  zhanglei 20150311 end > */
-/* DTS2014091604882  zengwei 20140917 end > */
-
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 static int panic_prep_restart(struct notifier_block *this,
@@ -123,6 +125,30 @@ static struct notifier_block panic_blk = {
 	.notifier_call	= panic_prep_restart,
 };
 
+int scm_set_dload_mode(int arg1, int arg2)
+{
+	struct scm_desc desc = {
+		.args[0] = arg1,
+		.args[1] = arg2,
+		.arginfo = SCM_ARGS(2),
+	};
+
+	if (!scm_dload_supported) {
+		if (tcsr_boot_misc_detect)
+			return scm_io_write(tcsr_boot_misc_detect, arg1);
+
+		return 0;
+	}
+
+
+	if (!is_scm_armv8())
+		return scm_call_atomic2(SCM_SVC_BOOT, SCM_DLOAD_CMD, arg1,
+					arg2);
+
+	return scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT, SCM_DLOAD_CMD),
+				&desc);
+}
+
 static void set_dload_mode(int on)
 {
 	int ret;
@@ -134,41 +160,27 @@ static void set_dload_mode(int on)
 		mb();
 	}
 
-	if (scm_dload_supported) {
-		ret = scm_call_atomic2(SCM_SVC_BOOT,
-				SCM_DLOAD_CMD, on ? SCM_DLOAD_MODE : 0, 0);
-		if (ret)
-			pr_err("Failed to set DLOAD mode: %d\n", ret);
-	}
+	ret = scm_set_dload_mode(on ? SCM_DLOAD_MODE : 0, 0);
+	if (ret)
+		pr_err("Failed to set secure DLOAD mode: %d\n", ret);
 
 	dload_mode_enabled = on;
 }
 
-/* < DTS2014042700497 niuxiangyu 20140428 begin */
-/* < DTS2014022704350 wuzhihui 20140306 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 void clear_dload_mode(void)
 {
     set_dload_mode(0);
 }
 #endif
-/* DTS2014022704350 wuzhihui 20140306 end > */
-/* DTS2014042700497 niuxiangyu 20140428 end > */
-
-/* < DTS2014060408745 roopesh 20140604 begin */
-/* < DTS2014080102623 roopesh 20140801 begin */
+static bool get_dload_mode(void)
+{
+	return dload_mode_enabled;
+}
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
-extern void *boot_log_virt;
 static void clear_bootup_flag(void)
 {
-
-	uint32_t *reboot_flag_addr = NULL;
-
-	if (NULL == boot_log_virt) 
-		reboot_flag_addr = (uint32_t *)ioremap_nocache(HUAWEI_BOOT_LOG_ADDR,0x100000);
-	else 
-		reboot_flag_addr = boot_log_virt;
-
+	/*move the ioremap_nocache for reboot_flag_addr into msm_restart_probe()*/
 	if(NULL != reboot_flag_addr)
 	{
 		uint32_t *magic    = (uint32_t*)(reboot_flag_addr);
@@ -182,17 +194,66 @@ static void clear_bootup_flag(void)
 		}
 		__raw_writel( 0x00000000, reboot_flag_addr);
 		mb();
+		/*move the iounmap(reboot_flag_addr);*/
 	}
 	return;
 }
 #endif
-/* DTS2014080102623 roopesh 20140801 end > */
-/* DTS2014060408745 roopesh 20140604 end > */
-static bool get_dload_mode(void)
+#ifdef CONFIG_HUAWEI_KERNEL
+/*This function write usb_update sign to the misc partion,
+   if write successfull, then hard restart the device*/
+void huawei_restart(void)
 {
-	return dload_mode_enabled;
-}
+    struct bootloader_message boot;
+    int fd  = 0;
+    
+    memset((void*)&boot, 0x0, sizeof(struct bootloader_message));    
+    strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
+    strcpy(boot.recovery, "recovery\n");
+    strcat(boot.recovery, "--");
+    strcat(boot.recovery, "usb_update");
 
+    fd = sys_open(MISC_DEVICE,O_RDWR,0);
+    if( fd < 0 )
+    {
+        pr_err("open the devices %s fail",MISC_DEVICE);
+        return ;
+    }
+    if(sys_write((unsigned int )fd, (char*)&boot, sizeof(boot)) < 0)
+    {
+        pr_err("write to the devices %s fail",MISC_DEVICE);
+        return;
+    }
+    sys_sync();
+    kernel_restart(NULL);
+}
+/*This function poll the address restart_reason,if 
+   there is the magic SDUPDATE_FLAG_MAGIC_NUM, restart
+   the devices.,the magic is written by modem when the
+   user click the usb update tool to update*/
+int usb_update_thread(void *__unused)
+{
+    unsigned int  dload_magic = 0;
+    for(;;)
+    {
+        if(NULL != restart_reason)
+        {
+             dload_magic = __raw_readl(restart_reason);
+        }
+        else
+        {
+             pr_info("restart_reason is null,wait for ready\n");
+        }
+        if(SDUPDATE_FLAG_MAGIC_NUM == dload_magic)
+        {
+            pr_info("update mode, restart to usb update\n");
+            huawei_restart();
+        }
+        msleep(USB_UPDATE_POLL_TIME);
+    }
+    return 0;
+}
+#endif
 static void enable_emergency_dload_mode(void)
 {
 	int ret;
@@ -213,12 +274,9 @@ static void enable_emergency_dload_mode(void)
 		mb();
 	}
 
-	if (scm_dload_supported) {
-		ret = scm_call_atomic2(SCM_SVC_BOOT,
-				SCM_DLOAD_CMD, SCM_EDLOAD_MODE, 0);
-		if (ret)
-			pr_err("Failed to set EDLOAD mode: %d\n", ret);
-	}
+	ret = scm_set_dload_mode(SCM_EDLOAD_MODE, 0);
+	if (ret)
+		pr_err("Failed to set secure EDLOAD mode: %d\n", ret);
 }
 
 static int dload_set(const char *val, struct kernel_param *kp)
@@ -269,14 +327,26 @@ EXPORT_SYMBOL(msm_set_restart_mode);
  */
 static void halt_spmi_pmic_arbiter(void)
 {
+	struct scm_desc desc = {
+		.args[0] = 0,
+		.arginfo = SCM_ARGS(1),
+	};
+
 	if (scm_pmic_arbiter_disable_supported) {
 		pr_crit("Calling SCM to disable SPMI PMIC arbiter\n");
-		scm_call_atomic1(SCM_SVC_PWR, SCM_IO_DISABLE_PMIC_ARBITER, 0);
+		if (!is_scm_armv8())
+			scm_call_atomic1(SCM_SVC_PWR,
+					 SCM_IO_DISABLE_PMIC_ARBITER, 0);
+		else
+			scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_PWR,
+				  SCM_IO_DISABLE_PMIC_ARBITER), &desc);
 	}
 }
 
 static void msm_restart_prepare(const char *cmd)
 {
+	bool need_warm_reset = false;
+
 #ifdef CONFIG_MSM_DLOAD_MODE
 
 	/* Write download mode flags if we're panic'ing
@@ -287,63 +357,61 @@ static void msm_restart_prepare(const char *cmd)
 	set_dload_mode(download_mode &&
 			(in_panic || restart_mode == RESTART_DLOAD));
 #endif
-/*< DTS2015012007753 wangyuantao 20150120 begin*/
-#ifdef CONFIG_HUAWEI_KERNEL
-	/*clear hardware reset magic number to imem*/
-	if (in_panic || get_dload_mode())
-	{
-	}
-	else
-	{
-		__raw_writel(0, hw_reset_magic_addr);
-		pr_info("clear hardware reset magic number when reboot\n");
-	}
+
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+    /* if the restart is triggered by panic, keep the magic number
+	 * if the restart is a nomal reboot, clear the reset magic number
+	 */
+    if(!in_panic)
+    {
+        clear_reset_magic();
+    }
 #endif
-/*DTS2015012007753 wangyuantao 20150120 end >*/
-/* < DTS2014060909145 mapengfei 20140609 begin */
+
 #ifdef CONFIG_HUAWEI_KERNEL
-/* < DTS2014062406259  mapengfei 20140624 begin */
    if(restart_flag_addr)
-/* DTS2014062406259  mapengfei 20140624 end > */
   {
    __raw_writel(RESTART_FLAG_MAGIC_NUM, restart_flag_addr);
   }
 #endif
-/* DTS2014060909145 mapengfei 20140609 end > */
 
-	/* < DTS2014060408745 roopesh 20140604 begin */
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
 	clear_bootup_flag();
 #endif     
-	/* DTS2014060408745 roopesh 20140604 end > */
+	need_warm_reset = (in_panic || get_dload_mode() ||
+				(cmd != NULL && cmd[0] != '\0'));
+
+	if (qpnp_pon_check_hard_reset_stored()) {
+		/* Set warm reset as true when device is in dload mode
+		 *  or device doesn't boot up into recovery, bootloader or rtc.
+		 */
+		if (get_dload_mode() ||
+			((cmd != NULL && cmd[0] != '\0') &&
+			strcmp(cmd, "recovery") &&
+			strcmp(cmd, "bootloader") &&
+			strcmp(cmd, "rtc")))
+			need_warm_reset = true;
+	}
+
 	/* Hard reset the PMIC unless memory contents must be maintained. */
-	if (in_panic || get_dload_mode() || (cmd != NULL && cmd[0] != '\0'))
-    {
-	    /* < DTS20150312031639 l00133898 20150312 begin */
-        if((!download_mode) && (!strncmp(cmd, "emergency_restart", 17))) 
-		{
-            pr_err("It is a cold reset, clean the memory info \n ");
-            qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
-        }
-        else
-        {
-            pr_err("It is a warm reset, nclean the memory info \n ");
-            qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
-	    }
-		/* DTS2015031203163 l00133898 20150312 end > */
-    }
-	else
-    {
-        pr_err("It is a cold reset, nclean the memory info \n ");
+	if (need_warm_reset) {
+		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+	} else {
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
-    }
+	}
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_BOOTLOADER);
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_RECOVERY);
 			__raw_writel(0x77665502, restart_reason);
 		} else if (!strcmp(cmd, "rtc")) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_RTC);
 			__raw_writel(0x77665503, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
@@ -354,35 +422,27 @@ static void msm_restart_prepare(const char *cmd)
 					     restart_reason);
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
-		/* < DTS2014041607756 zhaoyingchun 20140416 begin */
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+		} else if (!strncmp(cmd, "mountfail", strlen("mountfail"))) {
+		    __raw_writel(MOUNTFAIL_MAGIC_NUM, restart_reason);
+#endif
+#ifdef CONFIG_HUAWEI_KERNEL
+		} else if (!strncmp(cmd, "huawei_rtc", 10)) {
+			__raw_writel(0x77665524, restart_reason);
+#endif
 #ifdef CONFIG_HUAWEI_KERNEL
 		} else if (!strncmp(cmd, "huawei_dload", 12)) {
-			__raw_writel(0x77665503, restart_reason);
+			__raw_writel(0x77665529, restart_reason);
 		//Added adb reboot sdupdate/usbupdate command support
 		} else if(!strncmp(cmd, SD_UPDATE_RESET_FLAG, strlen(SD_UPDATE_RESET_FLAG))) {
 			__raw_writel(SDUPDATE_FLAG_MAGIC_NUM, restart_reason);
 		} else if(!strncmp(cmd, USB_UPDATE_RESET_FLAG, strlen(USB_UPDATE_RESET_FLAG))) {
 			__raw_writel(USBUPDATE_FLAG_MAGIC_NUM, restart_reason);
 #endif
-		/* DTS2014041607756 zhaoyingchun 20140416 end > */
-/*< DTS2015012007753 wangyuantao 20150120 begin*/
-#ifdef CONFIG_HUAWEI_KERNEL
+#ifdef CONFIG_HUAWEI_RESET_DETECT
 		}  else if (!strncmp(cmd, "emergency_restart", 17)) {
             pr_info("do nothing\n");
 #endif
-/*DTS2015012007753 wangyuantao 20150120 end >*/
-/* < DTS2014042500397 shiguojun 20140425 begin */
-#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
-		} else if (!strncmp(cmd, "mountfail", strlen("mountfail"))) {
-		    __raw_writel(MOUNTFAIL_MAGIC_NUM, restart_reason);
-#endif
-/* DTS2014042500397 shiguojun 20140425 end > */
-		/* <DTS2014060700865 chenyuanquan 20140607 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-		} else if (!strncmp(cmd, "huawei_rtc", 10)) {
-			__raw_writel(0x77665524, restart_reason);
-#endif
-		/* DTS2014060700865 chenyuanquan 20140607 end> */
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
@@ -397,30 +457,65 @@ static void msm_restart_prepare(const char *cmd)
 
 }
 
-/* < DTS2014102804861 youqi 20141028 begin */
-/* Revert DTS2014080600748 to slove handset reboot function issue */
-/* DTS2014102804861 youqi 20141028 end > */
+/*
+ * Deassert PS_HOLD to signal the PMIC that we are ready to power down or reset.
+ * Do this by calling into the secure environment, if available, or by directly
+ * writing to a hardware register.
+ *
+ * This function should never return.
+ */
+static void deassert_ps_hold(void)
+{
+	struct scm_desc desc = {
+		.args[0] = 0,
+		.arginfo = SCM_ARGS(1),
+	};
+
+	if (scm_deassert_ps_hold_supported) {
+		/* This call will be available on ARMv8 only */
+		scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_PWR,
+				 SCM_IO_DEASSERT_PS_HOLD), &desc);
+	}
+
+	/* Fall-through to the direct write in case the scm_call "returns" */
+	__raw_writel(0, msm_ps_hold);
+}
 
 static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 {
 	int ret;
+	struct scm_desc desc = {
+		.args[0] = 1,
+		.args[1] = 0,
+		.arginfo = SCM_ARGS(2),
+	};
 
 	pr_notice("Going down for restart now\n");
 
-/* < DTS2014102804861 youqi 20141028 begin */
-/* Revert DTS2014080600748 to slove handset reboot function issue */
-/* DTS2014102804861 youqi 20141028 end > */
-
 	msm_restart_prepare(cmd);
 
+#ifdef CONFIG_MSM_DLOAD_MODE
+	/*
+	 * Trigger a watchdog bite here and if this fails,
+	 * device will take the usual restart path.
+	 */
+
+	if (WDOG_BITE_ON_PANIC && in_panic)
+		msm_trigger_wdog_bite();
+#endif
+
 	/* Needed to bypass debug image on some chips */
-	ret = scm_call_atomic2(SCM_SVC_BOOT,
+	if (!is_scm_armv8())
+		ret = scm_call_atomic2(SCM_SVC_BOOT,
 			       SCM_WDOG_DEBUG_BOOT_PART, 1, 0);
+	else
+		ret = scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT,
+			  SCM_WDOG_DEBUG_BOOT_PART), &desc);
 	if (ret)
-		pr_err("Failed to disable wdog debug: %d\n", ret);
+		pr_err("Failed to disable secure wdog debug: %d\n", ret);
 
 	halt_spmi_pmic_arbiter();
-	__raw_writel(0, msm_ps_hold);
+	deassert_ps_hold();
 
 	mdelay(10000);
 }
@@ -428,50 +523,40 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 static void do_msm_poweroff(void)
 {
 	int ret;
+	struct scm_desc desc = {
+		.args[0] = 1,
+		.args[1] = 0,
+		.arginfo = SCM_ARGS(2),
+	};
 
 	pr_notice("Powering off the SoC\n");
 #ifdef CONFIG_MSM_DLOAD_MODE
 	set_dload_mode(0);
 #endif
 
-/* < DTS2014102804861 youqi 20141028 begin */
-/* Revert DTS2014080600748 to slove handset reboot function issue */
-/* DTS2014102804861 youqi 20141028 end > */
-/*< DTS2015012007753 wangyuantao 20150120 begin*/
-#ifdef CONFIG_HUAWEI_KERNEL
-    /*clear hardware reset magic number to imem*/
-    __raw_writel(0, hw_reset_magic_addr);
-	pr_info("clear hardware reset magic number when power off\n");
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+    clear_reset_magic();
 #endif
-/*DTS2015012007753 wangyuantao 20150120 end >*/
+
+
 	qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
 	/* Needed to bypass debug image on some chips */
-	ret = scm_call_atomic2(SCM_SVC_BOOT,
+	if (!is_scm_armv8())
+		ret = scm_call_atomic2(SCM_SVC_BOOT,
 			       SCM_WDOG_DEBUG_BOOT_PART, 1, 0);
+	else
+		ret = scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT,
+			  SCM_WDOG_DEBUG_BOOT_PART), &desc);
 	if (ret)
 		pr_err("Failed to disable wdog debug: %d\n", ret);
 
 	halt_spmi_pmic_arbiter();
-	/* MSM initiated power off, lower ps_hold */
-	__raw_writel(0, msm_ps_hold);
+	deassert_ps_hold();
 
 	mdelay(10000);
 	pr_err("Powering off has failed\n");
 	return;
 }
-
-/* < DTS2014082001912 z00202435 2014/8/19 begin */
-#ifdef CONFIG_HUAWEI_FACTORY_MODE_ENABLE_DUMP
-static bool is_factory_mode(void)
-{
-    if (strstr(saved_command_line, "androidboot.huawei_swtype=factory") != NULL) {
-        return true;
-    }
-
-    return false;
-}
-#endif
-/* DTS2014082001912 z00202435 2014/8/19 end > */
 
 static int msm_restart_probe(struct platform_device *pdev)
 {
@@ -502,16 +587,6 @@ static int msm_restart_probe(struct platform_device *pdev)
 		if (!emergency_dload_mode_addr)
 			pr_err("unable to map imem EDLOAD mode offset\n");
 	}
-
-    /* < DTS2014082001912 z00202435 2014/8/19 begin */
-#ifdef CONFIG_HUAWEI_FACTORY_MODE_ENABLE_DUMP
-	if (is_factory_mode()) {
-        download_mode = 1;
-    }
-#endif
-    /* DTS2014082001912 z00202435 2014/8/19 end > */
-    
-    /* < DTS2014052905391 gaoxu 20140610 begin */
 #ifdef CONFIG_HUAWEI_DEBUG_MODE		
 	if(strstr(saved_command_line,"huawei_debug_mode=1")!=NULL
 	    || strstr(saved_command_line,"emcno=1")!=NULL)
@@ -519,8 +594,7 @@ static int msm_restart_probe(struct platform_device *pdev)
 		download_mode = 1;
 	}
 #endif
-	/* DTS2014052905391 gaoxu 20140610 end > */
-	set_dload_mode(download_mode);
+
 #endif
 	np = of_find_compatible_node(NULL, NULL,
 				"qcom,msm-imem-restart_reason");
@@ -534,7 +608,6 @@ static int msm_restart_probe(struct platform_device *pdev)
 			goto err_restart_reason;
 		}
 	}
-/* < DTS2014060909145 mapengfei 20140609 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
     np = of_find_compatible_node(NULL, NULL,
 				"qcom,msm-imem-restart_flag_addr");
@@ -547,17 +620,32 @@ static int msm_restart_probe(struct platform_device *pdev)
 		}
 	}
 #endif
-/* DTS2014060909145 mapengfei 20140609 end > */
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	msm_ps_hold = devm_ioremap_resource(dev, mem);
 	if (IS_ERR(msm_ps_hold))
 		return PTR_ERR(msm_ps_hold);
+
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (mem)
+		tcsr_boot_misc_detect = mem->start;
 
 	pm_power_off = do_msm_poweroff;
 	arm_pm_restart = do_msm_restart;
 
 	if (scm_is_call_available(SCM_SVC_PWR, SCM_IO_DISABLE_PMIC_ARBITER) > 0)
 		scm_pmic_arbiter_disable_supported = true;
+
+	if (scm_is_call_available(SCM_SVC_PWR, SCM_IO_DEASSERT_PS_HOLD) > 0)
+		scm_deassert_ps_hold_supported = true;
+
+	set_dload_mode(download_mode);
+
+#ifdef CONFIG_HUAWEI_FEATURE_NFF
+	reboot_flag_addr = (uint32_t *)ioremap_nocache(HUAWEI_BOOT_LOG_ADDR,0x100000);
+	if (!reboot_flag_addr) {
+		pr_err("ioremap failed for address: %x \n", HUAWEI_BOOT_LOG_ADDR);
+	}
+#endif
 
 	return 0;
 

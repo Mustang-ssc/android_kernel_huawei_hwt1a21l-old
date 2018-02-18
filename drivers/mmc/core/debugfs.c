@@ -20,7 +20,6 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 
-/* < DTS2014042606672 gaoxu 20140424 begin */
 #ifdef CONFIG_HW_MMC_TOSHIBA_HEALTH_API
 #include <linux/mmc/mmc.h>
 #include <linux/scatterlist.h>
@@ -29,9 +28,6 @@
 #define DHCF_SUB_CMD_NO 0x5
 #define DHCF_PASSWORD 0x00175063
 #endif
-/* DTS2014042606672 gaoxu 20140424 end > */
-
-/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 /* Enum of power state */
 enum sd_type {
@@ -39,7 +35,6 @@ enum sd_type {
     SDXC,
 };
 #endif
-/* DTS2014091901888  zengwei 20140929 end > */
 
 #include "core.h"
 #include "mmc_ops.h"
@@ -268,7 +263,6 @@ out:
 DEFINE_SIMPLE_ATTRIBUTE(mmc_max_clock_fops, mmc_max_clock_get,
 		mmc_max_clock_set, "%llu\n");
 
-/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 static int mmc_sdxc_opt_get(void *data, u64 *val)
 {
@@ -287,7 +281,6 @@ static int mmc_sdxc_opt_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(mmc_sdxc_fops, mmc_sdxc_opt_get,
 			NULL, "%llu\n");
 #endif
-/* DTS2014091901888  zengwei 20140929 end > */
 
 void mmc_add_host_debugfs(struct mmc_host *host)
 {
@@ -727,88 +720,6 @@ static const struct file_operations mmc_dbg_bkops_stats_fops = {
 	.read		= mmc_bkops_stats_read,
 	.write		= mmc_bkops_stats_write,
 };
-
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HW_MMC_TEST
-static int mmc_card_addr_open(struct inode *inode, struct file *filp)
-{
-	struct mmc_card *card = inode->i_private;
-	filp->private_data = card;
-
-	return 0;
-}
-
-static ssize_t mmc_card_addr_read(struct file *filp, char __user *ubuf,
-				     size_t cnt, loff_t *ppos)
-{
-    char buf[64] = {0};
-    struct mmc_card *card = filp->private_data;
-    int card_addr = (int)card;
-
-    card_addr ^= CARD_ADDR_MAGIC;
-    snprintf(buf, sizeof(buf), "%d", (int)card_addr);
-
-    return simple_read_from_buffer(ubuf, cnt, ppos,
-            buf, sizeof(buf));
-}
-
-static const struct file_operations mmc_dbg_card_addr_fops = {
-	.open		= mmc_card_addr_open,
-	.read		= mmc_card_addr_read,
-    .llseek     = default_llseek,
-};
-
-static int mmc_test_st_open(struct inode *inode, struct file *filp)
-{
-	struct mmc_card *card = inode->i_private;
-
-	filp->private_data = card;
-
-	return 0;
-}
-
-static ssize_t mmc_test_st_read(struct file *filp, char __user *ubuf,
-				     size_t cnt, loff_t *ppos)
-{
-    char buf[64] = {0};
-	struct mmc_card *card = filp->private_data;
-
-	if (!card)
-		return cnt;
-
-    snprintf(buf, sizeof(buf), "%d", card->host->test_status);
-
-    return simple_read_from_buffer(ubuf, cnt, ppos,
-            buf, sizeof(buf));
-
-}
-
-static ssize_t mmc_test_st_write(struct file *filp,
-				      const char __user *ubuf, size_t cnt,
-				      loff_t *ppos)
-{
-	struct mmc_card *card = filp->private_data;
-	int value;
-
-	if (!card){
-        return cnt;
-    }
-
-	sscanf(ubuf, "%d", &value);
-    card->host->test_status = value;
-
-	return cnt;
-}
-
-static const struct file_operations mmc_dbg_test_st_fops = {
-	.open		= mmc_test_st_open,
-	.read		= mmc_test_st_read,
-	.write		= mmc_test_st_write,
-};
-#endif
-/* DTS2014042606672 gaoxu 20140424 end > */
-
-/* < DTS2014042606672 gaoxu 20140424 begin */
 #ifdef CONFIG_HW_MMC_TOSHIBA_HEALTH_API
 static int mmc_health_st_open(struct inode *inode, struct file *filp)
 {
@@ -939,6 +850,7 @@ static ssize_t mmc_health_st_read(struct file *filp, char __user *ubuf,
         pr_err("[HW]:%s: health state is invalid.", __func__);
         goto error;
     }
+
     kfree(pbuf);
     return len;
 error:
@@ -952,22 +864,96 @@ static const struct file_operations mmc_dbg_health_st_fops = {
     .llseek     = default_llseek,
 };
 #endif
-/* DTS2014042606672 gaoxu 20140424 end > */
+
+#ifdef CONFIG_HW_MMC_TEST
+static int mmc_card_addr_open(struct inode *inode, struct file *filp)
+{
+	struct mmc_card *card = inode->i_private;
+	filp->private_data = card;
+
+	return 0;
+}
+
+static ssize_t mmc_card_addr_read(struct file *filp, char __user *ubuf,
+				     size_t cnt, loff_t *ppos)
+{
+    char buf[64] = {0};
+    struct mmc_card *card = filp->private_data;
+    long card_addr = (long)card;
+
+    card_addr = (long)(card_addr ^ CARD_ADDR_MAGIC);
+    snprintf(buf, sizeof(buf), "%ld", card_addr);
+
+    return simple_read_from_buffer(ubuf, cnt, ppos,
+            buf, sizeof(buf));
+}
+
+static const struct file_operations mmc_dbg_card_addr_fops = {
+	.open		= mmc_card_addr_open,
+	.read		= mmc_card_addr_read,
+    .llseek     = default_llseek,
+};
+
+static int mmc_test_st_open(struct inode *inode, struct file *filp)
+{
+	struct mmc_card *card = inode->i_private;
+
+	filp->private_data = card;
+
+	return 0;
+}
+
+static ssize_t mmc_test_st_read(struct file *filp, char __user *ubuf,
+				     size_t cnt, loff_t *ppos)
+{
+    char buf[64] = {0};
+	struct mmc_card *card = filp->private_data;
+
+	if (!card)
+		return cnt;
+
+    snprintf(buf, sizeof(buf), "%d", card->host->test_status);
+
+    return simple_read_from_buffer(ubuf, cnt, ppos,
+            buf, sizeof(buf));
+
+}
+
+static ssize_t mmc_test_st_write(struct file *filp,
+				      const char __user *ubuf, size_t cnt,
+				      loff_t *ppos)
+{
+	struct mmc_card *card = filp->private_data;
+	int value;
+
+	if (!card){
+        return cnt;
+    }
+
+	sscanf(ubuf, "%d", &value);
+    card->host->test_status = value;
+
+	return cnt;
+}
+
+static const struct file_operations mmc_dbg_test_st_fops = {
+	.open		= mmc_test_st_open,
+	.read		= mmc_test_st_read,
+	.write		= mmc_test_st_write,
+};
+#endif
 
 void mmc_add_card_debugfs(struct mmc_card *card)
 {
 	struct mmc_host	*host = card->host;
 	struct dentry	*root;
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	struct dentry   *sdxc_root;
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */
 	
 	if (!host->debugfs_root)
 		return;
 
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	sdxc_root = debugfs_create_dir("sdxc_root", host->debugfs_root);
 	if (IS_ERR(sdxc_root))
@@ -975,7 +961,6 @@ void mmc_add_card_debugfs(struct mmc_card *card)
 	if (!sdxc_root)
 		goto err;
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */
 		
 	root = debugfs_create_dir(mmc_card_id(card), host->debugfs_root);
 	if (IS_ERR(root))
@@ -986,11 +971,9 @@ void mmc_add_card_debugfs(struct mmc_card *card)
 		 * create the directory. */
 		goto err;
 
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	card->debugfs_sdxc = sdxc_root;
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */
 	card->debugfs_root = root;
 
 	if (!debugfs_create_x32("state", S_IRUSR, root, &card->state))
@@ -1017,8 +1000,15 @@ void mmc_add_card_debugfs(struct mmc_card *card)
 		if (!debugfs_create_file("bkops_stats", S_IRUSR, root, card,
 					 &mmc_dbg_bkops_stats_fops))
 			goto err;
-			
-/* < DTS2014042606672 gaoxu 20140424 begin */
+#ifdef CONFIG_HW_MMC_TOSHIBA_HEALTH_API
+    if(card->cid.manfid == CID_MANFID_TOSHIBA){
+        if(mmc_card_mmc(card))
+            if (!debugfs_create_file("health_st", S_IRUSR, root, card,
+                        &mmc_dbg_health_st_fops))
+                goto err;
+    }
+#endif
+
 #ifdef CONFIG_HW_MMC_TEST
     if (mmc_card_mmc(card))
         if (!debugfs_create_file("card_addr", S_IRUSR, root, card,
@@ -1030,43 +1020,24 @@ void mmc_add_card_debugfs(struct mmc_card *card)
                     &mmc_dbg_test_st_fops))
             goto err;
 #endif
-/* DTS2014042606672 gaoxu 20140424 end > */
 
-    /* < DTS2013120208259 shiguojun 20131202 begin */
-#ifdef CONFIG_HW_MMC_TOSHIBA_HEALTH_API
-    if(card->cid.manfid == EMMC_TOSHIBA_MANFID){
-        if(mmc_card_mmc(card))
-            if (!debugfs_create_file("health_st", S_IRUSR, root, card,
-                        &mmc_dbg_health_st_fops))
-                goto err;
-    }
-#endif
-    /* DTS2014042606672 gaoxu 20140424 end > */
-
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	if (mmc_card_sd(card))
 		if (!debugfs_create_file("sdxc", S_IRUSR, sdxc_root, card,
 					&mmc_sdxc_fops))
 			goto err;
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */
-	
 	return;
 
 err:
 	debugfs_remove_recursive(root);
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	debugfs_remove_recursive(sdxc_root);
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */	
 	card->debugfs_root = NULL;
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	card->debugfs_sdxc = NULL;
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */	
 	
 	dev_err(&card->dev, "failed to initialize debugfs\n");
 }
@@ -1074,9 +1045,7 @@ err:
 void mmc_remove_card_debugfs(struct mmc_card *card)
 {
 	debugfs_remove_recursive(card->debugfs_root);
-	/* < DTS2014091901888  zengwei 20140929 begin */
 #ifdef CONFIG_HUAWEI_KERNEL	
 	debugfs_remove_recursive(card->debugfs_sdxc);
 #endif
-	/* DTS2014091901888  zengwei 20140929 end > */
 }

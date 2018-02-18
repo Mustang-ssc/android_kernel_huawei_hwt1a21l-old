@@ -96,6 +96,7 @@ struct notifier_block;
  * FORCE_DISABLE  Regulator forcibly shut down by software.
  * VOLTAGE_CHANGE Regulator voltage changed.
  * DISABLE        Regulator was disabled.
+ * ENABLE         Regulator was enabled.
  *
  * NOTE: These events can be OR'ed together when passed into handler.
  */
@@ -108,6 +109,7 @@ struct notifier_block;
 #define REGULATOR_EVENT_FORCE_DISABLE		0x20
 #define REGULATOR_EVENT_VOLTAGE_CHANGE		0x40
 #define REGULATOR_EVENT_DISABLE 		0x80
+#define REGULATOR_EVENT_ENABLE			0x100
 
 struct regulator;
 
@@ -148,11 +150,9 @@ struct regulator *__must_check regulator_get_exclusive(struct device *dev,
 						       const char *id);
 void regulator_put(struct regulator *regulator);
 void devm_regulator_put(struct regulator *regulator);
-/* < DTS2014051208585 xufeng 20140513 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 void regulator_debug_print_enabled(void);
 #endif
-/* DTS2014051208585 xufeng 20140513 end> */
 
 /* regulator output control and status */
 int __must_check regulator_enable(struct regulator *regulator);

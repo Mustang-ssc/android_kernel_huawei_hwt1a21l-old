@@ -1,4 +1,3 @@
-/* <DTS2014080900552 chenyuanquan 20140825 begin */
 /*
  * MAX77819 Driver Core
  *
@@ -100,6 +99,8 @@ struct max77819_io {
 
 extern struct max77819_io *max77819_get_io (struct max77819_dev *chip);
 extern int max77819_map_irq(struct max77819_dev *chip, int irq);
+void notify_max77819_to_control_otg(bool enable);
+bool is_ma77819_otg_enabled(void);
 
 /*******************************************************************************
  * Platform Data
@@ -121,6 +122,19 @@ struct max77819_fuelgauge_platform_data {
 };
 #endif
 
+/* Add max77819 reg recovery function. */
+#define MAXIM_ERROR_NO 5555
+#define MAXIM77819_RECOVERY_REG_NUM 8
+
+struct reg_info{
+	unsigned char reg_addr;
+	unsigned char reg_value;
+};
+static struct reg_info max77819_chg_recovery_regs[] = {
+		{0x36,0x00},{0x3d,0x20},{0x41,0x0f},{0x42,0x1f},
+		{0x43,0x00},{0x45,0x00},{0x47,0x40},{0x4B,0x51}
+};
+
 /*******************************************************************************
  * Chip IO
  ******************************************************************************/
@@ -129,10 +143,34 @@ static __always_inline int max77819_read (struct max77819_io *io,
     u8 addr, u8 *val)
 {
     unsigned int buf = 0;
+    int i = 0;
+    int ret = 0;
     int rc = regmap_read(io->regmap, (unsigned int)addr, &buf);
 
     if (likely(!IS_ERR_VALUE(rc))) {
         *val = (u8)buf;
+    }
+
+    if (rc == -MAXIM_ERROR_NO)
+    {
+        printk("max77819_read: SDA is low. recovery the reg. rc=%d \n", rc);
+
+        for (i = 0; i < MAXIM77819_RECOVERY_REG_NUM; i++)
+        {
+            ret = regmap_write(
+            io->regmap,
+            (unsigned int)(max77819_chg_recovery_regs[i].reg_addr),
+            (unsigned int)(max77819_chg_recovery_regs[i].reg_value));
+            if (ret != 0)
+            {
+                 printk("max77819_read: recovery the reg 0x%x error %d. \n", max77819_chg_recovery_regs[i].reg_addr, ret);
+                 break;
+            }
+        }
+        rc = regmap_read(io->regmap, (unsigned int)addr, &buf);
+        if (likely(!IS_ERR_VALUE(rc))) {
+            *val = (u8)buf;
+        }
     }
     return rc;
 }
@@ -140,8 +178,47 @@ static __always_inline int max77819_read (struct max77819_io *io,
 static __always_inline int max77819_write (struct max77819_io *io,
     u8 addr, u8 val)
 {
+    int rc = 0;
+    int ret = 0;
+    int i = 0;
     unsigned int buf = (unsigned int)val;
-    return regmap_write(io->regmap, (unsigned int)addr, buf);
+    rc = regmap_write(io->regmap, (unsigned int)addr, buf);
+    if (rc == 0)
+    {
+        for (i = 0; i < MAXIM77819_RECOVERY_REG_NUM; i++)
+        {
+            if (max77819_chg_recovery_regs[i].reg_addr == addr)
+            {
+                max77819_chg_recovery_regs[i].reg_value = val;
+                break;
+            }
+        }
+    }
+    else if (rc == -MAXIM_ERROR_NO)
+    {
+        printk("max77819_write: SDA is low. recovery the reg. rc=%d \n", rc);
+
+        for (i = 0; i < MAXIM77819_RECOVERY_REG_NUM; i++)
+        {
+            if (max77819_chg_recovery_regs[i].reg_addr == addr)
+            {
+                max77819_chg_recovery_regs[i].reg_value = val;
+                continue;
+            }
+            ret = regmap_write(
+            io->regmap,
+            (unsigned int)(max77819_chg_recovery_regs[i].reg_addr),
+            (unsigned int)(max77819_chg_recovery_regs[i].reg_value));
+            if (ret != 0)
+            {
+                 printk("max77819_write: recovery the reg 0x%x error %d. \n", max77819_chg_recovery_regs[i].reg_addr, ret);
+                 break;
+            }
+        }
+        // Retry write the reg.
+        rc = regmap_write(io->regmap, (unsigned int)addr, buf);
+    }
+    return rc;
 }
 
 static __inline int max77819_masked_read (struct max77819_io *io,
@@ -279,4 +356,3 @@ static __always_inline int max77819_write_bitdesc (struct max77819_io *io,
         }
 
 #endif /* !__MAX77819_CORE_H__ */
-/* DTS2014080900552 chenyuanquan 20140825 end> */

@@ -5,11 +5,11 @@
     
     @brief: define the global resources for SRecorder
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 **/
@@ -19,9 +19,12 @@
 #include <linux/srecorder.h>
 #include <linux/string.h>
 
+#define MB (1024*1024)
+#define SRECORDER_BASE	0x8c400000  /*dts buffer*/
+#define SRECORDER_SIZE	4           /*MB*/
 #define CRC32_SEED_VALUE (0xFFFFFFFF)
 
-static const unsigned long s_crc32tab[256] =
+static const unsigned int s_crc32tab[256] =
 {
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3, 
     0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91, 
@@ -110,6 +113,32 @@ static int srecorder_verify_log_header_h(log_header_h_t* p_log_header_h)
         return -1;
     }
 
+    if (p_log_header_h->magic_num != SRECORDER_MAGIC_NUMBER)
+    {
+        return -1;
+    }
+
+    if (p_log_header_h->addr == 0)
+    {
+        return -1;
+    }
+
+    if (p_log_header_h->size == 0)
+    {
+        return -1;
+    }
+
+    /* add the followed two checks to avoid dts mismatching */
+    if (p_log_header_h->addr != SRECORDER_BASE)
+    {
+        return -1;
+    }
+
+    if (p_log_header_h->size > (SRECORDER_SIZE*MB))
+    {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -129,7 +158,7 @@ static int srecorder_verify_log_header_m(log_header_m_t* p_log_header_m, int log
         return -1;
     }
 
-    crc32 = srecorder_calculate_crc32((unsigned char const*)p_log_header_m, sizeof(log_header_m_t) - sizeof(p_log_header_m->crc32));
+    crc32 = srecorder_calculate_crc32((unsigned char const*)p_log_header_m, sizeof(log_header_m_t) - sizeof(p_log_header_m->crc32) - sizeof(p_log_header_m->padding));
     if (crc32 != p_log_header_m->crc32)
     {
         return -1;
@@ -183,7 +212,7 @@ static void srecorder_update_log_header_m(log_header_m_t* p_log_header_m)
         return;
     }
 
-    p_log_header_m->crc32 = srecorder_calculate_crc32((unsigned char const*)p_log_header_m, sizeof(log_header_m_t) - sizeof(p_log_header_m->crc32));
+    p_log_header_m->crc32 = srecorder_calculate_crc32((unsigned char const*)p_log_header_m, sizeof(log_header_m_t) - sizeof(p_log_header_m->crc32) - sizeof(p_log_header_m->padding));
 
     return;
 }
@@ -213,31 +242,39 @@ static void srecorder_update_log_header_l(log_header_l_t* p_log_header_l)
     @return: 
     @note: 
 **/
-static void srecorder_dump_previous_reason_time(log_header_m_t* p_log_header_m_temp)
+static void srecorder_dump_previous_reason_time(log_header_m_t* p_log_header_m)
 {
-    /* Don't call srecorder_verify_log_header_m with p_log_header_m_temp */
+    /* Don't call srecorder_verify_log_header_m with p_log_header_m */
     log_header_l_t log_header_l;
     unsigned long log_header_l_addr;
     unsigned log_header_l_count;
 
-    log_header_l_addr = p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len;
-    p_log_header_m_temp->log_len += sizeof(log_header_l_t);
-    log_header_l_count = p_log_header_m_temp->log_len;
+    /* check free space before writing */
+    if (CONFIG_SRECORDER_LOG_BUF_LEN < 
+        (p_log_header_m->log_len + sizeof(log_header_l_t) + strlen(TITLE_REASON_TIME) + 1 + strlen(REASON_TIME_COLLAPSE) + 1))
+    {
+        putstr("No space for previous log data.\n");
+        return;
+    }
 
-    memcpy((void*)(p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len), 
+    log_header_l_addr = p_log_header_m->log_buf.pa + p_log_header_m->log_len;
+    p_log_header_m->log_len += sizeof(log_header_l_t);
+    log_header_l_count = p_log_header_m->log_len;
+
+    memcpy((void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), 
         TITLE_REASON_TIME, strlen(TITLE_REASON_TIME) + 1);
-    p_log_header_m_temp->log_len += (strlen(TITLE_REASON_TIME) + 1); 
+    p_log_header_m->log_len += (strlen(TITLE_REASON_TIME) + 1); 
 
-    memcpy((void*)(p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len), 
+    memcpy((void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), 
         REASON_TIME_COLLAPSE, strlen(REASON_TIME_COLLAPSE) + 1);
-    p_log_header_m_temp->log_len += (strlen(REASON_TIME_COLLAPSE) + 1); 
+    p_log_header_m->log_len += (strlen(REASON_TIME_COLLAPSE) + 1); 
 
-    p_log_header_m_temp->log_buf_len = p_log_header_m_temp->log_len;
-    srecorder_update_log_header_m(p_log_header_m_temp);
+    p_log_header_m->log_buf_len = p_log_header_m->log_len;
+    srecorder_update_log_header_m(p_log_header_m);
 
     memset(&log_header_l, 0, sizeof(log_header_l_t));
     log_header_l.log_type = TYPE_REASON_TIME;
-    log_header_l.log_len = p_log_header_m_temp->log_len - log_header_l_count;
+    log_header_l.log_len = p_log_header_m->log_len - log_header_l_count;
     srecorder_update_log_header_l(&log_header_l);
     memcpy((void*)log_header_l_addr, (void*)&log_header_l, sizeof(log_header_l_t));
 }
@@ -249,22 +286,29 @@ static void srecorder_dump_previous_reason_time(log_header_m_t* p_log_header_m_t
     @return: none
     @note:
 **/
-static void srecorder_dump_previous_common_log(log_header_h_t* p_log_header_h, log_header_m_t* p_log_header_m_temp)
+static void srecorder_dump_previous_common_log(log_header_h_t* p_log_header_h, log_header_m_t* p_log_header_m)
 {
-    /* Don't call srecorder_verify_log_header_m with p_log_header_m_temp */
-    log_header_m_t* p_log_header_m = (log_header_m_t *)p_log_header_h->addr[IDX_CURR].pa;
+    /* Don't call srecorder_verify_log_header_m with p_log_header_m */
+    log_header_m_t* p_log_header_m_prev = (log_header_m_t *)(p_log_header_h->addr) + IDX_CURR;
 
-    if (srecorder_verify_log_header_m(p_log_header_m, true))
+    if (srecorder_verify_log_header_m(p_log_header_m_prev, true))
     {
         putstr("The previous middle log header is messed up.\n");
         return;
     }
 
-    memcpy((void*)(p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len), (void*)(p_log_header_m->log_buf.pa), 
-        p_log_header_m->log_len);
-    p_log_header_m_temp->log_len += p_log_header_m->log_len;
-    p_log_header_m_temp->log_buf_len += p_log_header_m->log_len;
-    srecorder_update_log_header_m(p_log_header_m_temp);
+    /* check free space before writing */
+    if (CONFIG_SRECORDER_LOG_BUF_LEN < (p_log_header_m->log_len + p_log_header_m_prev->log_len))
+    {
+        putstr("No space for previous log data.\n");
+        return;
+    }
+
+    memcpy((void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), (void*)(p_log_header_m_prev->log_buf.pa), 
+        p_log_header_m_prev->log_len);
+    p_log_header_m->log_len += p_log_header_m_prev->log_len;
+    p_log_header_m->log_buf_len += p_log_header_m_prev->log_len;
+    srecorder_update_log_header_m(p_log_header_m);
 }
 
 /**
@@ -273,41 +317,50 @@ static void srecorder_dump_previous_common_log(log_header_h_t* p_log_header_h, l
     @return:
     @note: 
 **/
-static void srecorder_dump_previous_dmesg(log_header_h_t* p_log_header_h, log_header_m_t* p_log_header_m_temp)
+static void srecorder_dump_previous_dmesg(log_header_h_t* p_log_header_h, log_header_m_t* p_log_header_m)
 {
-    /* Don't call srecorder_verify_log_header_m with p_log_header_m_temp */
-    log_header_m_t* p_log_header_m = (log_header_m_t *)p_log_header_h->addr[IDX_DMESG].pa;
+    /* Don't call srecorder_verify_log_header_m with p_log_header_m */
+    log_header_m_t* p_log_header_m_dmesg = (log_header_m_t *)(p_log_header_h->addr) + IDX_DMESG;
     log_header_l_t log_header_l;
     unsigned long log_header_l_addr;
     unsigned log_header_l_count;
 
-    if (srecorder_verify_log_header_m(p_log_header_m, false))
+    if (srecorder_verify_log_header_m(p_log_header_m_dmesg, false))
     {
         putstr("The previous dmesg log header is messed up.\n");
         return;
     }
 
-    log_header_l_addr = p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len;
-    p_log_header_m_temp->log_len += sizeof(log_header_l_t);
-    log_header_l_count = p_log_header_m_temp->log_len;
+    /* check free space before writing */
+    if (CONFIG_SRECORDER_LOG_BUF_LEN < 
+        (p_log_header_m->log_len + sizeof(log_header_l_t) + strlen(TITLE_DMESG) + 1 + p_log_header_m_dmesg->log_buf_len))
+    {
+        putstr("No space for previous log data.\n");
+        return;
+    }
 
-    memcpy((void*)(p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len), TITLE_DMESG, strlen(TITLE_DMESG) + 1);
-    p_log_header_m_temp->log_len += (strlen(TITLE_DMESG) + 1);
+    log_header_l_addr = p_log_header_m->log_buf.pa + p_log_header_m->log_len;
+    p_log_header_m->log_len += sizeof(log_header_l_t);
+    log_header_l_count = p_log_header_m->log_len;
 
-    memcpy((void*)(p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len), 
-        (void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), p_log_header_m->log_buf_len - p_log_header_m->log_len);
-    p_log_header_m_temp->log_len += (p_log_header_m->log_buf_len - p_log_header_m->log_len);
+    memcpy((void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), TITLE_DMESG, strlen(TITLE_DMESG) + 1);
+    p_log_header_m->log_len += (strlen(TITLE_DMESG) + 1);
 
-    memcpy((void*)(p_log_header_m_temp->log_buf.pa + p_log_header_m_temp->log_len), 
-        (void*)(p_log_header_m->log_buf.pa), p_log_header_m->log_len);
-    p_log_header_m_temp->log_len += (p_log_header_m->log_len);
+    memcpy((void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), 
+        (void*)(p_log_header_m_dmesg->log_buf.pa + p_log_header_m_dmesg->log_len), 
+        p_log_header_m_dmesg->log_buf_len - p_log_header_m_dmesg->log_len);
+    p_log_header_m->log_len += (p_log_header_m_dmesg->log_buf_len - p_log_header_m_dmesg->log_len);
 
-    p_log_header_m_temp->log_buf_len = p_log_header_m_temp->log_len;
-    srecorder_update_log_header_m(p_log_header_m_temp);
+    memcpy((void*)(p_log_header_m->log_buf.pa + p_log_header_m->log_len), 
+        (void*)(p_log_header_m_dmesg->log_buf.pa), p_log_header_m_dmesg->log_len);
+    p_log_header_m->log_len += (p_log_header_m_dmesg->log_len);
+
+    p_log_header_m->log_buf_len = p_log_header_m->log_len;
+    srecorder_update_log_header_m(p_log_header_m);
 
     memset(&log_header_l, 0, sizeof(log_header_l_t));
     log_header_l.log_type = TYPE_DMESG;
-    log_header_l.log_len = p_log_header_m_temp->log_len - log_header_l_count;
+    log_header_l.log_len = p_log_header_m->log_len - log_header_l_count;
     srecorder_update_log_header_l(&log_header_l);
     memcpy((void*)log_header_l_addr, (void*)&log_header_l, sizeof(log_header_l_t));
 }
@@ -315,8 +368,8 @@ static void srecorder_dump_previous_dmesg(log_header_h_t* p_log_header_h, log_he
 /* this function will be called before vms is ready, so it uses physical memory addresses directly */
 void srecorder_retrieve_previous_log(void)
 {
-    log_header_h_t* p_log_header_h = (log_header_h_t *)CONFIG_SRECORDER_LOG_HEADER_H_PHYS_ADDR;
-    log_header_m_t* p_log_header_m_temp = (log_header_m_t *)CONFIG_SRECORDER_LOG_HEADER_M_PHYS_ADDR;
+    log_header_h_t* p_log_header_h = (log_header_h_t *)CONFIG_SRECORDER_IMEM_HEADER_PHYS_ADDR;
+    log_header_m_t* p_log_header_m = NULL;
 
     /* check the high log header at the fixed physical address */
     if (srecorder_verify_log_header_h(p_log_header_h))
@@ -326,43 +379,33 @@ void srecorder_retrieve_previous_log(void)
         return;
     }
 
-    /* start to update p_log_header_m_temp */
-    memset(p_log_header_m_temp, 0, sizeof(log_header_m_t));
+    /* the header in imem is good, then the buffer is located */
+    p_log_header_m = (log_header_m_t *)(p_log_header_h->addr);
 
-    p_log_header_m_temp->version = CONFIG_SRECORDER_VERSION;
-    p_log_header_m_temp->magic_num = SRECORDER_MAGIC_NUMBER;
-    p_log_header_m_temp->log_buf.pa = CONFIG_SRECORDER_LOG_HEADER_M_PHYS_ADDR + sizeof(log_header_m_t);
-    p_log_header_m_temp->log_buf.va = 0;
-    p_log_header_m_temp->log_len = 0;
-    p_log_header_m_temp->log_buf_len = 0;
-    srecorder_update_log_header_m(p_log_header_m_temp);
+    /* start to update p_log_header_m */
+    memset(p_log_header_m, 0, sizeof(log_header_m_t));
+
+    p_log_header_m->version = CONFIG_SRECORDER_VERSION;
+    p_log_header_m->magic_num = SRECORDER_MAGIC_NUMBER;
+    p_log_header_m->log_buf.pa = p_log_header_h->addr + CONFIG_SRECORDER_LOG_BUF_LEN;
+    p_log_header_m->log_buf.va = 0;
+    p_log_header_m->log_len = 0;
+    p_log_header_m->log_buf_len = 0;
+    srecorder_update_log_header_m(p_log_header_m);
 
     /* we do nothing if reset_flag is RESET_NORMAL */
 
     if (p_log_header_h->reset_flag == RESET_APANIC)
     {
-        /* reserve space for log_header_m_t at the beginning of temp buffer */
-        p_log_header_m_temp->log_len = sizeof(log_header_m_t);
-        p_log_header_m_temp->log_buf_len = sizeof(log_header_m_t);
-        srecorder_update_log_header_m(p_log_header_m_temp);
-
-        srecorder_dump_previous_common_log(p_log_header_h, p_log_header_m_temp);
-        srecorder_dump_previous_dmesg(p_log_header_h, p_log_header_m_temp);
+        srecorder_dump_previous_common_log(p_log_header_h, p_log_header_m);
+        srecorder_dump_previous_dmesg(p_log_header_h, p_log_header_m);
     }
 
     if (p_log_header_h->reset_flag == RESET_COLLAPSE)
     {
-        /* reserve space for log_header_m_t at the beginning of temp buffer */
-        p_log_header_m_temp->log_len = sizeof(log_header_m_t);
-        p_log_header_m_temp->log_buf_len = sizeof(log_header_m_t);
-        srecorder_update_log_header_m(p_log_header_m_temp);
-
-        srecorder_dump_previous_reason_time(p_log_header_m_temp);
-        srecorder_dump_previous_dmesg(p_log_header_h, p_log_header_m_temp);
+        srecorder_dump_previous_reason_time(p_log_header_m);
+        srecorder_dump_previous_dmesg(p_log_header_h, p_log_header_m);
     }
-
-    /* clean the high log header, cause we already get what we want */
-    memset(p_log_header_h, 0, sizeof(log_header_h_t));
 
     return;
 }

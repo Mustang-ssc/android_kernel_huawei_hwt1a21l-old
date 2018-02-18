@@ -215,6 +215,20 @@ static void diag_write_complete(struct usb_ep *ep,
 	struct diag_context *ctxt = ep->driver_data;
 	struct diag_request *d_req = req->context;
 	unsigned long flags;
+	u8 req_buffer_part_out[17] = {0};
+	strncpy(req_buffer_part_out,(u8 *)req->buf,sizeof(req_buffer_part_out)-1);
+	/* huawei diag log printf */
+	if(( 75 == *((u8 *)req->buf)) && (( 201 == *((u8 *)req->buf+1) )||(200 == *((u8 *)req->buf+1))))
+	{
+       print_hex_dump(KERN_INFO, "[USB_Debug]Data to usb: ", 8,
+                          1, DUMP_PREFIX_ADDRESS, req_buffer_part_out, 16, 1);
+    }
+	/*printf  7B 00 01 02 03 04 05 06 07 08 09 9D 5F 7E */
+	if(( 123 == *((u8 *)req->buf)) && (0 == *((u8 *)req->buf+1)))
+	{
+       print_hex_dump(KERN_INFO, "[USB_Debug]Data to usb: ", 8,
+                          1, DUMP_PREFIX_ADDRESS, req_buffer_part_out, 16, 1);
+    }
 
 	ctxt->dpkts_tolaptop_pending--;
 
@@ -249,10 +263,23 @@ static void diag_read_complete(struct usb_ep *ep,
 	struct diag_context *ctxt = ep->driver_data;
 	struct diag_request *d_req = req->context;
 	unsigned long flags;
+	u8 req_buffer_part_in[17] = {0};
 
 	d_req->actual = req->actual;
 	d_req->status = req->status;
-
+	strncpy(req_buffer_part_in,(u8 *)req->buf,sizeof(req_buffer_part_in)-1);
+	/* huawei diag log printf */
+	if(( 75 == *((u8 *)req->buf)) && (( 201 == *((u8 *)req->buf+1) )||(200 == *((u8 *)req->buf+1))))
+	{
+       print_hex_dump(KERN_INFO, "[USB_Debug]Data from usb: ", 8,
+                          1, DUMP_PREFIX_ADDRESS, req_buffer_part_in, 16, 1);
+    }
+	/*printf  7B 00 01 02 03 04 05 06 07 08 09 9D 5F 7E */
+	if(( 123 == *((u8 *)req->buf)) && (0 == *((u8 *)req->buf+1)))
+	{
+       print_hex_dump(KERN_INFO, "[USB_Debug]Data from usb: ", 8,
+                          1, DUMP_PREFIX_ADDRESS, req_buffer_part_in, 16, 1);
+    }
 	spin_lock_irqsave(&ctxt->lock, flags);
 	list_add_tail(&req->list, &ctxt->read_pool);
 	spin_unlock_irqrestore(&ctxt->lock, flags);
@@ -296,7 +323,7 @@ struct usb_diag_ch *usb_diag_open(const char *name, void *priv,
 		if (!ch)
 			return ERR_PTR(-ENOMEM);
 	}
-
+    printk(KERN_INFO "[USB_DEBUG]usb diag is open.\n");
 	ch->name = name;
 	ch->priv = priv;
 	ch->notify = notify;
@@ -320,7 +347,7 @@ void usb_diag_close(struct usb_diag_ch *ch)
 {
 	struct diag_context *dev = NULL;
 	unsigned long flags;
-
+    printk(KERN_INFO "[USB_DEBUG]usb diag is close.\n");
 	spin_lock_irqsave(&ch_lock, flags);
 	ch->priv = NULL;
 	ch->notify = NULL;
@@ -422,6 +449,7 @@ int usb_diag_read(struct usb_diag_ch *ch, struct diag_request *d_req)
 	struct diag_context *ctxt = ch->priv_usb;
 	unsigned long flags;
 	struct usb_request *req;
+	struct usb_ep *out;
 	static DEFINE_RATELIMIT_STATE(rl, 10*HZ, 1);
 
 	if (!ctxt)
@@ -429,10 +457,12 @@ int usb_diag_read(struct usb_diag_ch *ch, struct diag_request *d_req)
 
 	spin_lock_irqsave(&ctxt->lock, flags);
 
-	if (!ctxt->configured) {
+	if (!ctxt->configured || !ctxt->out) {
 		spin_unlock_irqrestore(&ctxt->lock, flags);
 		return -EIO;
 	}
+
+	out = ctxt->out;
 
 	if (list_empty(&ctxt->read_pool)) {
 		spin_unlock_irqrestore(&ctxt->lock, flags);
@@ -447,7 +477,14 @@ int usb_diag_read(struct usb_diag_ch *ch, struct diag_request *d_req)
 	req->buf = d_req->buf;
 	req->length = d_req->length;
 	req->context = d_req;
-	if (usb_ep_queue(ctxt->out, req, GFP_ATOMIC)) {
+
+	/* make sure context is still valid after releasing lock */
+	if (ctxt != ch->priv_usb) {
+		usb_ep_free_request(out, req);
+		return -EIO;
+	}
+
+	if (usb_ep_queue(out, req, GFP_ATOMIC)) {
 		/* If error add the link to linked list again*/
 		spin_lock_irqsave(&ctxt->lock, flags);
 		list_add_tail(&req->list, &ctxt->read_pool);
@@ -481,6 +518,7 @@ int usb_diag_write(struct usb_diag_ch *ch, struct diag_request *d_req)
 	struct diag_context *ctxt = ch->priv_usb;
 	unsigned long flags;
 	struct usb_request *req = NULL;
+	struct usb_ep *in;
 	static DEFINE_RATELIMIT_STATE(rl, 10*HZ, 1);
 
 	if (!ctxt)
@@ -488,10 +526,12 @@ int usb_diag_write(struct usb_diag_ch *ch, struct diag_request *d_req)
 
 	spin_lock_irqsave(&ctxt->lock, flags);
 
-	if (!ctxt->configured) {
+	if (!ctxt->configured || !ctxt->in) {
 		spin_unlock_irqrestore(&ctxt->lock, flags);
 		return -EIO;
 	}
+
+	in = ctxt->in;
 
 	if (list_empty(&ctxt->write_pool)) {
 		spin_unlock_irqrestore(&ctxt->lock, flags);
@@ -506,7 +546,14 @@ int usb_diag_write(struct usb_diag_ch *ch, struct diag_request *d_req)
 	req->buf = d_req->buf;
 	req->length = d_req->length;
 	req->context = d_req;
-	if (usb_ep_queue(ctxt->in, req, GFP_ATOMIC)) {
+
+	/* make sure context is still valid after releasing lock */
+	if (ctxt != ch->priv_usb) {
+		usb_ep_free_request(in, req);
+		return -EIO;
+	}
+
+	if (usb_ep_queue(in, req, GFP_ATOMIC)) {
 		/* If error add the link to linked list again*/
 		spin_lock_irqsave(&ctxt->lock, flags);
 		list_add_tail(&req->list, &ctxt->write_pool);

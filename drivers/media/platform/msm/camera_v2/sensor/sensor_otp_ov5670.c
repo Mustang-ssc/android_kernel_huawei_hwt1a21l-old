@@ -1,5 +1,3 @@
-/* <DTS2014101602303  jiweifeng/jwx206032 20141016 begin */
-/* DTS2015011906877 shaohongyuan swx234330 Add OTP function -- Begin*/
 /************************************************************
   Copyright (C), 1988-1999, Huawei Tech. Co., Ltd.
   FileName: sensor_otp_ov5670.c
@@ -58,10 +56,8 @@
 #define OV5670_OTP_LSC_READ_FLAG     (1 << 2)
 #define OV5670_OTP_VCM_READ_FLAG     (1 << 3)
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 #define OV5670_OTP_FF_READ_ALL_FLAG     (OV5670_OTP_ID_READ_FLAG|OV5670_OTP_AWB_READ_FLAG|OV5670_OTP_LSC_READ_FLAG)
 #define OV5670_OTP_AF_READ_ALL_FLAG 	  (OV5670_OTP_FF_READ_ALL_FLAG|OV5670_OTP_VCM_READ_FLAG)
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 #define OPT_LSC_MAX_LENGTH                     16
 
@@ -90,7 +86,6 @@
 #define OV5670_OTP_LSC_GROUP3_START_REG        0x7061
 #define OV5670_OTP_LSC_GROUP3_END_REG          0x7070
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 #define OV5670_OTP_VCM_FLAG_REG                0x7033
 #define OV5670_OTP_VCM_GROUP1_START_REG        0x7034
 #define OV5670_OTP_VCM_GROUP1_END_REG          0x7037
@@ -98,7 +93,6 @@
 #define OV5670_OTP_VCM_GROUP2_END_REG          0x703b
 #define OV5670_OTP_VCM_GROUP3_START_REG        0x703c
 #define OV5670_OTP_VCM_GROUP3_END_REG          0x703f
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 #define OV5670_OTP_DPC_REG                     0x5002  
 #define OV5670_OTP_SENSOR_CONTRL_REG           0x100
@@ -119,10 +113,8 @@
 
 #define ULC2_HUAWEI_CAMERA_FF_NUM              0xB2  
 #define BYD_HUAWEI_CAMERA_FF_TMP_NUM           0x4E 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */ 
 #define ULC2_HUAWEI_CAMERA_AF_NUM              0xB3 
 #define OV5670_OTP_VCM_OFFSET_VALUE            100
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 typedef enum {
 	SUNNY_MODULE_VENDOR_ID = 1,
@@ -183,18 +175,14 @@ static OV5670_GROUP_REG_ADDR ov5670_lsc_read_group_addr[OV5670_OTP_GROUPMAX] = {
 	{OV5670_OTP_LSC_GROUP3_START_REG,OV5670_OTP_LSC_GROUP3_END_REG},
 };
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 static OV5670_GROUP_REG_ADDR ov5670_vcm_read_group_addr[OV5670_OTP_GROUPMAX] = {
 	{OV5670_OTP_VCM_GROUP1_START_REG,OV5670_OTP_VCM_GROUP1_END_REG},
 	{OV5670_OTP_VCM_GROUP2_START_REG,OV5670_OTP_VCM_GROUP2_END_REG},
 	{OV5670_OTP_VCM_GROUP3_START_REG,OV5670_OTP_VCM_GROUP3_END_REG},
 };
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 static uint8_t  ov5670_otp_read_flag = 0;
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 static bool      ov5670_otp_is_af_module = false;   /* AF = true, FF = false */
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 static uint32_t rg_ratio_typical  = 0x0274;  //the average of 4 Golden samples' RG ratio
 static uint32_t bg_ratio_typical  = 0x029c; //the average of 4 Golden samples' BG ratio
 
@@ -533,14 +521,12 @@ static bool ov5670_otp_read_group_data(struct msm_sensor_ctrl_t *s_ctrl, ov5670_
 			pcur_addr_array = ov5670_lsc_read_group_addr;
 			break;
 		}
-		/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 		case OV5670_VCM_OTP:
 		{
 			check_flag_reg    = OV5670_OTP_VCM_FLAG_REG;
 			pcur_addr_array = ov5670_vcm_read_group_addr;
 			break;
 		}
-		/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 		default:
 		{
 			CMR_LOGE("%s: otp type error \n",__func__);
@@ -597,7 +583,6 @@ static bool ov5670_otp_read_group_data(struct msm_sensor_ctrl_t *s_ctrl, ov5670_
 			memcpy(otp_ptr->lenc, otp_buf, buf_count);
 			break;
 		}
-		/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 		case OV5670_VCM_OTP:
 		{
 			otp_ptr->VCM_start = ((otp_buf[0] << 2) | ((otp_buf[1]>>6) & 0x03));
@@ -627,7 +612,6 @@ static bool ov5670_otp_read_group_data(struct msm_sensor_ctrl_t *s_ctrl, ov5670_
 			
 			break;
 		}
-		/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 		default:
 		{
 			CMR_LOGE("%s: otp type error \n",__func__);
@@ -665,7 +649,6 @@ static bool ov5670_otp_check_id(struct msm_sensor_ctrl_t * s_ctrl, struct OV5670
 	bool ret = false;
 	uint8_t vendor_id = 0;
    
-   /* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */ 
 	if (true == ov5670_otp_read_id(s_ctrl,current_otp))
 	{
 	      CMR_LOGI("%s,ov5670_otp_read_id ok!\n",__func__);
@@ -689,7 +672,6 @@ static bool ov5670_otp_check_id(struct msm_sensor_ctrl_t * s_ctrl, struct OV5670
 	    CMR_LOGE("%s,ov5670_otp_read_id error!\n",__func__);
 		ret = false;
 	}
-    /* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 	return ret;
 
 }
@@ -752,7 +734,6 @@ static bool ov5670_otp_check_lsc(struct msm_sensor_ctrl_t * s_ctrl, struct OV567
 	return ret;
 }
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :    ov5670_otp_read_vcm
 Description:   read the awb data from otp space .
@@ -781,7 +762,6 @@ static bool ov5670_otp_check_vcm(struct msm_sensor_ctrl_t * s_ctrl, struct OV567
 
 	return ret;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 /****************************************************************************
 * FunctionName: ov5670_otp_set_flag;
@@ -868,7 +848,6 @@ static void ov5670_otp_update_awb(struct msm_sensor_ctrl_t * s_ctrl, struct OV56
 	
 	return;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 static void ov5670_otp_update_vcm(struct msm_sensor_ctrl_t * s_ctrl, struct OV5670_OTP_STRUCT *current_otp)
 {  
 	s_ctrl->afc_otp_info.starting_dac = current_otp->VCM_start;
@@ -886,9 +865,7 @@ static void ov5670_set_otp_data_to_sensor(struct msm_sensor_ctrl_t * s_ctrl, str
 	ov5670_otp_update_vcm(s_ctrl, current_otp);
 	return;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :   ov5670_otp_debug
 Description:   Only for debug use
@@ -921,7 +898,6 @@ void ov5670_otp_debug(struct OV5670_OTP_STRUCT *otp_ptr)
 	
 	return;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 /******************************************************************************
 Function   :   ov5670_get_otp_from_sensor
@@ -957,7 +933,6 @@ static void ov5670_get_otp_from_sensor(struct msm_sensor_ctrl_t * s_ctrl, struct
 		CMR_LOGE("%s: check awb error!\n",__func__);
 		goto exit;
 	}
-   /* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 	if (ov5670_otp_is_af_module)
 	{
 		ret = ov5670_otp_check_vcm(s_ctrl, current_otp);
@@ -979,7 +954,6 @@ static void ov5670_get_otp_from_sensor(struct msm_sensor_ctrl_t * s_ctrl, struct
 		ov5670_otp_set_flag(OV5670_OTP_LSC_READ_FLAG);
 		CMR_LOGI("%s: check lsc ok!\n",__func__);
 	}
-   /* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 exit:
 	usleep_range(5000, 6000);
 	ov5670_otp_enable_DPC(s_ctrl);
@@ -988,7 +962,6 @@ exit:
 	return;
 }
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :    ov5670_otp_func
 Description:   the interface of ov5670 OTP
@@ -1009,9 +982,7 @@ int ov5670_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
 		bg_ratio_typical = otp_function_lists[index].bg_ratio_typical;	
 	}
 
-    /* < DTS2015022605541 l00271394 20150226 begin */	
 	CMR_LOGI("%s, rg_ratio_typical=%04x,bg_ratio_typical=%04x\n", __func__,rg_ratio_typical,bg_ratio_typical);
-    /* DTS2015022605541 l00271394 20150226 end > */
 
 	otp_read_flag = ov5670_otp_is_af_module ? OV5670_OTP_AF_READ_ALL_FLAG : OV5670_OTP_FF_READ_ALL_FLAG;
 
@@ -1036,6 +1007,3 @@ int ov5670_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
 	return OV5670_OTP_OK;	
 
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
-/* DTS2015011906877 shaohongyuan swx234330 Add OTP function -- End*/
-/* DTS2014101602303 jiweifeng/jwx206032 20141016 end > */

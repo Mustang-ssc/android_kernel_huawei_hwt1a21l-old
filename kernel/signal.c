@@ -42,13 +42,9 @@
 #include <asm/siginfo.h>
 #include <asm/cacheflush.h>
 #include "audit.h"	/* audit_signal_info() */
-/* < DTS2014072602455 zhongming 20140726 begin */
-/* < DTS2014021207582 xufeng 20140212 begin */
 #ifdef CONFIG_HUAWEI_KSTATE
 #include <linux/hw_kcollect.h>
 #endif
-/* DTS2014021207582 xufeng 20140212 end > */
-/* DTS2014072602455 zhongming 20140726 end > */
 
 /*
  * SLAB caches for signal bits.
@@ -1219,15 +1215,11 @@ int do_send_sig_info(int sig, struct siginfo *info, struct task_struct *p,
 	int ret = -ESRCH;
 
 	if (lock_task_sighand(p, &flags)) {
-/* < DTS2014072602455 zhongming 20140726 begin */
-/* < DTS2014021207582 xufeng 20140212 begin */
 #ifdef CONFIG_HUAWEI_KSTATE
-		if (sig == SIGKILL || sig == SIGTERM) {
-			kcollect(KCOLLECT_FREEZER_MASK, "[PID %d KILLED][SIG %d]", p->tgid, sig);
+		if (sig == SIGKILL || sig == SIGTERM || sig == SIGABRT) {
+			hwkillinfo(p->tgid, sig);
 		}
 #endif
-/* DTS2014021207582 xufeng 20140212 end > */
-/* DTS2014072602455 zhongming 20140726 end > */
 		ret = send_signal(sig, info, p, group);
 		unlock_task_sighand(p, &flags);
 	}

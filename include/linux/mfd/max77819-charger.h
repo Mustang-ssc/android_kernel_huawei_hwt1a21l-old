@@ -1,4 +1,3 @@
-/* <DTS2014080900552 chenyuanquan 20140825 begin */
 /*
  * Maxim MAX77819 Charger Driver Header
  *
@@ -12,9 +11,7 @@
 #ifndef __MAX77819_CHARGER_H__
 #define __MAX77819_CHARGER_H__
 
-/* < DTS2014101003546 taohanwen 20141014 begin */
 // remove current macos
-/* DTS2014101003546 taohanwen 20141014 end > */
 
 struct max77819_charger_platform_data {
     bool disable_interrupt;
@@ -26,10 +23,8 @@ struct max77819_charger_platform_data {
     char **supplied_to;
     size_t num_supplicants;
 
-    /* < DTS2014102201176 taohanwen 20141024 begin */
     u32 chg_dcin_current_max;        /* in uA; 0.00A ~ 1.80A */
     u32 chg_fast_current_max;        /* in uA; 0.00A ~ 1.80A */
-    /* DTS2014102201176 taohanwen 20141024 end > */
     u32 charge_termination_voltage; /* in uV; 4.10V ~ 4.35V */
     u32 topoff_timer;               /* in min; 0min ~ 60min, infinite */
     u32 topoff_current;             /* in uA; 50mA ~ 400mA */
@@ -48,12 +43,7 @@ struct max77819_charger_platform_data {
     u32 aicl_reset_threshold;       /* in uV; 100mV or 200mV */
 };
 
-/* < DTS2014100804605 taohanwen 20141008 begin */
 /* for compatibility with kernel not from android/kernel/msm */
-/* < DTS2014110406059 taohanwen 20141104 begin */
 /* remove redefine power_supply prop menu macos */
-/* DTS2014110406059 taohanwen 20141104 end > */
-/* DTS2014100804605 taohanwen 20141008 end > */
 
 #endif /* !__MAX77819_CHARGER_H__ */
-/* DTS2014080900552 chenyuanquan 20140825 end> */

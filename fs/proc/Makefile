@@ -30,12 +30,6 @@ proc-$(CONFIG_PROC_VMCORE)	+= vmcore.o
 proc-$(CONFIG_PROC_DEVICETREE)	+= proc_devtree.o
 proc-$(CONFIG_PRINTK)	+= kmsg.o
 proc-$(CONFIG_PROC_PAGE_MONITOR)	+= page.o
-#/* < DTS2014040104155 xufeng 20140401 begin */
 proc-$(CONFIG_APP_INFO)         += app_info.o
-#/* DTS2014040104155 xufeng 20140401 end > */
-#/* < DTS2014042500397 shiguojun 20140425 begin */
-proc-$(CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA)  += emerg_data.o
-#/* DTS2014042500397 shiguojun 20140425 end > */
-#/*< DTS2014091203249 yangpanfei 20140915 begin*/
-proc-y	+= check_root.o
-#/*DTS2014091203249 yangpanfei 20140915 end >*/
+proc-y  += check_root.o
+proc-$(CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA) += emerg_data.o

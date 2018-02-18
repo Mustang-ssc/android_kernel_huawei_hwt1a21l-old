@@ -1,4 +1,4 @@
-/* < DTS2014072602310 zhaoyingchun 20140726 begin */ 
+/* zhaoyingchun add for emmc 5.0 firmware update begin */
 /*
  *
  *  ffu.h
@@ -61,4 +61,4 @@ static inline int mmc_ffu_install(struct mmc_card *card)
 
 #endif
 #endif /* FFU_H_ */
-/* DTS2014072602310 zhaoyingchun 20140726 end > */ 
+/* zhaoyingchun add for emmc 5.0 firmware update end */

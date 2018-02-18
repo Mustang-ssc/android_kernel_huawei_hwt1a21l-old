@@ -795,6 +795,7 @@ static struct snd_soc_platform_driver msm_soc_platform = {
 
 static int msm_pcm_probe(struct platform_device *pdev)
 {
+
 	dev_info(&pdev->dev, "%s: dev name %s\n",
 			__func__, dev_name(&pdev->dev));
 	atomic_set(&lpa_audio.audio_ocmem_req, 0);

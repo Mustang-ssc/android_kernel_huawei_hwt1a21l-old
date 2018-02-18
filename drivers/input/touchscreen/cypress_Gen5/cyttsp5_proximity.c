@@ -62,7 +62,7 @@ struct cyttsp5_proximity_data {
 	u8 pr_buf[CY_MAX_PRBUF_SIZE];
 };
 
-extern int get_is_recovery_mode(void); /* DTS2013111104255 modified by w00176579 for booting kernel speed without tp drivers*/
+extern int get_is_recovery_mode(void);
 
 static void cyttsp5_report_proximity(struct cyttsp5_proximity_data *pd,
 	bool on)
@@ -596,10 +596,8 @@ static struct cyttsp5_driver cyttsp5_proximity_driver = {
 static int __init cyttsp5_proximity_init(void)
 {
 	int rc = 0;
-/* Begin: DTS2013111104255 modified by w00176579 for booting kernel speed without tp drivers*/
 	if(get_is_recovery_mode())
 		return 0;	
-/* End: DTS2013111104255 modified by w00176579 for booting kernel speed without tp drivers*/
 	rc = cyttsp5_register_driver(&cyttsp5_proximity_driver);
 	TS_LOG_INFO("%s: Cypress TTSP v5 Proximity Driver (Built %s), rc=%d\n",
 		 __func__, CY_DRIVER_DATE, rc);

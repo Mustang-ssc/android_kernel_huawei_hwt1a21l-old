@@ -67,12 +67,9 @@
 #include "sd.h"
 #include "scsi_priv.h"
 #include "scsi_logging.h"
-
-/* < DTS2014070404668 wanghui 20140721 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define OTG_HOST_WAIT_TIME 10
 #endif
-/* DTS2014070404668 wanghui 20140721 end > */
 
 MODULE_AUTHOR("Eric Youngdale");
 MODULE_DESCRIPTION("SCSI disk (sd) driver");
@@ -585,6 +582,31 @@ static void scsi_disk_put(struct scsi_disk *sdkp)
 	scsi_device_put(sdev);
 	mutex_unlock(&sd_ref_mutex);
 }
+
+struct gendisk *scsi_gendisk_get_from_dev(struct device *dev)
+{
+	struct scsi_disk *sdkp;
+
+	mutex_lock(&sd_ref_mutex);
+	sdkp = dev_get_drvdata(dev);
+	if (sdkp)
+		sdkp = __scsi_disk_get(sdkp->disk);
+	mutex_unlock(&sd_ref_mutex);
+	return !sdkp ? NULL : sdkp->disk;
+}
+EXPORT_SYMBOL(scsi_gendisk_get_from_dev);
+
+void scsi_gendisk_put(struct device *dev)
+{
+	struct scsi_disk *sdkp = dev_get_drvdata(dev);
+	struct scsi_device *sdev = sdkp->device;
+
+	mutex_lock(&sd_ref_mutex);
+	put_device(&sdkp->dev);
+	scsi_device_put(sdev);
+	mutex_unlock(&sd_ref_mutex);
+}
+EXPORT_SYMBOL(scsi_gendisk_put);
 
 static void sd_prot_op(struct scsi_cmnd *scmd, unsigned int dif)
 {
@@ -1738,11 +1760,9 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 	unsigned int the_result;
 	struct scsi_sense_hdr sshdr;
 	int sense_valid = 0;
-/* < DTS2014070404668 wanghui 20140721 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-    int wait_ready_time = OTG_HOST_WAIT_TIME;
+	int wait_ready_time = OTG_HOST_WAIT_TIME;
 #endif
-/* DTS2014070404668 wanghui 20140721 end > */
 
 	spintime = 0;
 
@@ -1759,22 +1779,19 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 						      DMA_NONE, NULL, 0,
 						      &sshdr, SD_TIMEOUT,
 						      SD_MAX_RETRIES, NULL);
-
 			/*
 			 * If the drive has indicated to us that it
 			 * doesn't have any media in it, don't bother
 			 * with any more polling.
 			 */
-/* < DTS2014070404668 wanghui 20140721 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-            if (NOT_READY == sshdr.sense_key && wait_ready_time > 0) {
-                /* Wait 1 second for next try */
-                msleep(1000);
-                wait_ready_time--;
-                continue;
-            }
+			if (NOT_READY == sshdr.sense_key && wait_ready_time > 0) {
+				/* Wait 1 second for next try */
+				msleep(1000);
+				wait_ready_time--;
+				continue;
+			}
 #endif
-/* DTS2014070404668 wanghui 20140721 end > */
 
 			if (media_not_present(sdkp, &sshdr))
 				return;

@@ -95,11 +95,14 @@ typedef struct {
 	}port;
 } IPPORT;
 
-typedef struct timeval PACKET_TIME;
+typedef struct {
+	u32 tv_sec;
+	u32 tv_usec;
+} PACKET_TIME;
 
 typedef struct {
 	u32 			offset;
-	struct timeval 	time;
+	PACKET_TIME 	time;
 } TRIGGER_TIME;
 
 typedef struct {
@@ -182,7 +185,7 @@ static inline void free_ptr(void *p)
  * Return:	false -- invalid
  *			true -- valid
 */
-static bool is_time_valid(TRIGGER_TIME *trgr_time, struct timeval *day_time)
+static bool is_time_valid(TRIGGER_TIME *trgr_time, PACKET_TIME *day_time)
 {
 	__kernel_time_t t_rboundary = trgr_time->time.tv_sec + trgr_time->offset;
 	return day_time->tv_sec >= t_rboundary ? false : true;
@@ -223,7 +226,7 @@ static UID_TREE_NODE *search_uid(kuid_t uid)
  * Output:
  * Return:	void
 */
-static void update_trigger_time(struct list_head *time_header, struct timeval *day_time)
+static void update_trigger_time(struct list_head *time_header, PACKET_TIME *day_time)
 {
 	TIME_LIST_NODE *tl_node = NULL;
 	TIME_LIST_NODE *n = NULL;
@@ -345,6 +348,7 @@ static int add_uid(MONITOR_CMD *mnt_cmd)
 {
 	UID_TREE_NODE *ut_node = NULL;
 	struct timeval tv;
+	PACKET_TIME time;
 	int ret = -1;
 
 	write_lock_bh(&uid_rwlock);
@@ -360,8 +364,10 @@ static int add_uid(MONITOR_CMD *mnt_cmd)
 
 	/*uid exists*/
 	do_gettimeofday(&tv);
-	update_trigger_time(&ut_node->time_header, &tv);
-	if (is_time_valid(&mnt_cmd->trgr_time, &tv)) {
+	time.tv_sec = (u32)tv.tv_sec;
+	time.tv_usec = (u32)tv.tv_usec;
+	update_trigger_time(&ut_node->time_header, &time);
+	if (is_time_valid(&mnt_cmd->trgr_time, &time)) {
 		/*time is valid*/
 		if (add_trigger_time(&ut_node->time_header, &mnt_cmd->trgr_time) < 0) {
 			pr_err("hw_packetmonitor %s: add trigger time failed!\n", __func__);
@@ -550,8 +556,8 @@ static void get_skb_packet_time(struct sk_buff *skb, PACKET_TIME *pkt_time)
 	if (0 == tv.tv_sec) {
 		do_gettimeofday(&tv);
 	}
-	pkt_time->tv_sec = tv.tv_sec;
-	pkt_time->tv_usec = tv.tv_usec;
+	pkt_time->tv_sec = (u32)tv.tv_sec;
+	pkt_time->tv_usec = (u32)tv.tv_usec;
 }
 
 /*
@@ -971,7 +977,7 @@ static int hook_kstate_cb(CHANNEL_ID src, PACKET_TAG tag, const char *data, size
 		pr_err("hw_packetmonitor %s: buffer len invalid!\n", __func__);
 		return -1;
 	}
-	memcpy(&mnt_cmd, data, sizeof(MONITOR_CMD));
+	memcpy(&mnt_cmd, data, (size_t) sizeof(MONITOR_CMD));
 
 	switch (mnt_cmd.cmd) {
 		case ADD_SINGLE_UID:

@@ -227,6 +227,8 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
 			goto error_free_data;
 		}
         TS_LOG_INFO( "%s: start to register devices here.\n", __func__);
+
+		pr_info("++++++++++++spp cyttsp5_devtree_register_devices \n");
 		cyttsp5_devtree_register_devices(dev);
 	} else {
 		adap_id = dev_get_platdata(dev);
@@ -259,7 +261,7 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
 	}
 	rc = gpio_request(vbus_gpio, "vbus_gpio");
 	if (rc < 0) {
-		TS_LOG_ERR("%s: Fail request gpio=%d\n", __func__, vbus_gpio);
+		TS_LOG_ERR("%s: Fail request vbus_gpio gpio=%d\n", __func__, vbus_gpio);
 		goto error_free_data;
 	}
 
@@ -277,7 +279,7 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
 	}
 	rc = gpio_request(vbus_gpio_1, "vbus_gpio_1");
 	if (rc < 0) {
-		TS_LOG_ERR("%s: Fail request gpio=%d\n", __func__, vbus_gpio_1);
+		TS_LOG_ERR("%s: Fail request vbus_gpio_1 gpio=%d\n", __func__, vbus_gpio_1);
 		goto error_free_data;
 	}
     
@@ -316,9 +318,7 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, ts_i2c);
 	dev_set_drvdata(&client->dev, ts_i2c);
 
-	/*DTS2014121002592 init g_ts_i2c before add_adapter by x00267953 begin*/
 	g_ts_i2c = ts_i2c;
-	/*DTS2014121002592 init g_ts_i2c before add_adapter by x00267953 end*/
 
 	TS_LOG_DEBUG( "%s: add adap='%s' (CYTTSP5_I2C_NAME=%s)\n", __func__,
 		ts_i2c->id, CYTTSP5_I2C_NAME);

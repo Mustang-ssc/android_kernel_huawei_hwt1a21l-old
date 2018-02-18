@@ -1,5 +1,3 @@
-/* <DTS2014101105981 jiweifeng/jwx206032 20141011 begin */
-/* DTS2015011906877 shaohongyuan swx234330 Add OTP function -- Begin*/
 /************************************************************
   Copyright (C), 1988-1999, Huawei Tech. Co., Ltd.
   FileName: sensor_otp_s5k5e2.c
@@ -54,10 +52,8 @@
 #define S5K5E2_OTP_AWB_READ_FLAG     (1 << 1)
 #define S5K5E2_OTP_LSC_READ_FLAG     (1 << 2)
 #define S5K5E2_OTP_VCM_READ_FLAG     (1 << 3)
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 #define S5K5E2_OTP_FF_READ_ALL_FLAG  (S5K5E2_OTP_ID_READ_FLAG|S5K5E2_OTP_AWB_READ_FLAG)
 #define S5K5E2_OTP_AF_READ_ALL_FLAG  (S5K5E2_OTP_FF_READ_ALL_FLAG|S5K5E2_OTP_VCM_READ_FLAG)
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 #define OTP_INIT_STATE                0x04
 #define OTP_READ_ENABLE               0x01	
 #define OTP_READ_DISABLE              0x00   
@@ -79,12 +75,10 @@
 #define S5K5E2_OTP_AWB_GROUP2_BASE_REG        0x0A1A
 #define S5K5E2_OTP_AWB_GROUP3_BASE_REG        0x0A20
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 #define S5K5E2_OTP_VCM_FLAG_REG	           	  0x0A04
 #define S5K5E2_OTP_VCM_GROUP1_BASE_REG        0x0A05
 #define S5K5E2_OTP_VCM_GROUP2_BASE_REG        0x0A09
 #define S5K5E2_OTP_VCM_GROUP3_BASE_REG        0x0A0D
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 #define S5K5E2_OTP_RG_H_REG                   0x0210
 #define S5K5E2_OTP_RG_L_REG                   0x0211
@@ -105,10 +99,8 @@
 #define OTP_LSC_FLAG_PAGE_NUM                 0x05
 
 #define ULC2_HUAWEI_CAMERA_FF_NUM             0xB2  /* 23060178  */
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 #define ULC2_HUAWEI_CAMERA_AF_NUM             0xB3  /* 23060179  */
 #define S5K5E2_OTP_VCM_OFFSET_VALUE           100
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 typedef enum {
 	SUNNY_MODULE_VENDOR_ID = 1,
@@ -140,9 +132,7 @@ struct S5K5E2_OTP_STRUCT {
 struct S5K5E2_OTP_STRUCT g_cur_opt_params = { 0 };
 
 static uint8_t  s5k5e2_otp_read_flag = 0;
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 static bool  s5k5e2_otp_is_af_module = false;          /* AF = true, FF = false */
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 static uint32_t rg_ratio_typical  = 0x035c;  // the average of 4 Golden samples' RG ratio
 static uint32_t bg_ratio_typical  = 0x02b8;  // the average of 4 Golden samples' BG ratio
@@ -427,7 +417,6 @@ static bool s5k5e2_otp_read_awb_group_reg_data(struct msm_sensor_ctrl_t *s_ctrl,
 	}
 	return true;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
   Function:    s5k5e2_otp_read_awb_group_reg_data                
   Description: get the group reg data.
@@ -506,7 +495,6 @@ static bool s5k5e2_otp_read_vcm_group_reg_data(struct msm_sensor_ctrl_t *s_ctrl,
 
 	return true;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 /****************************************************************************
 * FunctionName: s5k5e2_otp_read_id;
@@ -527,7 +515,6 @@ static bool s5k5e2_otp_read_id(struct msm_sensor_ctrl_t * s_ctrl, struct S5K5E2_
 	return ret;
 }
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /****************************************************************************
 * FunctionName: s5k5e2_otp_check_id;
 * Description : check the s5k5e2 module id data.
@@ -551,9 +538,7 @@ static bool s5k5e2_otp_check_id(struct msm_sensor_ctrl_t * s_ctrl, struct S5K5E2
 		{
 			 ret = true;	
 		}
-		/*DTS2015012303054  shaohongyuan Compatible with id 0xB2 temporarily -Begin*/
 		else if ((FOXCONN_MODULE_VENDOR_ID == vendor_id) && ((ULC2_HUAWEI_CAMERA_AF_NUM == current_otp->camera_id)||(ULC2_HUAWEI_CAMERA_FF_NUM == current_otp->camera_id)))
-		/*DTS2015012303054  shaohongyuan Compatible with id 0xB2 temporarily -End */
 		{
 		     s5k5e2_otp_is_af_module =  true; 	
 			 ret = true;
@@ -572,7 +557,6 @@ static bool s5k5e2_otp_check_id(struct msm_sensor_ctrl_t * s_ctrl, struct S5K5E2
 	return ret;
 
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 /******************************************************************************
 Function   :    s5k5e2_otp_read_awb
@@ -609,7 +593,6 @@ static bool s5k5e2_otp_check_awb(struct msm_sensor_ctrl_t * s_ctrl, struct S5K5E
 	return ret;
 }
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :    s5k5e2_otp_read_awb
 Description:   read the awb data from otp space .
@@ -644,7 +627,6 @@ static bool s5k5e2_otp_check_vcm(struct msm_sensor_ctrl_t * s_ctrl, struct S5K5E
 
 	return ret;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
 
 /******************************************************************************
@@ -1772,7 +1754,6 @@ static void s5k5e2_otp_update_awb(struct msm_sensor_ctrl_t * s_ctrl, struct S5K5
 	return;
 }
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :    s5k5e2_otp_update_vcm
 Description:   update the s5k5e2 vcm otp data
@@ -1823,9 +1804,7 @@ void s5k5e2_otp_debug(struct S5K5E2_OTP_STRUCT *otp_ptr)
 	CMR_LOGI("%s,s5k5e2_otp_get_flag:0x%x\n",__func__,s5k5e2_otp_get_flag());
 	return;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :   s5k5e2_get_otp_from_sensor
 Description:   read and check OTP data
@@ -1885,9 +1864,7 @@ static void s5k5e2_get_otp_from_sensor(struct msm_sensor_ctrl_t * s_ctrl, struct
 	
 	return;
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
 
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 begin */
 /******************************************************************************
 Function   :    s5k5e2_otp_func
 Description:   the interface of s5k5e2 OTP
@@ -1908,9 +1885,7 @@ int s5k5e2_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
 		bg_ratio_typical = otp_function_lists[index].bg_ratio_typical;	
 	}
 
-    /* < DTS2015020209292 l00271394 20150202 begin */
 	CMR_LOGI("%s, rg_ratio_typical=%04x,bg_ratio_typical=%04x\n", __func__,rg_ratio_typical,bg_ratio_typical);
-    /* DTS2015020209292 l00271394 20150202 end > */
 
 	otp_read_flag = s5k5e2_otp_is_af_module ? S5K5E2_OTP_AF_READ_ALL_FLAG : S5K5E2_OTP_FF_READ_ALL_FLAG;
 
@@ -1935,6 +1910,3 @@ int s5k5e2_otp_func(struct msm_sensor_ctrl_t * s_ctrl, int index)
 	return S5K5E2_OTP_OK;	
 
 }
-/* <DTS2014121101067  jiweifeng/jwx206032 20141211 end */
-/* DTS2015011906877 shaohongyuan swx234330 Add OTP function -- End*/
-/* DTS2014101105981 jiweifeng/jwx206032 20141011 end> */

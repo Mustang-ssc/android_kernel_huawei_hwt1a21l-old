@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -73,10 +73,8 @@ static int vco_set_rate_lpm(struct clk *c, unsigned long rate)
 	return rc;
 }
 
-/* DTS2015042906220 zwx241012 zhangming 20150429 begin */
 static void dsi_pll_sw_reset_8916(struct mdss_pll_resources *dsi_pll_res)
 {
-
 	/*
 	 * DSI PLL software reset. Add HW recommended delays after toggling
 	 * the software reset bit off and back on.
@@ -100,7 +98,6 @@ static void dsi_pll_toggle_lock_detect_8916(
 	udelay(512);
 }
 
-
 static int dsi_pll_check_lock_status_8916(
 				struct mdss_pll_resources *dsi_pll_res)
 {
@@ -121,27 +118,28 @@ static int gf_2_dsi_pll_enable_seq_8916(struct mdss_pll_resources *dsi_pll_res)
 	int pll_locked = 0;
 
 	dsi_pll_sw_reset_8916(dsi_pll_res);
+
 	/*
-	 * PLL power up sequence.
+	 * GF PART 2 PLL power up sequence.
 	 * Add necessary delays recommended by hardware.
 	 */
+
 	MDSS_PLL_REG_W(dsi_pll_res->pll_base,
 			DSI_PHY_PLL_UNIPHY_PLL_CAL_CFG1, 0x04);
 	MDSS_PLL_REG_W(dsi_pll_res->pll_base,
 			DSI_PHY_PLL_UNIPHY_PLL_GLB_CFG, 0x01);
 	MDSS_PLL_REG_W(dsi_pll_res->pll_base,
 			DSI_PHY_PLL_UNIPHY_PLL_GLB_CFG, 0x05);
-       udelay(3);
+	udelay(3);
 	MDSS_PLL_REG_W(dsi_pll_res->pll_base,
 			DSI_PHY_PLL_UNIPHY_PLL_GLB_CFG, 0x0f);
 	udelay(500);
-    
+
 	dsi_pll_toggle_lock_detect_8916(dsi_pll_res);
 
 	pll_locked = dsi_pll_check_lock_status_8916(dsi_pll_res);
 	return pll_locked ? 0 : -EINVAL;
 }
-
 
 static int gf_1_dsi_pll_enable_seq_8916(struct mdss_pll_resources *dsi_pll_res)
 {
@@ -167,7 +165,6 @@ static int gf_1_dsi_pll_enable_seq_8916(struct mdss_pll_resources *dsi_pll_res)
 	dsi_pll_toggle_lock_detect_8916(dsi_pll_res);
 
 	pll_locked = dsi_pll_check_lock_status_8916(dsi_pll_res);
-
 	return pll_locked ? 0 : -EINVAL;
 }
 
@@ -191,11 +188,11 @@ static int tsmc_dsi_pll_enable_seq_8916(struct mdss_pll_resources *dsi_pll_res)
 	udelay(500);
 
 	dsi_pll_toggle_lock_detect_8916(dsi_pll_res);
- 
+
 	pll_locked = dsi_pll_check_lock_status_8916(dsi_pll_res);
- 	return pll_locked ? 0 : -EINVAL;
+	return pll_locked ? 0 : -EINVAL;
 }
-/* DTS2015042906220 zwx241012 zhangming 20150429 end */
+
 /* Op structures */
 
 static struct clk_ops clk_ops_dsi_vco = {
@@ -227,8 +224,6 @@ static struct clk_mux_ops byte_mux_ops = {
 	.get_mux_sel = get_byte_mux_sel,
 };
 
-
-/* DTS2015042906220 zwx241012 zhangming 20150429 begin */
 static struct dsi_pll_vco_clk dsi_vco_clk_8916 = {
 	.ref_clk_rate = 19200000,
 	.min_rate = 350000000,
@@ -251,8 +246,6 @@ static struct dsi_pll_vco_clk dsi_vco_clk_8916 = {
 		CLK_INIT(dsi_vco_clk_8916.c),
 	},
 };
-/* DTS2015042906220 zwx241012 zhangming 20150429 end */
-
 
 static struct div_clk analog_postdiv_clk_8916 = {
 	.data = {
@@ -372,7 +365,8 @@ int dsi_pll_clock_register_lpm(struct platform_device *pdev,
 	byte_mux_clk_ops.prepare = dsi_pll_mux_prepare;
 
 	if (pll_res->target_id == MDSS_PLL_TARGET_8916 ||
-		pll_res->target_id == MDSS_PLL_TARGET_8939) {
+		pll_res->target_id == MDSS_PLL_TARGET_8939 ||
+		pll_res->target_id == MDSS_PLL_TARGET_8909) {
 		rc = of_msm_clock_register(pdev->dev.of_node,
 			mdss_dsi_pllcc_8916, ARRAY_SIZE(mdss_dsi_pllcc_8916));
 		if (rc) {

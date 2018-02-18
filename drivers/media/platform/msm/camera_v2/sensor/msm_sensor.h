@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/clk.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/of.h>
@@ -29,6 +30,7 @@
 #include <soc/qcom/camera2.h>
 #include <media/msm_cam_sensor.h>
 #include <media/v4l2-subdev.h>
+#include <media/v4l2-ioctl.h>
 #include "msm_camera_i2c.h"
 #include "msm_camera_dt_util.h"
 #include "msm_sd.h"
@@ -45,15 +47,15 @@ enum msm_sensor_state_t {
 
 struct msm_sensor_fn_t {
 	int (*sensor_config) (struct msm_sensor_ctrl_t *, void __user *);
+#ifdef CONFIG_COMPAT
+	int (*sensor_config32) (struct msm_sensor_ctrl_t *, void __user *);
+#endif
 	int (*sensor_power_down) (struct msm_sensor_ctrl_t *);
 	int (*sensor_power_up) (struct msm_sensor_ctrl_t *);
 	int (*sensor_match_id) (struct msm_sensor_ctrl_t *);
-	/*< DTS2014103002530 tangying/2059825 20141030 begin*/
 	/* optimize camera print mipi packet and frame count log*/
 	int (*sensor_read_framecount)(struct msm_sensor_ctrl_t *);
-	/*DTS2014103002530 tangying/2059825 20141030 end >*/
 };
-
 
 struct msm_sensor_ctrl_t {
 	struct platform_device *pdev;
@@ -76,22 +78,18 @@ struct msm_sensor_ctrl_t {
 	enum msm_sensor_state_t sensor_state;
 	uint8_t is_probe_succeed;
 	uint32_t id;
-	/*< DTS2014111305646 tangying/205982 20141113 begin*/
 	/*use dtsi get sensor name instead of board id string*/
 	//uint32_t support_sensor_count;
 	const char *support_sensor_code;
-	/*DTS2014111305646 tangying/205982 20141113 end >*/
-	/*< DTS2014103002530 tangying/2059825 20141030 begin*/
 	/* optimize camera print mipi packet and frame count log*/
 	/*add a delay work for read frame count when stream on*/
 	struct delayed_work frm_cnt_work;
-	/*DTS2014103002530 tangying/2059825 20141030 end >*/
 	struct device_node *of_node;
 	enum msm_camera_stream_type_t camera_stream_type;
 	uint32_t set_mclk_23880000;
-	/*< DTS2014121706384 gwx229921 20141217 begin */
 	struct msm_sensor_afc_otp_info afc_otp_info;
-	/* DTS2014121706384 gwx229921 20141217 end >*/
+	struct msm_sensor_mmi_otp_flag hw_otp_check_flag;
+	struct msm_sensor_awb_otp_info awb_otp_info;
 };
 
 int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp);
@@ -126,4 +124,9 @@ int32_t msm_sensor_get_dt_gpio_set_tbl(struct device_node *of_node,
 int32_t msm_sensor_init_gpio_pin_tbl(struct device_node *of_node,
 	struct msm_camera_gpio_conf *gconf, uint16_t *gpio_array,
 	uint16_t gpio_array_size);
+#ifdef CONFIG_COMPAT
+long msm_sensor_subdev_fops_ioctl(struct file *file,
+	unsigned int cmd,
+	unsigned long arg);
+#endif
 #endif

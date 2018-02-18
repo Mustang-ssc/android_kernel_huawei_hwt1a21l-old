@@ -17,7 +17,10 @@
 #define KCOLLECT_LOG_MASK				( 1 << 1 )     // reserve
 #define KCOLLECT_SUSPEND_MASK			( 1 << 2 )     // suspend, resume, wake src
 #define KCOLLECT_FREEZER_MASK			( 1 << 3 )
+#define KCOLLECT_BINDERCALL_MASK		( 1 << 4 )
 #define KCOLLECT_ALL_MASK				( 0x7fffffff )
 
 int kcollect(int mask, const char *fmt, ...);
+int hwkillinfo(int pid, int seg);
+int hwbinderinfo(int callingpid, int calledpid);
 #endif // _LINUX_KCOLLECT_H

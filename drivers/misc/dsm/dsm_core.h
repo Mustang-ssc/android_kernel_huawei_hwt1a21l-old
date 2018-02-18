@@ -1,4 +1,3 @@
-/* < DTS2014042900710 shenjinming 20140430 begin */
 /**********************************************************
  * Filename:	dsm_core.h
  *
@@ -28,19 +27,13 @@
 #define DSM_IOCTL_POLL_CLIENT_STATE	_IOC(_IOC_READ|_IOC_WRITE, 'x', 0xF2, CLIENT_NAME_LEN)
 #define DSM_IOCTL_FORCE_DUMP			_IOC(_IOC_READ|_IOC_WRITE, 'x', 0xF3, CLIENT_NAME_LEN)
 #define DSM_IOCTL_GET_CLIENT_ERROR	_IOC(_IOC_READ|_IOC_WRITE, 'x', 0xF4, CLIENT_NAME_LEN)
-/* <DTS2014112605676 yangzhonghua 20141126 begin */
 /* for user ioctl cmd to register dsm_client in userspace*/
 #define DSM_IOCTL_REGISTER_EXTERN_CLIENT	_IOC(_IOC_READ|_IOC_WRITE, 'x', 0xF5, CLIENT_NAME_LEN)
 #define EXTERN_DSM_CLIENT_MAX	(20)
-/* DTS2014112605676 yangzhonghua 20141126 end> */
 
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 begin */
-/* < DTS2014080101151 shenjinming 20140801 begin */
 #define DSM_ERR_LEN   	5
 #define DMS_ERR_NUM_MIN	10000
 #define DMS_ERR_NUM_MAX	99999
-/* DTS2014080101151 shenjinming 20140801 end > */
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 end */
 enum {
 	DSM_CLIENT_NOTIFY_BIT = 0,
 	DSM_CLIENT_VAILD_BIT = 31,
@@ -64,4 +57,3 @@ struct dsm_server{
 
 #endif
 
-/* DTS2014042900710 shenjinming 20140430 end > */

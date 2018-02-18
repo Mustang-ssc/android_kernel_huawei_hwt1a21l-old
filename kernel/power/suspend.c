@@ -27,9 +27,9 @@
 #include <linux/ftrace.h>
 #include <linux/rtc.h>
 #include <trace/events/power.h>
-/*< DTS2014061200428 Wuzhen/w00213434 20140612 begin */
+#ifdef CONFIG_LOG_JANK
 #include <linux/log_jank.h>
-/*DTS2014061200428 Wuzhen/w00213434 20140612 end > */
+#endif
 #include "power.h"
 
 const char *const pm_states[PM_SUSPEND_MAX] = {
@@ -335,7 +335,6 @@ static int enter_state(suspend_state_t state)
 
 	if (state == PM_SUSPEND_FREEZE)
 		freeze_begin();
-/* < DTS2014061303901 zhaoyingchun 20140625 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	printk(KERN_INFO "PM: Syncing filesystems put the sync in the queue... ");
 	suspend_sys_sync_queue();
@@ -345,7 +344,7 @@ static int enter_state(suspend_state_t state)
 	sys_sync();
 	printk("done.\n");
 #endif
-/* DTS2014061303901 zhaoyingchun 20140625 end > */
+
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);
 	error = suspend_prepare(state);
 	if (error)
@@ -389,16 +388,12 @@ static void pm_suspend_marker(char *annotation)
 int pm_suspend(suspend_state_t state)
 {
 	int error;
-    /*< DTS2014061200428 Wuzhen/w00213434 20140612 begin */
-    /*<DTS2014111701156 l00101002 20140924 begin*/
 #ifdef CONFIG_LOG_JANK
     if (state == PM_SUSPEND_ON)
-        pr_jank(JL_KERNEL_PM_SUSPEND_WAKEUP, "%s,state=%d#T:%5lu","JL_KERNEL_PM_SUSPEND_WAKEUP", state,getrealtime());
+        LOG_JANK_D(JLID_KERNEL_PM_SUSPEND_WAKEUP, "%s,state=%d","JL_KERNEL_PM_SUSPEND_WAKEUP", state);
     else
-        pr_jank(JL_KERNEL_PM_SUSPEND_SLEEP, "%s,state=%d#T:%5lu","JL_KERNEL_PM_SUSPEND_SLEEP", state,getrealtime());
+        LOG_JANK_D(JLID_KERNEL_PM_SUSPEND_SLEEP, "%s,state=%d","JL_KERNEL_PM_SUSPEND_SLEEP", state);
 #endif
-    /*DTS2014111701156 l00101002 20140924 end>*/
-    /*DTS2014061200428 Wuzhen/w00213434 20140612 end > */
 
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;

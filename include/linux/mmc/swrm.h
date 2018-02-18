@@ -1,4 +1,4 @@
-/* < DTS2014062704895 zhaoyingchun 20140628 begin */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */
 /*
  *  swrm.h
  *
@@ -52,5 +52,4 @@ extern void swrm_uninstall_mmc_io_callback(void);
 extern int mmc_blk_dispatch_swrm(struct mmc_card *card, void *idata);
 
 #endif /* LINUX_MMC_SWRM_H_ */
-/* DTS2014062704895 zhaoyingchun 20140628 end > */
-
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */

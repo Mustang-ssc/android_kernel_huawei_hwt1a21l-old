@@ -19,9 +19,13 @@
  */
 
 #define MULTIUSER_APP_PER_USER_RANGE 100000
-
+#ifdef CONFIG_64BIT
+typedef uint64_t userid_t;
+typedef uint64_t appid_t;
+#else
 typedef uid_t userid_t;
 typedef uid_t appid_t;
+#endif
 
 static inline userid_t multiuser_get_user_id(uid_t uid) {
     return uid / MULTIUSER_APP_PER_USER_RANGE;

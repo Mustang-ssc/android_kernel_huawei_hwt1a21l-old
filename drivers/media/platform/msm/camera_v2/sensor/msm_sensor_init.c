@@ -13,29 +13,23 @@
 #define pr_fmt(fmt) "MSM-SENSOR-INIT %s:%d " fmt "\n", __func__, __LINE__
 
 /* Header files */
-#include <mach/gpiomux.h>
 #include "msm_sensor_init.h"
 #include "msm_sensor_driver.h"
 #include "msm_sensor.h"
 #include "msm_sd.h"
 
 /* Logging macro */
-/*#define CONFIG_MSMB_CAMERA_DEBUG*/
 #undef CDBG
-#ifdef CONFIG_MSMB_CAMERA_DEBUG
-#define CDBG(fmt, args...) pr_err(fmt, ##args)
-#else
-#define CDBG(fmt, args...) do { } while (0)
-#endif
+#define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
-/* < DTS2014121000600 Houzhipeng hwx231787 20141210 begin */
+const char *dt_product_name = NULL;
+
 #ifdef CONFIG_HUAWEI_DSM
 int camera_is_in_probe = 0;
 #endif
-/* DTS2014121000600 Houzhipeng hwx231787 20141210 end > */
 
 static struct msm_sensor_init_t *s_init;
-
+static struct v4l2_file_operations msm_sensor_init_v4l2_subdev_fops;
 /* Static function declaration */
 static long msm_sensor_init_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg);
@@ -55,19 +49,49 @@ static int msm_sensor_wait_for_probe_done(struct msm_sensor_init_t *s_init)
 {
 	int rc;
 	int tm = 10000;
-
 	if (s_init->module_init_status == 1) {
-		pr_err("msm_cam_get_module_init_status -2\n");
+		CDBG("msm_cam_get_module_init_status -2\n");
 		return 0;
 	}
-	rc = wait_event_interruptible_timeout(s_init->state_wait,
+	rc = wait_event_timeout(s_init->state_wait,
 		(s_init->module_init_status == 1), msecs_to_jiffies(tm));
-	if (rc < 0)
-		pr_err("%s:%d wait failed\n", __func__, __LINE__);
-	else if (rc == 0)
+	if (rc == 0)
 		pr_err("%s:%d wait timeout\n", __func__, __LINE__);
 
 	return rc;
+}
+
+/* use dtsi get product name instead of board id string */
+/*
+    get the product name used in vendor probe list.
+*/
+int32_t msm_get_probe_hw_product_name(void *setting)
+{
+    int32_t  length = 0;
+    struct msm_hw_product_name *hw_prodct_name = (struct msm_hw_product_name *)setting;
+
+	if (!hw_prodct_name)
+	{
+		pr_err("%s: hw_prodct_name is NULL.\n",__func__);
+		return -1;
+	}
+
+	if (!dt_product_name)
+	{
+		pr_err("%s: dt_product_name is NULL.\n",__func__);
+		return -1;
+	}
+
+	length = strlen(dt_product_name);
+
+	if(length >= MAX_PRODUCT_NAME_LENGTH)
+	{
+		length = MAX_PRODUCT_NAME_LENGTH - 1;
+	}
+
+	memcpy(hw_prodct_name->product_name,dt_product_name,sizeof(char)*length);
+
+	return 0;
 }
 
 /* Static function definition */
@@ -85,14 +109,14 @@ static int32_t msm_sensor_driver_cmd(struct msm_sensor_init_t *s_init,
 
 	switch (cfg->cfgtype) {
 	case CFG_SINIT_PROBE:
-/* < DTS2014121000600 Houzhipeng hwx231787 20141210 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		camera_is_in_probe = 1;
 #endif
-/* DTS2014121000600 Houzhipeng hwx231787 20141210 end > */
 		mutex_lock(&s_init->imutex);
 		s_init->module_init_status = 0;
-		rc = msm_sensor_driver_probe(cfg->cfg.setting);
+		rc = msm_sensor_driver_probe(cfg->cfg.setting,
+			&cfg->probed_info,
+			cfg->entity_name);
 		mutex_unlock(&s_init->imutex);
 		if (rc < 0)
 			pr_err("failed: msm_sensor_driver_probe rc %d", rc);
@@ -101,23 +125,23 @@ static int32_t msm_sensor_driver_cmd(struct msm_sensor_init_t *s_init,
 	case CFG_SINIT_PROBE_DONE:
 		s_init->module_init_status = 1;
 		wake_up(&s_init->state_wait);
-/* < DTS2014121000600 Houzhipeng hwx231787 20141210 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		camera_is_in_probe = 0;
 #endif
-/* DTS2014121000600 Houzhipeng hwx231787 20141210 end > */
 		break;
 
 	case CFG_SINIT_PROBE_WAIT_DONE:
 		msm_sensor_wait_for_probe_done(s_init);
 		break;
+	/*use dtsi get sensor name instead of board id string*/
+	case CFG_SINIT_GET_HW_PRODUCT_NAME:
+		rc = msm_get_probe_hw_product_name(cfg->cfg.setting);
+		break;
 
-	/*< DTS2014111305646 tangying/205982 20141113 begin*/
 	/*use dtsi get sensor name instead of board id string*/
 	case CFG_SINIT_GET_SENSOR_CODE_LIST:
 		rc = msm_get_probe_sensor_codes(cfg->cfg.setting);
 		break;
-	/*DTS2014111305646 tangying/205982 20141113 end >*/
 	default:
 		pr_err("default");
 		break;
@@ -149,14 +173,65 @@ static long msm_sensor_init_subdev_ioctl(struct v4l2_subdev *sd,
 		break;
 	}
 
-	/*< DTS2014111305646 tangying/205982 20141113 begin*/
 	return rc;
-	/*DTS2014111305646 tangying/205982 20141113 end >*/
 }
+
+#ifdef CONFIG_COMPAT
+static long msm_sensor_init_subdev_do_ioctl(
+	struct file *file, unsigned int cmd, void *arg)
+{
+	int32_t             rc = 0;
+	struct video_device *vdev = video_devdata(file);
+	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
+	struct sensor_init_cfg_data32 *u32 =
+		(struct sensor_init_cfg_data32 *)arg;
+	struct sensor_init_cfg_data sensor_init_data;
+
+	switch (cmd) {
+	case VIDIOC_MSM_SENSOR_INIT_CFG32:
+		memset(&sensor_init_data, 0, sizeof(sensor_init_data));
+		sensor_init_data.cfgtype = u32->cfgtype;
+		sensor_init_data.cfg.setting = compat_ptr(u32->cfg.setting);
+		cmd = VIDIOC_MSM_SENSOR_INIT_CFG;
+		rc = msm_sensor_init_subdev_ioctl(sd, cmd, &sensor_init_data);
+		if (rc < 0) {
+			pr_err("%s:%d VIDIOC_MSM_SENSOR_INIT_CFG failed",
+				__func__, __LINE__);
+			return rc;
+		}
+		u32->probed_info = sensor_init_data.probed_info;
+		strlcpy(u32->entity_name, sensor_init_data.entity_name,
+			sizeof(sensor_init_data.entity_name));
+		return 0;
+	default:
+		return msm_sensor_init_subdev_ioctl(sd, cmd, arg);
+	}
+}
+
+static long msm_sensor_init_subdev_fops_ioctl(
+	struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return video_usercopy(file, cmd, arg, msm_sensor_init_subdev_do_ioctl);
+}
+#endif
 
 static int __init msm_sensor_init_module(void)
 {
 	int ret = 0;
+
+	struct device_node	*of_node = NULL;
+
+    of_node = of_find_compatible_node(NULL, NULL, "qcom,hw-camera-board-id");
+
+	if (of_property_read_string(of_node, "qcom,product-name",
+		                &dt_product_name) < 0) {
+		dt_product_name = NULL;
+		pr_err("%s: don't define support product name.\n",__func__);
+	}
+	else{
+		pr_info("%s product_name = %s\n", __func__, dt_product_name);
+	}
+
 	/* Allocate memory for msm_sensor_init control structure */
 	s_init = kzalloc(sizeof(struct msm_sensor_init_t), GFP_KERNEL);
 	if (!s_init) {
@@ -164,7 +239,7 @@ static int __init msm_sensor_init_module(void)
 		return -ENOMEM;
 	}
 
-	pr_err("MSM_SENSOR_INIT_MODULE %p", NULL);
+	CDBG("MSM_SENSOR_INIT_MODULE %p", NULL);
 
 	/* Initialize mutex */
 	mutex_init(&s_init->imutex);
@@ -183,9 +258,17 @@ static int __init msm_sensor_init_module(void)
 	s_init->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x6;
 	ret = msm_sd_register(&s_init->msm_sd);
 	if (ret) {
-		CDBG("%s: msm_sd_register error = %d\n", __func__, rc);
+		CDBG("%s: msm_sd_register error = %d\n", __func__, ret);
 		goto error;
 	}
+
+	msm_sensor_init_v4l2_subdev_fops = v4l2_subdev_fops;
+#ifdef CONFIG_COMPAT
+	msm_sensor_init_v4l2_subdev_fops.compat_ioctl32 =
+		msm_sensor_init_subdev_fops_ioctl;
+#endif
+	s_init->msm_sd.sd.devnode->fops =
+		&msm_sensor_init_v4l2_subdev_fops;
 
 	init_waitqueue_head(&s_init->state_wait);
 

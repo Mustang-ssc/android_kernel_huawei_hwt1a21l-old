@@ -150,7 +150,7 @@ static const unsigned int regmap[][UARTDM_LAST] = {
 
 static struct of_device_id msm_hsl_match_table[] = {
 	{	.compatible = "qcom,msm-lsuart-v14",
-		.data = (void *)UARTDM_VERSION_14
+		.data = (void *)UARTDM_VERSION_14,
 	},
 	{}
 };
@@ -1424,7 +1424,6 @@ static inline void wait_for_xmitr(struct uart_port *port)
 }
 
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
-/* < DTS2014082700877 z00202435 20140818 begin */
 extern char *saved_command_line;
 //command line can be updated by fastboot commond "oem log-ctr enable" 
 static bool is_serial_log_enable(void)
@@ -1438,7 +1437,6 @@ static bool is_serial_log_enable(void)
 
     return false;
 }
-/* DTS2014082700877 z00202435 20140818 end > */
 
 static void msm_hsl_console_putchar(struct uart_port *port, int ch)
 {
@@ -1856,14 +1854,12 @@ static int msm_serial_hsl_probe(struct platform_device *pdev)
 	if (msm_hsl_port->pclk)
 		clk_prepare_enable(msm_hsl_port->pclk);
 
-/* < DTS2014082700877 z00202435 20140818 begin */
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
     if (!is_serial_log_enable()) {
         pr_info("serial log disable, set cons NULL \n");
         msm_hsl_uart_driver.cons = NULL;
     }
 #endif
-/* DTS2014082700877 z00202435 20140818 end > */
     
 	ret = uart_add_one_port(&msm_hsl_uart_driver, port);
 	if (msm_hsl_port->pclk)

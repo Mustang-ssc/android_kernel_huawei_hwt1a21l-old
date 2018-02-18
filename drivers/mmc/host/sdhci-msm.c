@@ -91,6 +91,7 @@ enum sdc_mpm_pin_state {
 
 #define CORE_DLL_STATUS		0x108
 #define CORE_DLL_LOCK		(1 << 7)
+#define CORE_DDR_DLL_LOCK	(1 << 11)
 
 #define CORE_VENDOR_SPEC	0x10C
 #define CORE_CLK_PWRSAVE	(1 << 1)
@@ -103,12 +104,17 @@ enum sdc_mpm_pin_state {
 #define CORE_HC_SELECT_IN_HS400	(6 << 19)
 #define CORE_HC_SELECT_IN_MASK	(7 << 19)
 
+#define CORE_VENDOR_SPEC_FUNC2 0x110
+#define HC_SW_RST_WAIT_IDLE_DIS	(1 << 20)
+#define HC_SW_RST_REQ (1 << 21)
+#define CORE_ONE_MID_EN     (1 << 25)
+
 #define CORE_VENDOR_SPEC_CAPABILITIES0	0x11C
 #define CORE_8_BIT_SUPPORT		(1 << 18)
 #define CORE_3_3V_SUPPORT		(1 << 24)
 #define CORE_3_0V_SUPPORT		(1 << 25)
 #define CORE_1_8V_SUPPORT		(1 << 26)
-#define CORE_SYS_BUS_SUPPORT_64_BIT	28
+#define CORE_SYS_BUS_SUPPORT_64_BIT	BIT(28)
 
 #define CORE_VENDOR_SPEC_ADMA_ERR_ADDR0	0x114
 #define CORE_VENDOR_SPEC_ADMA_ERR_ADDR1	0x118
@@ -139,6 +145,15 @@ enum sdc_mpm_pin_state {
 #define CORE_DDR_200_CFG		0x184
 #define CORE_CDC_T4_DLY_SEL		(1 << 0)
 #define CORE_START_CDC_TRAFFIC		(1 << 6)
+
+#define CORE_VENDOR_SPEC3	0x1B0
+#define CORE_PWRSAVE_DLL	(1 << 3)
+
+#define CORE_DLL_CONFIG_2	0x1B4
+#define CORE_DDR_CAL_EN		(1 << 0)
+
+#define CORE_DDR_CONFIG		0x1B8
+#define DDR_CONFIG_POR_VAL	0x80040853
 
 #define CORE_MCI_DATA_CTRL	0x2C
 #define CORE_MCI_DPSM_ENABLE	(1 << 0)
@@ -179,8 +194,8 @@ enum sdc_mpm_pin_state {
 #define CORE_SDCC_DEBUG_REG	0x124
 #define CORE_DEBUG_REG_AHB_HTRANS       (3 << 12)
 
-/* 8KB descriptors */
-#define SDHCI_MSM_MAX_SEGMENTS  (1 << 13)
+/* 512 descriptors */
+#define SDHCI_MSM_MAX_SEGMENTS  (1 << 9)
 #define SDHCI_MSM_MMC_CLK_GATE_DELAY	200 /* msecs */
 
 #define CORE_FREQ_100MHZ	(100 * 1000 * 1000)
@@ -192,16 +207,14 @@ enum sdc_mpm_pin_state {
 
 #define NUM_TUNING_PHASES		16
 #define MAX_DRV_TYPES_SUPPORTED_HS200	3
-/*<DTS2014102702713 zhanglei 20141027 begin */
-/*Begin DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20*/
-#define MMC_DISABLE_PWRSAVE	
-/*End DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20 */
-/*DTS2014102702713 zhanglei 20141027 end> */	
 
-/* < DTS2015012806509 zhangpeng WX205228 20150209 begin */
+/* Timeout value to avoid infinite waiting for pwr_irq */
+#define MSM_PWR_IRQ_TIMEOUT_MS 5000
+
 #define CORE_VENDOR_SPEC_FUNC2 0x110
+#define HC_SW_RST_WAIT_IDLE_DIS (1 << 20)
+#define HC_SW_RST_REQ (1 << 21)
 #define ONE_MID_EN (1 << 25)
-/* DTS2015012806509 zhangpeng WX205228 20150209 end > */
 
 static const u32 tuning_block_64[] = {
 	0x00FF0FFF, 0xCCC3CCFF, 0xFFCC3CC3, 0xEFFEFFFE,
@@ -245,15 +258,9 @@ struct sdhci_msm_reg_data {
 	/* is low power mode setting required for this regulator? */
 	bool lpm_sup;
 	bool set_voltage_sup;
-    /*<DTS2014102702713 zhanglei 20141027 begin */
-    /* < DTS2014082208625  yuanxiaofeng 20140825 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
     /* is this regulator needs to power off when there is no card */
     /* add it for differentiating beteen sdcard needed power off and other cards*/
     bool is_power_off_without_card;
-#endif
-    /* DTS2014082208625  yuanxiaofeng 20140825 end > */
-	/*DTS2014102702713 zhanglei 20141027 end> */
 };
 
 /*
@@ -309,17 +316,21 @@ struct sdhci_msm_pltfm_data {
 	unsigned long mmc_bus_width;
 	struct sdhci_msm_slot_reg_data *vreg_data;
 	bool nonremovable;
+	bool use_mod_dynamic_qos;
 	bool nonhotplug;
 	bool pin_cfg_sts;
 	struct sdhci_msm_pin_data *pin_data;
 	struct sdhci_pinctrl_data *pctrl_data;
-	u32 cpu_dma_latency_us;
+	u32 *cpu_dma_latency_us;
+	unsigned int cpu_dma_latency_tbl_sz;
 	int status_gpio; /* card detection GPIO that is configured as IRQ */
 	struct sdhci_msm_bus_voting_data *voting_data;
 	u32 *sup_clk_table;
 	unsigned char sup_clk_cnt;
 	int mpm_sdiowakeup_int;
 	int sdiowakeup_irq;
+	enum pm_qos_req_type cpu_affinity_type;
+	cpumask_t cpu_affinity_mask;
 };
 
 struct sdhci_msm_bus_vote {
@@ -358,6 +369,7 @@ struct sdhci_msm_host {
 	struct device_attribute auto_cmd21_attr;
 	bool is_sdiowakeup_enabled;
 	atomic_t controller_clock;
+	bool use_cdclp533;
 };
 
 enum vdd_io_level {
@@ -764,18 +776,7 @@ out:
 
 		writel_relaxed(reg, host->ioaddr + CORE_VENDOR_SPEC);
 	}
-	/*<DTS2014102702713 zhanglei 20141027 begin */
-	/*Begin DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20*/
-	#ifdef MMC_DISABLE_PWRSAVE	
-	if(!strcmp(mmc_hostname(mmc), "mmc1")) 	
-	{
-		u32 reg = readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC);
-    	reg &= ~CORE_CLK_PWRSAVE; 
-    	writel_relaxed(reg, host->ioaddr + CORE_VENDOR_SPEC); 
-	}
-	#endif
-	/*End DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20*/
-	/*DTS2014102702713 zhanglei 20141027 end> */
+
 	spin_unlock_irqrestore(&host->lock, flags);
 	pr_debug("%s: Exit %s\n", mmc_hostname(mmc), __func__);
 	return rc;
@@ -783,31 +784,11 @@ out:
 
 static int sdhci_msm_cdclp533_calibration(struct sdhci_host *host)
 {
-	u32 wait_cnt;
+	u32 calib_done;
 	int ret = 0;
 	int cdc_err = 0;
-	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
 
 	pr_debug("%s: Enter %s\n", mmc_hostname(host->mmc), __func__);
-
-	/*
-	 * Retuning in HS400 (DDR mode) will fail, just reset the
-	 * tuning block and restore the saved tuning phase.
-	 */
-	ret = msm_init_cm_dll(host);
-	if (ret)
-		goto out;
-
-	/* Set the selected phase in delay line hw block */
-	ret = msm_config_cm_dll_phase(host, msm_host->saved_tuning_phase);
-	if (ret)
-		goto out;
-
-	/* Write 1 to CMD_DAT_TRACK_SEL field in DLL_CONFIG */
-	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DLL_CONFIG)
-			| CORE_CMD_DAT_TRACK_SEL),
-			host->ioaddr + CORE_DLL_CONFIG);
 
 	/* Write 0 to CDC_T4_DLY_SEL field in VENDOR_SPEC_DDR200_CFG */
 	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DDR_200_CFG)
@@ -849,7 +830,7 @@ static int sdhci_msm_cdclp533_calibration(struct sdhci_host *host)
 	writel_relaxed(0x4, host->ioaddr + CORE_CSR_CDC_CAL_TIMER_CFG1);
 	writel_relaxed(0xCB732020, host->ioaddr + CORE_CSR_CDC_REFCOUNT_CFG);
 	writel_relaxed(0xB19, host->ioaddr + CORE_CSR_CDC_COARSE_CAL_CFG);
-	writel_relaxed(0x3AC, host->ioaddr + CORE_CSR_CDC_DELAY_CFG);
+	writel_relaxed(0x4E2, host->ioaddr + CORE_CSR_CDC_DELAY_CFG);
 	writel_relaxed(0x0, host->ioaddr + CORE_CDC_OFFSET_CFG);
 	writel_relaxed(0x16334, host->ioaddr + CORE_CDC_SLAVE_DDA_CFG);
 
@@ -878,18 +859,13 @@ static int sdhci_msm_cdclp533_calibration(struct sdhci_host *host)
 	mb();
 
 	/* Poll on CALIBRATION_DONE field in CORE_CSR_CDC_STATUS0 to be 1 */
-	wait_cnt = 50;
-	while (!(readl_relaxed(host->ioaddr + CORE_CSR_CDC_STATUS0)
-			& CORE_CALIBRATION_DONE)) {
-		/* max. wait for 50us sec for CALIBRATION_DONE bit to be set */
-		if (--wait_cnt == 0) {
-			pr_err("%s: %s: CDC Calibration was not completed\n",
+	ret = readl_poll_timeout(host->ioaddr + CORE_CSR_CDC_STATUS0,
+		 calib_done, (calib_done & CORE_CALIBRATION_DONE), 1, 50);
+
+	if (ret == -ETIMEDOUT) {
+		pr_err("%s: %s: CDC Calibration was not completed\n",
 				mmc_hostname(host->mmc), __func__);
-			ret = -ETIMEDOUT;
-			goto out;
-		}
-		/* wait for 1us before polling again */
-		udelay(1);
+		goto out;
 	}
 
 	/* Verify CDC_ERROR_CODE field in CORE_CSR_CDC_STATUS0 is 0 */
@@ -906,6 +882,86 @@ static int sdhci_msm_cdclp533_calibration(struct sdhci_host *host)
 	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DDR_200_CFG)
 			| CORE_START_CDC_TRAFFIC),
 			host->ioaddr + CORE_DDR_200_CFG);
+out:
+	pr_debug("%s: Exit %s, ret:%d\n", mmc_hostname(host->mmc),
+			__func__, ret);
+	return ret;
+}
+
+static int sdhci_msm_cm_dll_sdc4_calibration(struct sdhci_host *host)
+{
+	u32 dll_status;
+	int ret = 0;
+
+	pr_debug("%s: Enter %s\n", mmc_hostname(host->mmc), __func__);
+
+	/*
+	 * Currently the CORE_DDR_CONFIG register defaults to desired
+	 * configuration on reset. Currently reprogramming the power on
+	 * reset (POR) value in case it might have been modified by
+	 * bootloaders. In the future, if this changes, then the desired
+	 * values will need to be programmed appropriately.
+	 */
+	writel_relaxed(DDR_CONFIG_POR_VAL, host->ioaddr + CORE_DDR_CONFIG);
+
+	/* Write 1 to DDR_CAL_EN field in CORE_DLL_CONFIG_2 */
+	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DLL_CONFIG_2)
+			| CORE_DDR_CAL_EN),
+			host->ioaddr + CORE_DLL_CONFIG_2);
+
+	/* Poll on DDR_DLL_LOCK bit in CORE_DLL_STATUS to be set */
+	ret = readl_poll_timeout(host->ioaddr + CORE_DLL_STATUS,
+		 dll_status, (dll_status & CORE_DDR_DLL_LOCK), 10, 1000);
+
+	if (ret == -ETIMEDOUT) {
+		pr_err("%s: %s: CM_DLL_SDC4 Calibration was not completed\n",
+				mmc_hostname(host->mmc), __func__);
+		goto out;
+	}
+
+	/* set CORE_PWRSAVE_DLL bit in CORE_VENDOR_SPEC3 */
+	writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC3)
+			| CORE_PWRSAVE_DLL),
+			host->ioaddr + CORE_VENDOR_SPEC3);
+	mb();
+out:
+	pr_debug("%s: Exit %s, ret:%d\n", mmc_hostname(host->mmc),
+			__func__, ret);
+	return ret;
+}
+
+static int sdhci_msm_hs400_dll_calibration(struct sdhci_host *host)
+{
+	int ret = 0;
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+
+	pr_debug("%s: Enter %s\n", mmc_hostname(host->mmc), __func__);
+
+	/*
+	 * Retuning in HS400 (DDR mode) will fail, just reset the
+	 * tuning block and restore the saved tuning phase.
+	 */
+	ret = msm_init_cm_dll(host);
+	if (ret)
+		goto out;
+
+	/* Set the selected phase in delay line hw block */
+	ret = msm_config_cm_dll_phase(host, msm_host->saved_tuning_phase);
+	if (ret)
+		goto out;
+
+	/* Write 1 to CMD_DAT_TRACK_SEL field in DLL_CONFIG */
+	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DLL_CONFIG)
+				| CORE_CMD_DAT_TRACK_SEL),
+				host->ioaddr + CORE_DLL_CONFIG);
+
+	if (msm_host->use_cdclp533)
+		/* Calibrate CDCLP533 DLL HW */
+		ret = sdhci_msm_cdclp533_calibration(host);
+	else
+		/* Calibrate CM_DLL_SDC4 HW */
+		ret = sdhci_msm_cm_dll_sdc4_calibration(host);
 out:
 	pr_debug("%s: Exit %s, ret:%d\n", mmc_hostname(host->mmc),
 			__func__, ret);
@@ -941,7 +997,6 @@ static void sdhci_msm_set_mmc_drv_type(struct sdhci_host *host, u32 opcode,
 			drv_type);
 }
 
-/* < DTS2015012806509 zhangpeng WX205228 20150209 begin */
 int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 {
 	unsigned long flags;
@@ -970,10 +1025,10 @@ int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 
 	pr_debug("%s: Enter %s\n", mmc_hostname(mmc), __func__);
 
-	/* CDCLP533 HW calibration is only required for HS400 mode*/
+	/* CDC/SDC4 DLL HW calibration is only required for HS400 mode*/
 	if (msm_host->tuning_done && !msm_host->calibration_done &&
 		(mmc->ios.timing == MMC_TIMING_MMC_HS400)) {
-		rc = sdhci_msm_cdclp533_calibration(host);
+		rc = sdhci_msm_hs400_dll_calibration(host);
 		spin_lock_irqsave(&host->lock, flags);
 		if (!rc)
 			msm_host->calibration_done = true;
@@ -1014,7 +1069,6 @@ retry:
 			.data = &data
 		};
 		struct scatterlist sg;
-		writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2) | ONE_MID_EN), host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
 
 		/* set the phase in delay line hw block */
 		rc = msm_config_cm_dll_phase(host, phase);
@@ -1122,11 +1176,9 @@ out:
 	if (!rc)
 		msm_host->tuning_done = true;
 	spin_unlock_irqrestore(&host->lock, flags);
-	writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2) & ~ONE_MID_EN), host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
 	pr_debug("%s: Exit %s, err(%d)\n", mmc_hostname(mmc), __func__, rc);
 	return rc;
 }
-/* DTS2015012806509 zhangpeng WX205228 20150209 end > */
 
 static int sdhci_msm_setup_gpio(struct sdhci_msm_pltfm_data *pdata, bool enable)
 {
@@ -1205,77 +1257,7 @@ out:
 
 	return ret;
 }
-/* < DTS2014071404597  zhaoyingchun 20140714 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-#ifndef MAX_PROP_SIZE
-#define MAX_PROP_SIZE 32
-#endif
-#define EMMC_NO 1
-/* < DTS2014082005817 lizhigang 20140819 begin */
-static int huawei_hs200_support(void)
-{
-	int ret = 0;
-	char prop_name[MAX_PROP_SIZE] = {0};
-	struct device_node *np = NULL;
-	/*try to get the device node huawei-support-hs200.*/
-	np = of_find_compatible_node(NULL,NULL,"huawei-support-hs200");
-	if(!np)
-	{
-		/*if np is NULL,return 1.*/
-		return ret;
-	}
-	snprintf(prop_name, MAX_PROP_SIZE,
-			"%s", "huawei,support-hs200");
-	if (of_get_property(np, prop_name, NULL))
-	{
-		/*if we can get huawei,support-hs200,return 1.*/
-		ret = 1;
-	}
 
-	return ret;
-}
-/* DTS2014082005817 lizhigang 20140819 end > */
-static int huawei_sdhci_msm_dt_get_array(struct device *dev, struct device_node  *np,const char *prop_name,
-				 u32 **out, int *len, u32 size)
-{
-	int ret = 0;
-	size_t sz;
-	u32 *arr = NULL;
-    int id= 0;
-
-	if (!of_get_property(np, prop_name, len)) {
-		ret = -EINVAL;
-		goto out;
-	}
-	sz = *len = *len / sizeof(*arr);
-	if (sz <= 0 || (size > 0 && (sz > size))) {
-		dev_err(dev, "%s invalid size\n", prop_name);
-		ret = -EINVAL;
-		goto out;
-	}
-
-      id = of_alias_get_id(dev->of_node, "sdhc");
-
-	arr = devm_kzalloc(dev, sz * sizeof(*arr), GFP_KERNEL);
-	if (!arr) {
-		dev_err(dev, "%s failed allocating memory\n", prop_name);
-		ret = -ENOMEM;
-		goto out;
-	}
-
-	ret = of_property_read_u32_array(np, prop_name, arr, sz);
-	if (ret < 0) {
-		dev_err(dev, "%s failed reading array %d\n", prop_name, ret);
-		goto out;
-	}
-	*out = arr;
-out:
-	if (ret)
-		*len = 0;
-	return ret;
-}
-#endif
-/* DTS2014071404597  zhaoyingchun 20140714 end > */
 static int sdhci_msm_dt_get_array(struct device *dev, const char *prop_name,
 				 u32 **out, int *len, u32 size)
 {
@@ -1379,35 +1361,28 @@ static int sdhci_msm_dt_parse_vreg_info(struct device *dev,
 
 	return ret;
 }
-
-/* < DTS2014052200739 luchao 20140522 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-static int sdhci_msm_dt_get_poll_info(void)
+static bool sdhci_msm_dt_get_poll_info(void)
 {
-	int ret = 0;
 	char prop_name[MAX_PROP_SIZE];
 	struct device_node *np = NULL;
 
-	/*try to get the device node huawei-polling-support.*/
+	/* try to get the device node huawei-polling-support.*/
 	np = of_find_compatible_node(NULL,NULL,"huawei-polling-support");
-	if(!np)
-	{
-		/*if np is NULL,return 0.*/
-		return ret;
+	if(!np) {
+		/* if np is NULL, return false*/
+		return false;
 	}
-	snprintf(prop_name, MAX_PROP_SIZE,
-			"%s", "huawei,support-polling");
-	if (of_get_property(np, prop_name, NULL))
-	{
-		/*if we can get huawei,support-polling,return 1.*/
-		ret = 1;
+	
+	snprintf(prop_name, MAX_PROP_SIZE,  "%s", "huawei,support-polling");
+	if (of_get_property(np, prop_name, NULL)) {
+		/* if we can get huawei,support-polling,return true */
+		return true;
 	}
 
-	return ret;
+	return false;
 }
 #endif
-/* DTS2014052200739 luchao 20140522 end > */
-
 /* GPIO/Pad data extraction */
 static int sdhci_msm_parse_pinctrl_info(struct device *dev,
 		struct sdhci_msm_pltfm_data *pdata)
@@ -1516,13 +1491,156 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_SMP
+static void sdhci_msm_populate_affinity(struct sdhci_msm_pltfm_data *pdata,
+				     struct device_node *np,
+					 char *qos_affinity_name,
+					 char *qos_affinity_mask)
+{
+	const char *cpu_affinity = NULL;
+	u32 cpu_mask;
+
+	pdata->cpu_affinity_type = PM_QOS_REQ_AFFINE_IRQ;
+	if (!of_property_read_string(np, qos_affinity_name, &cpu_affinity)) {
+		if (!strcmp(cpu_affinity, "all_cores"))
+			pdata->cpu_affinity_type = PM_QOS_REQ_ALL_CORES;
+		else if (!strcmp(cpu_affinity, "affine_cores") &&
+			 !of_property_read_u32(np, qos_affinity_mask,
+						&cpu_mask)) {
+				cpumask_bits(&pdata->cpu_affinity_mask)[0] =
+					cpu_mask;
+				pdata->cpu_affinity_type =
+					PM_QOS_REQ_AFFINE_CORES;
+		}
+	}
+}
+#else
+static void sdhci_msm_populate_affinity(struct sdhci_msm_pltfm_data *pdata,
+				struct device_node *np, char *qos_affinity_name
+				char *qos_affinity_mask)
+{
+}
+#endif
+static void sdhci_msm_update_host_qos_data(struct sdhci_msm_pltfm_data *pdata,
+		struct sdhci_host *host, int i)
+{
+	struct sdhci_host_qos *host_qos = host->host_qos;
+
+	host_qos[i].cpu_dma_latency_us = pdata->cpu_dma_latency_us;
+	host_qos[i].cpu_dma_latency_tbl_sz = pdata->cpu_dma_latency_tbl_sz;
+	host_qos[i].pm_qos_req_dma.type = pdata->cpu_affinity_type;
+	if (host_qos[i].pm_qos_req_dma.type == PM_QOS_REQ_AFFINE_CORES)
+		bitmap_copy(cpumask_bits(&host_qos[i].pm_qos_req_dma.cpus_affine),
+			    cpumask_bits(&pdata->cpu_affinity_mask),
+			    nr_cpumask_bits);
+}
+static void sdhci_msm_print_qos_data(struct device *dev,
+		struct sdhci_host *host)
+{
+	int i, j;
+	struct sdhci_host_qos *host_qos = host->host_qos;
+
+	dev_info(dev, "host_use_default_qos = %d\n",
+			host->host_use_default_qos);
+
+	for (i = 0; i < SDHCI_QOS_MAX_POLICY; i++) {
+		dev_info(dev, "For Qos_policy(%s qos) = %d, tbl_sz = %d, qos type = %d\n",
+				i ? "modified dynamic" : "default", i,
+				host_qos[i].cpu_dma_latency_tbl_sz,
+				host_qos[i].pm_qos_req_dma.type);
+
+		for (j = 0; j < host_qos[i].cpu_dma_latency_tbl_sz; j++)
+			dev_info(dev, "\tdma_lat = %d\n",
+				host_qos[i].cpu_dma_latency_us[j]);
+	}
+}
+
+static int sdhci_msm_populate_qos(struct device *dev,
+		struct sdhci_msm_pltfm_data *pdata,
+		struct sdhci_host *host)
+{
+	struct device_node *np = dev->of_node;
+	u32 prop_val = 0;
+	bool skip_qos_from_dt = false;
+	int qos_planes = 0, i;
+	char *qos_planes_name[SDHCI_QOS_MAX_POLICY] = {
+			"qcom,cpu-dma-latency-us",
+			"qcom,cpu-dma-latency-us-r",
+			"qcom,cpu-dma-latency-us-w"};
+	char *qos_affinity_name[SDHCI_QOS_MAX_POLICY] = {
+			"qcom,cpu-affinity",
+			"qcom,cpu-affinity-r",
+			"qcom,cpu-affinity-w"};
+	char *qos_affinity_mask[SDHCI_QOS_MAX_POLICY] = {
+			"qcom,cpu-affinity-mask",
+			"qcom,cpu-affinity-mask-r",
+			"qcom,cpu-affinity-mask-w"};
+
+	if (of_property_read_u32(np, "qcom,qos-planes", &qos_planes))
+			qos_planes = SDHCI_QOS_MAX_POLICY;
+
+	if (qos_planes > SDHCI_QOS_MAX_POLICY)
+		goto out;
+
+	for (i = 0; i < qos_planes; i++) {
+		if (of_get_property(np, qos_planes_name[i],
+					&prop_val)) {
+
+			pdata->cpu_dma_latency_tbl_sz =
+				prop_val/sizeof(*pdata->cpu_dma_latency_us);
+
+			if (!(pdata->cpu_dma_latency_tbl_sz == 1 ||
+				pdata->cpu_dma_latency_tbl_sz == 3)) {
+				dev_warn(dev, "incorrect Qos param passed from DT: %d\n",
+					pdata->cpu_dma_latency_tbl_sz);
+				skip_qos_from_dt = true;
+			} else {
+				pdata->cpu_dma_latency_us = devm_kzalloc(dev,
+					sizeof(*pdata->cpu_dma_latency_us) *
+					pdata->cpu_dma_latency_tbl_sz,
+					GFP_KERNEL);
+				if (!pdata->cpu_dma_latency_us)
+					goto out;
+				if (of_property_read_u32_array(np,
+						qos_planes_name[i],
+						pdata->cpu_dma_latency_us,
+						pdata->cpu_dma_latency_tbl_sz)) {
+					dev_err(dev, "failed to parse cpu-dma-latency\n");
+					goto out;
+				}
+			}
+			} else {
+				dev_info(dev, "no %s property found\n",
+						qos_planes_name[i]);
+				skip_qos_from_dt = true;
+			}
+
+		if (skip_qos_from_dt) {
+			pdata->cpu_dma_latency_tbl_sz = 1;
+			pdata->cpu_dma_latency_us = devm_kzalloc(dev,
+				sizeof(*pdata->cpu_dma_latency_us) *
+				pdata->cpu_dma_latency_tbl_sz,
+				GFP_KERNEL);
+			if (!pdata->cpu_dma_latency_us)
+				goto out;
+			pdata->cpu_dma_latency_us[0] = MSM_MMC_DEFAULT_CPU_DMA_LATENCY;
+		}
+		sdhci_msm_populate_affinity(pdata, np,
+				qos_affinity_name[i], qos_affinity_mask[i]);
+		sdhci_msm_update_host_qos_data(pdata, host, i);
+	}
+
+	return 0;
+out:
+	return -EINVAL;
+}
 /* Parse platform data */
-static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
+static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
+				struct sdhci_host *host)
 {
 	struct sdhci_msm_pltfm_data *pdata = NULL;
 	struct device_node *np = dev->of_node;
 	u32 bus_width = 0;
-	u32 cpu_dma_latency;
 	int len, i, mpm_int;
 	int clk_table_len;
 	u32 *clk_table = NULL;
@@ -1547,14 +1665,9 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		dev_notice(dev, "invalid bus-width, default to 1-bit mode\n");
 		pdata->mmc_bus_width = 0;
 	}
+	if (sdhci_msm_populate_qos(dev, pdata, host))
+		goto out;
 
-	if (!of_property_read_u32(np, "qcom,cpu-dma-latency-us",
-				&cpu_dma_latency))
-		pdata->cpu_dma_latency_us = cpu_dma_latency;
-	else
-		pdata->cpu_dma_latency_us = MSM_MMC_DEFAULT_CPU_DMA_LATENCY;
-    /* < DTS2014071404597  zhaoyingchun 20140714 begin */
-#ifndef CONFIG_HUAWEI_KERNEL
 	if (sdhci_msm_dt_get_array(dev, "qcom,clk-rates",
 			&clk_table, &clk_table_len, 0)) {
 		dev_err(dev, "failed parsing supported clock rates\n");
@@ -1564,41 +1677,6 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		dev_err(dev, "Invalid clock table\n");
 		goto out;
 	}
-#else
-    /* < DTS2014082005817 lizhigang 20140819 begin */
-    /* For 8916 platform hs200 mode is disable by default, enable this feature in some product.*/
-    if((EMMC_NO == of_alias_get_id(dev->of_node, "sdhc")) && huawei_hs200_support())
-    {
-        struct device_node *hs200_np = of_find_compatible_node(NULL,NULL,"huawei,huawei-clk-rates");
-
-		if(NULL != hs200_np)
-		{
-            if (huawei_sdhci_msm_dt_get_array(dev,hs200_np, "huawei,clk-rates",
-                    &clk_table, &clk_table_len, 0)) {
-                dev_err(dev, "failed parsing supported clock rates\n");
-                goto out;
-            }  	
-            if (!clk_table || !clk_table_len) {
-                dev_err(dev, "Invalid clock table\n");
-                goto out;
-            }
-		}
-    }
-    else
-    {
-        if (sdhci_msm_dt_get_array(dev, "qcom,clk-rates",
-                &clk_table, &clk_table_len, 0)) {
-            dev_err(dev, "failed parsing supported clock rates\n");
-            goto out;
-        }
-        if (!clk_table || !clk_table_len) {
-            dev_err(dev, "Invalid clock table\n");
-            goto out;
-        }
-    }
-    /* DTS2014082005817 lizhigang 20140819 end > */    
-#endif
-    /* DTS2014071404597  zhaoyingchun 20140714 end > */
 	pdata->sup_clk_table = clk_table;
 	pdata->sup_clk_cnt = clk_table_len;
 
@@ -1626,55 +1704,14 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		dev_err(dev, "failed parsing gpio data\n");
 		goto out;
 	}
-    /* < DTS2014071404597  zhaoyingchun 20140714 begin */
-    /* < DTS2014082005817 lizhigang 20140819 begin */
-    /* For 8916 platform hs200 mode is disable by default, enable this feature in some product.*/
-#ifndef CONFIG_HUAWEI_KERNEL
-	len = of_property_count_strings(np, "qcom,bus-speed-mode");
-#else
 
-    if((EMMC_NO == of_alias_get_id(dev->of_node, "sdhc")) && huawei_hs200_support())
-    {
-        struct device_node *bus_mode_np = of_find_compatible_node(NULL,NULL,"huawei,huawei-bus-speed-mode");
-		if(NULL != bus_mode_np)
-        {
-            len = of_property_count_strings(bus_mode_np, "huawei,bus-speed-mode");
-        }
-    }
-    else
-    {
-        len = of_property_count_strings(np, "qcom,bus-speed-mode");
-    }
-#endif
-    /* DTS2014082005817 lizhigang 20140819 end > */
-    /* DTS2014071404597  zhaoyingchun 20140714 end > */
+	len = of_property_count_strings(np, "qcom,bus-speed-mode");
+
 	for (i = 0; i < len; i++) {
 		const char *name = NULL;
-        /* < DTS2014071404597  zhaoyingchun 20140714 begin */
 
-        /* < DTS2014082005817 lizhigang 20140819 begin */
-        /* For 8916 platform hs200 mode is disable by default, enable this feature in some product.*/
-#ifndef CONFIG_HUAWEI_KERNEL
 		of_property_read_string_index(np,
 			"qcom,bus-speed-mode", i, &name);
-#else
-        if((EMMC_NO == of_alias_get_id(dev->of_node, "sdhc")) && huawei_hs200_support())
-        {
-            struct device_node *bus_mode_np = of_find_compatible_node(NULL,NULL,"huawei,huawei-bus-speed-mode");
-			if(NULL != bus_mode_np)
-			{
-                of_property_read_string_index(bus_mode_np,
-			        "huawei,bus-speed-mode", i, &name);
-			}
-        }
-		else
-		{
-		    of_property_read_string_index(np,
-			    "qcom,bus-speed-mode", i, &name);
-		}
-#endif
-        /* DTS2014082005817 lizhigang 20140819 end > */
-        /* DTS2014071404597  zhaoyingchun 20140714 end > */
 		if (!name)
 			continue;
 
@@ -1697,6 +1734,9 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 	if (of_get_property(np, "qcom,nonremovable", NULL))
 		pdata->nonremovable = true;
 
+	if (of_get_property(np, "qcom,modified-dynamic-qos", NULL))
+		pdata->use_mod_dynamic_qos = true;
+
 	if (of_get_property(np, "qcom,nonhotplug", NULL))
 		pdata->nonhotplug = true;
 
@@ -1705,8 +1745,6 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		pdata->mpm_sdiowakeup_int = mpm_int;
 	else
 		pdata->mpm_sdiowakeup_int = -1;
-    /*<DTS2014102702713 zhanglei 20141027 begin */
-    /* < DTS2014082208625  yuanxiaofeng 20140825 begin */
     /* add node to support power off sdcard when there is no card */
 #ifdef CONFIG_HUAWEI_KERNEL
     if (of_get_property(np, "huawei,power-off-no-card", NULL))
@@ -1728,9 +1766,6 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
         pdata->caps2 &= ~MMC_CAP2_POWER_OFF_NO_CARD;
     }
 #endif
-    /* DTS2014082208625  yuanxiaofeng 20140825 end > */
-	/*DTS2014102702713 zhanglei 20141027 end> */
-
 
 	return pdata;
 out:
@@ -2058,8 +2093,6 @@ static int sdhci_msm_vreg_enable(struct sdhci_msm_reg_data *vreg)
 		if (ret)
 			return ret;
 	}
-    /*<DTS2014102702713 zhanglei 20141027 begin */
-    /* < DTS2014082208625  yuanxiaofeng 20140825 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
     if (vreg->is_power_off_without_card)
     {
@@ -2075,8 +2108,6 @@ static int sdhci_msm_vreg_enable(struct sdhci_msm_reg_data *vreg)
 #else
     ret = regulator_enable(vreg->reg);
 #endif
-    /* DTS2014082208625  yuanxiaofeng 20140825 end > */
-    /*DTS2014102702713 zhanglei 20141027 end> */
 	if (ret) {
 		pr_err("%s: regulator_enable(%s) failed. ret=%d\n",
 				__func__, vreg->name, ret);
@@ -2159,8 +2190,7 @@ out:
 static int sdhci_msm_vreg_reset(struct sdhci_msm_pltfm_data *pdata)
 {
 	int ret;
-     /*<DTS2014102702713 zhanglei 20141027 begin */
-    /* < DTS2014082208625  yuanxiaofeng 20140825 begin */
+
 #ifdef CONFIG_HUAWEI_KERNEL
     if ((pdata->nonremovable != true) && (pdata->caps2 & MMC_CAP2_POWER_OFF_NO_CARD))
     {
@@ -2168,9 +2198,6 @@ static int sdhci_msm_vreg_reset(struct sdhci_msm_pltfm_data *pdata)
         pdata->vreg_data->vdd_io_data->is_enabled=false;
     }
 #endif
-    /* DTS2014082208625  yuanxiaofeng 20140825 end > */
-	/*DTS2014102702713 zhanglei 20141027 end> */
-
 	ret = sdhci_msm_setup_vreg(pdata, 1, true);
 	if (ret)
 		return ret;
@@ -2296,6 +2323,18 @@ static irqreturn_t sdhci_msm_sdiowakeup_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+void sdhci_msm_dump_pwr_ctrl_regs(struct sdhci_host *host)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+
+	pr_err("%s: PWRCTL_STATUS: 0x%08x | PWRCTL_MASK: 0x%08x | PWRCTL_CTL: 0x%08x\n",
+		mmc_hostname(host->mmc),
+		readl_relaxed(msm_host->core_mem + CORE_PWRCTL_STATUS),
+		readl_relaxed(msm_host->core_mem + CORE_PWRCTL_MASK),
+		readl_relaxed(msm_host->core_mem + CORE_PWRCTL_CTL));
+}
+
 static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 {
 	struct sdhci_host *host = (struct sdhci_host *)data;
@@ -2306,6 +2345,7 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	int ret = 0;
 	int pwr_state = 0, io_level = 0;
 	unsigned long flags;
+	int retry = 10;
 
 	irq_status = readb_relaxed(msm_host->core_mem + CORE_PWRCTL_STATUS);
 	pr_debug("%s: Received IRQ(%d), status=0x%x\n",
@@ -2320,6 +2360,30 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	 * completed before its next update to registers within hc_mem.
 	 */
 	mb();
+
+	/*
+	 * There is a rare HW scenario where the first clear pulse could be
+	 * lost when actual reset and clear/read of status register is
+	 * happening at a time. Hence, retry for at least 10 times to make
+	 * sure status register is cleared. Otherwise, this will result in
+	 * a spurious power IRQ resulting in system instability.
+	 */
+	while (irq_status &
+		readb_relaxed(msm_host->core_mem + CORE_PWRCTL_STATUS)) {
+		if (retry == 0) {
+			pr_err("%s: Timedout clearing (0x%x) pwrctl status register\n",
+				mmc_hostname(host->mmc), irq_status);
+			sdhci_msm_dump_pwr_ctrl_regs(host);
+			BUG_ON(1);
+		}
+		writeb_relaxed(irq_status,
+				(msm_host->core_mem + CORE_PWRCTL_CLEAR));
+		retry--;
+		udelay(10);
+	}
+	if (likely(retry < 10))
+		pr_debug("%s: success clearing (0x%x) pwrctl status register, retries left %d\n",
+				mmc_hostname(host->mmc), irq_status, retry);
 
 	/* Handle BUS ON/OFF*/
 	if (irq_status & CORE_PWRCTL_BUS_ON) {
@@ -2522,8 +2586,10 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 	 */
 	if (done)
 		init_completion(&msm_host->pwr_irq_completion);
-	else
-		wait_for_completion(&msm_host->pwr_irq_completion);
+	else if (!wait_for_completion_timeout(&msm_host->pwr_irq_completion,
+				msecs_to_jiffies(MSM_PWR_IRQ_TIMEOUT_MS)))
+		__WARN_printf("%s: request(%d) timed out waiting for pwr_irq\n",
+					mmc_hostname(host->mmc), req_type);
 
 	pr_debug("%s: %s: request %d done\n", mmc_hostname(host->mmc),
 			__func__, req_type);
@@ -2531,14 +2597,18 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 
 static void sdhci_msm_toggle_cdr(struct sdhci_host *host, bool enable)
 {
-	if (enable)
-		writel_relaxed((readl_relaxed(host->ioaddr +
-					      CORE_DLL_CONFIG) | CORE_CDR_EN),
-			       host->ioaddr + CORE_DLL_CONFIG);
-	else
-		writel_relaxed((readl_relaxed(host->ioaddr +
-					      CORE_DLL_CONFIG) & ~CORE_CDR_EN),
-			       host->ioaddr + CORE_DLL_CONFIG);
+	u32 config;
+	config = readl_relaxed(host->ioaddr + CORE_DLL_CONFIG);
+
+	if (enable) {
+		config |= CORE_CDR_EN;
+		config &= ~CORE_CDR_EXT_EN;
+		writel_relaxed(config, host->ioaddr + CORE_DLL_CONFIG);
+	} else {
+		config &= ~CORE_CDR_EN;
+		config |= CORE_CDR_EXT_EN;
+		writel_relaxed(config, host->ioaddr + CORE_DLL_CONFIG);
+	}
 }
 
 static unsigned int sdhci_msm_max_segs(void)
@@ -2734,7 +2804,7 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = pltfm_host->priv;
 	struct mmc_ios	curr_ios = host->mmc->ios;
-	u32 sup_clock, ddr_clock;
+	u32 sup_clock, ddr_clock, dll_lock;
 	bool curr_pwrsave;
 
 	if (!clock) {
@@ -2768,16 +2838,7 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 		writel_relaxed(readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC)
 				& ~CORE_CLK_PWRSAVE,
 				host->ioaddr + CORE_VENDOR_SPEC);
-	/*<DTS2014102702713 zhanglei 20141027 begin */
-	/*Begin DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20*/	
-	#ifdef MMC_DISABLE_PWRSAVE			
-	if(!strcmp(mmc_hostname(host->mmc), "mmc1"))
-	 	writel_relaxed(readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC)
-				& ~CORE_CLK_PWRSAVE,
-				host->ioaddr + CORE_VENDOR_SPEC);
-	#endif			
-	/*End DTS2014100901263 modify c00217097 for disable SD PWRSAVE 2014/10/20*/
-	/*DTS2014102702713 zhanglei 20141027 end> */
+
 	sup_clock = sdhci_msm_get_sup_clk_rate(host, clock);
 	if ((curr_ios.timing == MMC_TIMING_UHS_DDR50) ||
 		(curr_ios.timing == MMC_TIMING_MMC_HS400)) {
@@ -2830,7 +2891,27 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 					| CORE_HC_SELECT_IN_EN),
 					host->ioaddr + CORE_VENDOR_SPEC);
 		}
+		if (!host->mmc->ios.old_rate && !msm_host->use_cdclp533) {
+			/*
+			 * Poll on DLL_LOCK and DDR_DLL_LOCK bits in
+			 * CORE_DLL_STATUS to be set.  This should get set
+			 * with in 15 us at 200 MHz.
+			 */
+			rc = readl_poll_timeout(host->ioaddr + CORE_DLL_STATUS,
+					dll_lock, (dll_lock & (CORE_DLL_LOCK |
+					CORE_DDR_DLL_LOCK)), 10, 1000);
+			if (rc == -ETIMEDOUT)
+				pr_err("%s: Unable to get DLL_LOCK/DDR_DLL_LOCK, dll_status: 0x%08x\n",
+						mmc_hostname(host->mmc),
+						dll_lock);
+		}
 	} else {
+		if (!msm_host->use_cdclp533)
+			/* set CORE_PWRSAVE_DLL bit in CORE_VENDOR_SPEC3 */
+			writel_relaxed((readl_relaxed(host->ioaddr +
+					CORE_VENDOR_SPEC3) & ~CORE_PWRSAVE_DLL),
+					host->ioaddr + CORE_VENDOR_SPEC3);
+
 		/* Select the default clock (free running MCLK) */
 		writel_relaxed(((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC)
 					& ~CORE_HC_MCLK_SEL_MASK)
@@ -2995,7 +3076,6 @@ static void sdhci_msm_disable_data_xfer(struct sdhci_host *host)
 
 #define MAX_TEST_BUS 20
 
-/* < DTS2015012806509 zhangpeng WX205228 20150209 begin */
 void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -3018,7 +3098,8 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC),
 		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_ADMA_ERR_ADDR0),
 		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_ADMA_ERR_ADDR1));
-	pr_info("Vndr func2: 0x%08x\n", readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2));
+	pr_info("Vndr func2: 0x%08x\n",
+		readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2));
 
 	/*
 	 * tbsel indicates [2:0] bits and tbsel2 indicates [7:4] bits
@@ -3049,7 +3130,48 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 	writel_relaxed(~CORE_TESTBUS_ENA, msm_host->core_mem +
 			CORE_TESTBUS_CONFIG);
 }
-/* DTS2015012806509 zhangpeng WX205228 20150209 end > */
+
+void sdhci_msm_reset_workaround(struct sdhci_host *host, u32 enable)
+{
+	u32 vendor_func2;
+	unsigned long timeout;
+
+	vendor_func2 = readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
+
+	if (enable) {
+		writel_relaxed(vendor_func2 | HC_SW_RST_REQ, host->ioaddr +
+				CORE_VENDOR_SPEC_FUNC2);
+		timeout = 10000;
+		while (readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2) &
+				HC_SW_RST_REQ) {
+			if (timeout == 0) {
+				pr_info("%s: Applying wait idle disable workaround\n",
+					mmc_hostname(host->mmc));
+				/*
+				 * Apply the reset workaround to not wait for
+				 * pending data transfers on AXI before
+				 * resetting the controller. This could be
+				 * risky if the transfers were stuck on the
+				 * AXI bus.
+				 */
+				vendor_func2 = readl_relaxed(host->ioaddr +
+						CORE_VENDOR_SPEC_FUNC2);
+				writel_relaxed(vendor_func2 |
+					HC_SW_RST_WAIT_IDLE_DIS,
+					host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
+				host->reset_wa_t = ktime_get();
+				return;
+			}
+			timeout--;
+			udelay(10);
+		}
+		pr_info("%s: waiting for SW_RST_REQ is successful\n",
+				mmc_hostname(host->mmc));
+	} else {
+		writel_relaxed(vendor_func2 & ~HC_SW_RST_WAIT_IDLE_DIS,
+				host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
+	}
+}
 
 static struct sdhci_ops sdhci_msm_ops = {
 	.set_uhs_signaling = sdhci_msm_set_uhs_signaling,
@@ -3064,7 +3186,9 @@ static struct sdhci_ops sdhci_msm_ops = {
 	.dump_vendor_regs = sdhci_msm_dump_vendor_regs,
 	.config_auto_tuning_cmd = sdhci_msm_config_auto_tuning_cmd,
 	.enable_controller_clock = sdhci_msm_enable_controller_clock,
+	.reset_workaround = sdhci_msm_reset_workaround,
 };
+
 
 static int sdhci_msm_cfg_mpm_pin_wakeup(struct sdhci_host *host, unsigned mode)
 {
@@ -3104,6 +3228,7 @@ static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
 	u32 version, caps;
 	u16 minor;
 	u8 major;
+	u32 val;
 
 	version = readl_relaxed(msm_host->core_mem + CORE_MCI_VERSION);
 	major = (version & CORE_VERSION_MAJOR_MASK) >>
@@ -3112,26 +3237,73 @@ static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
 
 	/*
 	 * Starting with SDCC 5 controller (core major version = 1)
-	 * controller won't advertise 3.0v and 8-bit features except for
-	 * some targets.
+	 * controller won't advertise 3.0v, 1.8v and 8-bit features
+	 * except for some targets.
 	 */
 	if (major >= 1 && minor != 0x11 && minor != 0x12) {
+		struct sdhci_msm_reg_data *vdd_io_reg;
 		caps = CORE_3_0V_SUPPORT;
+		/*
+		 * Enable 1.8V support capability on controllers that
+		 * support dual voltage
+		 */
+		vdd_io_reg = msm_host->pdata->vreg_data->vdd_io_data;
+		if (vdd_io_reg &&
+		   (vdd_io_reg->low_vol_level != vdd_io_reg->high_vol_level))
+			caps |= CORE_1_8V_SUPPORT;
 		if (msm_host->pdata->mmc_bus_width == MMC_CAP_8_BIT_DATA)
 			caps |= CORE_8_BIT_SUPPORT;
 		writel_relaxed(
 			(readl_relaxed(host->ioaddr + SDHCI_CAPABILITIES) |
 			caps), host->ioaddr + CORE_VENDOR_SPEC_CAPABILITIES0);
 	}
+
+	/*
+	 * Enable one MID mode for SDCC5 (major 1) on 8916/8939 (minor 0x2e) and
+	 * on 8992 (minor 0x3e) as a workaround to reset for data stuck issue.
+	 */
+	if (major == 1 && (minor == 0x2e || minor == 0x3e)) {
+		host->quirks2 |= SDHCI_QUIRK2_USE_RESET_WORKAROUND;
+		val = readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
+		writel_relaxed((val | CORE_ONE_MID_EN),
+			host->ioaddr + CORE_VENDOR_SPEC_FUNC2);
+	}
+	/*
+	 * SDCC 5 controller with major version 1, minor version 0x34 and later
+	 * with HS 400 mode support will use CM DLL instead of CDC LP 533 DLL.
+	 */
+	if ((major == 1) && (minor < 0x34))
+		msm_host->use_cdclp533 = true;
+
+	/*
+	 * Mask 64-bit support for controller with 32-bit address bus so that
+	 * smaller descriptor size will be used and improve memory consumption.
+	 * In case bus addressing ever changes, controller version should be
+	 * used in order to decide whether or not to mask 64-bit support.
+	 */
+	caps = readl_relaxed(host->ioaddr + SDHCI_CAPABILITIES);
+	caps &= ~CORE_SYS_BUS_SUPPORT_64_BIT;
+	writel_relaxed(caps, host->ioaddr + CORE_VENDOR_SPEC_CAPABILITIES0);
+
+    /* 
+    * Enable one MID mode for SDCC5 (major 1) on 8916/8939 (minor 0x2e) and 
+    * on 8992 (minor 0x3e) as a workaround to reset for data stuck issue. 
+    */ 
+    if (major == 1 && (minor == 0x2e || minor == 0x3e)) { 
+        host->quirks2 |= SDHCI_QUIRK2_USE_RESET_WORKAROUND; 
+        val = readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC_FUNC2); 
+        writel_relaxed((val | ONE_MID_EN), 
+        host->ioaddr + CORE_VENDOR_SPEC_FUNC2); 
+    } 
 }
 
-/* < DTS2014050707299  wenshuai 20140507 begin */
 /*
  * To get the gpio infor when SD plugged in, based on the device tree info of SD
  * return 1, 	mean high active and set MMC_CAP2_CD_ACTIVE_HIGH bit
  * return 0, 	mean low  active
  * return -1, 	mean error
  **/
+#ifdef CONFIG_HUAWEI_KERNEL
 static int sdhci_msm_set_gpio_info(struct sdhci_msm_pltfm_data *pdata)
 {
 	int ret = -1;
@@ -3169,9 +3341,7 @@ static int sdhci_msm_set_gpio_info(struct sdhci_msm_pltfm_data *pdata)
 
 	return ret;
 }
-/* DTS2014050707299  wenshuai 20140507 end > */
-/*<DTS2014102702713 zhanglei 20141027 begin */
-/* < DTS2014082208625  yuanxiaofeng 20140825 begin */
+#endif
 /*
  * set_always_on - set the values of is_always_on based on the result of get_cd.
  *
@@ -3208,8 +3378,7 @@ void  set_always_on(struct sdhci_host *host, int get_cd_true){
     }
 }
 #endif
-/* DTS2014082208625  yuanxiaofeng 20140825 end > */
-/*DTS2014102702713 zhanglei 20141027 end> */
+
 static int sdhci_msm_probe(struct platform_device *pdev)
 {
 	struct sdhci_host *host;
@@ -3241,6 +3410,10 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc = host->mmc;
 	msm_host->pdev = pdev;
 
+	/* Get the method of mounting sd card */
+	msm_host->mmc->is_polling = sdhci_msm_dt_get_poll_info();
+
+
 	/* Extract platform data */
 	if (pdev->dev.of_node) {
 		ret = of_alias_get_id(pdev->dev.of_node, "sdhc");
@@ -3256,25 +3429,21 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 			goto pltfm_free;
 		}
 
-		msm_host->pdata = sdhci_msm_populate_pdata(&pdev->dev);
+		msm_host->pdata = sdhci_msm_populate_pdata(&pdev->dev, host);
 		if (!msm_host->pdata) {
 			dev_err(&pdev->dev, "DT parsing error\n");
 			goto pltfm_free;
 		}
-/* < DTS2014050707299  wenshuai 20140507 begin */		
-		if(sdhci_msm_set_gpio_info(msm_host->pdata) == 1)
-		{
-			pr_err("the voltage of gpio is high when insert the sdcard.\n");
+#ifdef CONFIG_HUAWEI_KERNEL
+		if (!msm_host->mmc->is_polling) {
+			if(sdhci_msm_set_gpio_info(msm_host->pdata) == 1)
+				pr_err("the voltage of gpio is high when insert the sdcard.\n");
+			else if (sdhci_msm_set_gpio_info(msm_host->pdata) == 0)
+				pr_err("the voltage of gpio is low when insert the sdcard.\n");
+			else
+				pr_err("sdhci_msm_set_gpio_info failed.\n");
 		}
-		else if (sdhci_msm_set_gpio_info(msm_host->pdata) == 0)
-		{
-			pr_err("the voltage of gpio is low when insert the sdcard.\n");
-		}
-		else
-		{
-			pr_err("sdhci_msm_set_gpio_info failed.\n");
-		}
-/* DTS2014050707299  wenshuai 20140507 end > */		
+#endif
 	} else {
 		dev_err(&pdev->dev, "No device tree node\n");
 		goto pltfm_free;
@@ -3360,6 +3529,10 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	/* Reset the core and Enable SDHC mode */
 	core_memres = platform_get_resource_byname(pdev,
 				IORESOURCE_MEM, "core_mem");
+	if (!core_memres) {
+		dev_err(&pdev->dev, "Failed to get iomem resource\n");
+		goto vreg_deinit;
+	}
 	msm_host->core_mem = devm_ioremap(&pdev->dev, core_memres->start,
 					resource_size(core_memres));
 
@@ -3434,6 +3607,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	if (host->quirks2 & SDHCI_QUIRK2_ALWAYS_USE_BASE_CLOCK)
 		host->quirks2 |= SDHCI_QUIRK2_DIVIDE_TOUT_BY_4;
 
+	host->host_use_default_qos = !msm_host->pdata->use_mod_dynamic_qos;
+	sdhci_msm_print_qos_data(&pdev->dev, host);
+	dev_info(&pdev->dev, "Host using %s Qos\n", host->host_use_default_qos ?
+					"default" : "mod dynamic");
+
 	host_version = readw_relaxed((host->ioaddr + SDHCI_HOST_VERSION));
 	dev_dbg(&pdev->dev, "Host Version: 0x%x Vendor Version 0x%x\n",
 		host_version, ((host_version & SDHCI_VENDOR_VER_MASK) >>
@@ -3453,6 +3631,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	}
 
 	host->quirks2 |= SDHCI_QUIRK2_IGN_DATA_END_BIT_ERROR;
+	host->quirks2 |= SDHCI_QUIRK2_ADMA_SKIP_DATA_ALIGNMENT;
 
 	/* Setup PWRCTL irq */
 	msm_host->pwr_irq = platform_get_irq_byname(pdev, "pwr_irq");
@@ -3480,9 +3659,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps |= msm_host->pdata->mmc_bus_width;
 	msm_host->mmc->caps |= msm_host->pdata->caps;
 	msm_host->mmc->caps2 |= msm_host->pdata->caps2;
-	/*<DTS2014102702713 zhanglei 20141027 begin */
 	msm_host->mmc->caps2 |= MMC_CAP2_CORE_RUNTIME_PM;
-	/*DTS2014102702713 zhanglei 20141027 end> */
 	msm_host->mmc->caps2 |= MMC_CAP2_PACKED_WR;
 	msm_host->mmc->caps2 |= MMC_CAP2_PACKED_WR_CONTROL;
 	msm_host->mmc->caps2 |= (MMC_CAP2_BOOTPART_NOACC |
@@ -3501,25 +3678,23 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	if (msm_host->pdata->nonhotplug)
 		msm_host->mmc->caps2 |= MMC_CAP2_NONHOTPLUG;
 
-	host->cpu_dma_latency_us = msm_host->pdata->cpu_dma_latency_us;
-
 	init_completion(&msm_host->pwr_irq_completion);
-
-	/* < DTS2014052200739 luchao 20140522 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-	if((!strcmp(mmc_hostname(msm_host->mmc), "mmc1"))&&(sdhci_msm_dt_get_poll_info()))
-	{
-		/*add the polling flag to caps to support polling.*/
-		pr_info("polling has enable sucess.\n");
+	if((!strcmp(mmc_hostname(msm_host->mmc), "mmc1"))&& (msm_host->mmc->is_polling)) {
+		/* add the polling flag to caps to support polling. */
+		pr_info("Will do polling method to mount sd card \n");
 		host->mmc->caps |= MMC_CAP_NEEDS_POLL;
-		/* < DTS2014062603575 wenshuai 20140630 begin */
-		/*in polling mode, set status_gpio to be unvalued */
+		/* in polling mode, set status_gpio to be unvalued */
 		msm_host->pdata->status_gpio = -1;
-		/* DTS2014062603575 wenshuai    20140630 end > */
-	}
-	else
-	{
+	} else {
 		if (gpio_is_valid(msm_host->pdata->status_gpio)) {
+			/*
+		 	 * Set up the card detect GPIO in active configuration before
+			 * configuring it as an IRQ. Otherwise, it can be in some
+			 * weird/inconsistent state resulting in flood of interrupts.
+			 */
+			sdhci_msm_setup_pins(msm_host->pdata, true);
+
 			ret = mmc_gpio_request_cd(msm_host->mmc,
 					msm_host->pdata->status_gpio);
 			if (ret) {
@@ -3527,6 +3702,14 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 						__func__, ret);
 				goto vreg_deinit;
 			}
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+			/*
+			* enable wake irq as deferred resume is enabled,
+			* we need detect the hot-plug of SD card when suspend.
+			*/
+			enable_irq_wake(host->irq);
+			enable_irq_wake(msm_host->pdata->status_gpio);
+#endif
 		}
 	}
 #else
@@ -3545,9 +3728,17 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 					__func__, ret);
 			goto vreg_deinit;
 		}
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+		/*
+		* enable wake irq as deferred resume is enabled,
+		* we need detect the hot-plug of SD card when suspend.
+		*/
+		enable_irq_wake(host->irq);
+		enable_irq_wake(msm_host->pdata->status_gpio);
+#endif
 	}
 #endif
-	/* DTS2014052200739 luchao 20140522 end > */
+
 	if ((sdhci_readl(host, SDHCI_CAPABILITIES) & SDHCI_CAN_64BIT) &&
 		(dma_supported(mmc_dev(host->mmc), DMA_BIT_MASK(64)))) {
 		host->dma_mask = DMA_BIT_MASK(64);
@@ -3585,7 +3776,17 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Add host failed (%d)\n", ret);
 		goto free_cd_gpio;
 	}
-
+#ifdef CONFIG_HUAWEI_KERNEL
+	/*add UHS-I mode for 3.0 sdcard except MMC_CAP_UHS_SDR104 for RIO,and disable it for ATH.*/
+	if(!strcmp(mmc_hostname(msm_host->mmc), "mmc1")) {
+		if (of_get_property(pdev->dev.of_node, "huawei,support-uhs", NULL)) {
+			msm_host->mmc->caps &= ~MMC_CAP_UHS_SDR104;
+		} else {
+			msm_host->mmc->caps &= ~(MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
+					MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_DDR50);
+		}
+	}
+#endif
 	msm_host->msm_bus_vote.max_bus_bw.show = show_sdhci_max_bus_bw;
 	msm_host->msm_bus_vote.max_bus_bw.store = store_sdhci_max_bus_bw;
 	sysfs_attr_init(&msm_host->msm_bus_vote.max_bus_bw.attr);
@@ -3825,12 +4026,20 @@ skip_enable_host_irq:
 static int sdhci_msm_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	/*mask mmc_gpio_free_cd function for deferred resume. */
+#else
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+#endif
 	int ret = 0;
 
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	/*mask mmc_gpio_free_cd function for deferred resume. */
+#else
 	if (gpio_is_valid(msm_host->pdata->status_gpio))
 		mmc_gpio_free_cd(msm_host->mmc);
+#endif
 
 	if (pm_runtime_suspended(dev)) {
 		pr_debug("%s: %s: already runtime suspended\n",
@@ -3846,10 +4055,17 @@ out:
 static int sdhci_msm_resume(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	/*mask mmc_gpio_request_cd function for deferred resume. */
+#else
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+#endif
 	int ret = 0;
 
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	/*mask mmc_gpio_request_cd function for deferred resume. */
+#else
 	if (gpio_is_valid(msm_host->pdata->status_gpio)) {
 		ret = mmc_gpio_request_cd(msm_host->mmc,
 				msm_host->pdata->status_gpio);
@@ -3858,6 +4074,7 @@ static int sdhci_msm_resume(struct device *dev)
 					mmc_hostname(host->mmc), __func__, ret);
 	}
 
+#endif
 	if (pm_runtime_suspended(dev)) {
 		pr_debug("%s: %s: runtime suspended, defer system resume\n",
 		mmc_hostname(host->mmc), __func__);

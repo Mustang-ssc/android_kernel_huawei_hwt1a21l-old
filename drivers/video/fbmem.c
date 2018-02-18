@@ -32,21 +32,17 @@
 #include <linux/device.h>
 #include <linux/efi.h>
 #include <linux/fb.h>
-/*<DTS2014111701156 l00101002 20140924 begin*/
+
+#ifdef CONFIG_LOG_JANK
 #include <linux/log_jank.h>
-/*DTS2014111701156 l00101002 20140924 end>*/
+#endif
 #include <asm/fb.h>
 
-/*DTS2014101301850 zhoujian 20141013 begin */
-   extern int get_offline_cpu(void);
    extern unsigned int cpufreq_get(unsigned int cpu);
-/*DTS2014101301850 zhoujian 20141013 end */
-
 
     /*
      *  Frame buffer device initialization and setup routines
      */
- /*< DTS2014071502043 zhaoyuxia 20140715 begin */
 #ifdef CONFIG_HUAWEI_LCD
 extern int lcd_debug_mask ;
 
@@ -63,7 +59,6 @@ do{											\
 }while(0)
 #endif
 #endif
-/* DTS2014071502043 zhaoyuxia 20140715 end >*/
 
 
 #define FBPIXMAPSIZE	(1024 * 8)
@@ -1069,48 +1064,40 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 	return ret;
 }
 
- /*< DTS2014071502043 zhaoyuxia 20140715 begin */
 int
 fb_blank(struct fb_info *info, int blank)
 {	
 	struct fb_event event;
 	int ret = -EINVAL, early_ret;
-	/* DTS2014101301850 zhoujian 20141013 begin > */
 	unsigned long timeout ;
-	/* DTS2014101301850 zhoujian 20141013 end > */
 #ifdef CONFIG_HUAWEI_LCD
 	LCD_LOG_INFO("Enter %s, blank_mode = [%d].\n",__func__,blank);
 #endif
 
  	if (blank > FB_BLANK_POWERDOWN)
  		blank = FB_BLANK_POWERDOWN;
-/*<DTS2014111701156 l00101002 20140924 begin*/
 #ifdef CONFIG_LOG_JANK
     if(blank > 0)
     {
-        LOG_JANK_V(JL_HWC_LCD_BLANK_START, "%s#T:%5lu", "JL_HWC_LCD_BLANK_START",getrealtime());
+        LOG_JANK_V(JLID_HWC_LCD_BLANK_START, "%s", "JL_HWC_LCD_BLANK_START");
     }
     else
     {
-        LOG_JANK_V(JL_HWC_LCD_UNBLANK_START, "%s#T:%5lu", "JL_HWC_LCD_UNBLANK_START",getrealtime());
+        LOG_JANK_V(JLID_HWC_LCD_UNBLANK_START, "%s", "JL_HWC_LCD_UNBLANK_START");
     }
 #endif
-/*DTS2014111701156 l00101002 20140924 end>*/
 
 	event.info = info;
 	event.data = &blank;
 
 	early_ret = fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
-	/* DTS2014101301850 zhoujian 20141013 begin > */
 	timeout = jiffies ;
-	/* DTS2014101301850 zhoujian 20141013 end > */
 	if (info->fbops->fb_blank)
  		ret = info->fbops->fb_blank(blank, info);
-	/* DTS2014101301850 zhoujian 20141013 begin > */
 	/* add for timeout print log */
-	LCD_LOG_INFO("%s: fb blank time = %u,offlinecpu = %d,curfreq = %d\n",
-			__func__,jiffies_to_msecs(jiffies-timeout),get_offline_cpu(),cpufreq_get(0));
-	/* DTS2014101301850 zhoujian 20141013 end > */
+	/*delete cpuget() to avoid panic*/
+	LCD_LOG_INFO("%s: fb blank time = %u\n",
+			__func__,jiffies_to_msecs(jiffies-timeout));
 	if (!ret)
 		fb_notifier_call_chain(FB_EVENT_BLANK, &event);
 	else {
@@ -1124,21 +1111,18 @@ fb_blank(struct fb_info *info, int blank)
 #ifdef CONFIG_HUAWEI_LCD
 	LCD_LOG_INFO("Exit %s, blank_mode = [%d].\n",__func__,blank);
 #endif
-/*<DTS2014111701156 l00101002 20140924 begin*/
 #ifdef CONFIG_LOG_JANK
     if(blank > 0)
     {
-        LOG_JANK_V(JL_HWC_LCD_BLANK_END, "%s#T:%5lu", "JL_HWC_LCD_BLANK_END",getrealtime());
+        LOG_JANK_V(JLID_HWC_LCD_BLANK_END, "%s", "JL_HWC_LCD_BLANK_END");
     }
     else
     {
-        LOG_JANK_V(JL_HWC_LCD_UNBLANK_END, "%s#T:%5lu", "JL_HWC_LCD_UNBLANK_END",getrealtime());
+        LOG_JANK_V(JLID_HWC_LCD_UNBLANK_END, "%s", "JL_HWC_LCD_UNBLANK_END");
     }
 #endif
-/*DTS2014111701156 l00101002 20140924 end>*/
  	return ret;
 }
- /* DTS2014071502043 zhaoyuxia 20140715 end >*/
 
 static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
@@ -1507,9 +1491,7 @@ __releases(&info->lock)
 		goto out;
 	}
 	file->private_data = info;
-/* <DTS2014110604375  zhoujian wx221429 20141107 begin */
 	info->file = file;
-/* DTS2014110604375   zhoujian wx221429 20141107 end > */
 	if (info->fbops->fb_open) {
 		res = info->fbops->fb_open(info,1);
 		if (res)
@@ -1534,9 +1516,7 @@ __releases(&info->lock)
 	struct fb_info * const info = file->private_data;
 
 	mutex_lock(&info->lock);
-/* <DTS2014110604375  zhoujian wx221429 20141107 begin */
 	info->file = file;
-/* DTS2014110604375   zhoujian wx221429 20141107 end > */
 	if (info->fbops->fb_release)
 		info->fbops->fb_release(info,1);
 	module_put(info->fbops->owner);

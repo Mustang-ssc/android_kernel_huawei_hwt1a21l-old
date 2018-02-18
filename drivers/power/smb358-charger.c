@@ -1400,7 +1400,6 @@ static void smb358_chg_set_appropriate_vddmax(
 			"Couldn't set float voltage rc = %d\n", rc);
 }
 
-#define HYSTERESIS_DECIDEGC 20
 static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 {
 	struct smb358_charger *chip = ctx;
@@ -1427,7 +1426,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_present = true;
 
 			chip->adc_param.low_temp =
-				chip->hot_bat_decidegc - HYSTERESIS_DECIDEGC;
+				chip->hot_bat_decidegc;
 			chip->adc_param.state_request =
 				ADC_TM_COOL_THR_ENABLE;
 		} else if (temp >=
@@ -1439,7 +1438,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_present = true;
 
 			chip->adc_param.low_temp =
-				chip->warm_bat_decidegc - HYSTERESIS_DECIDEGC;
+				chip->warm_bat_decidegc;
 			chip->adc_param.high_temp =
 				chip->hot_bat_decidegc;
 		} else if (temp >=
@@ -1451,7 +1450,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_present = true;
 
 			chip->adc_param.low_temp =
-				chip->cool_bat_decidegc - HYSTERESIS_DECIDEGC;
+				chip->cool_bat_decidegc;
 			chip->adc_param.high_temp =
 				chip->warm_bat_decidegc;
 		} else if (temp >=
@@ -1462,8 +1461,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_cool = true;
 			bat_present = true;
 
-			chip->adc_param.low_temp =
-				chip->cold_bat_decidegc - HYSTERESIS_DECIDEGC;
+			chip->adc_param.low_temp = chip->cold_bat_decidegc;
 			if (chip->jeita_supported)
 				chip->adc_param.high_temp =
 						chip->cool_bat_decidegc;
@@ -1480,8 +1478,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_present = true;
 
 			chip->adc_param.high_temp = chip->cold_bat_decidegc;
-			chip->adc_param.low_temp = chip->bat_present_decidegc
-							- HYSTERESIS_DECIDEGC;
+			chip->adc_param.low_temp = chip->bat_present_decidegc;
 			chip->adc_param.state_request =
 					ADC_TM_HIGH_LOW_THR_ENABLE;
 		}
@@ -1492,8 +1489,8 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_hot = false;
 			bat_warm = false;
 			bat_present = false;
-			chip->adc_param.high_temp = chip->bat_present_decidegc
-							+ HYSTERESIS_DECIDEGC;
+			chip->adc_param.high_temp =
+				chip->bat_present_decidegc;
 			chip->adc_param.state_request =
 				ADC_TM_WARM_THR_ENABLE;
 		} else if (temp <= chip->cold_bat_decidegc) {
@@ -1503,7 +1500,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_cool = false;
 			bat_present = true;
 			chip->adc_param.high_temp =
-				chip->cold_bat_decidegc + HYSTERESIS_DECIDEGC;
+				chip->cold_bat_decidegc;
 			/* add low_temp to enable batt present check */
 			chip->adc_param.low_temp =
 				chip->bat_present_decidegc;
@@ -1517,7 +1514,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_cool = true;
 			bat_present = true;
 			chip->adc_param.high_temp =
-				chip->cool_bat_decidegc + HYSTERESIS_DECIDEGC;
+				chip->cool_bat_decidegc;
 			chip->adc_param.low_temp =
 				chip->cold_bat_decidegc;
 			chip->adc_param.state_request =
@@ -1530,7 +1527,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			bat_cool = false;
 			bat_present = true;
 			chip->adc_param.high_temp =
-				chip->warm_bat_decidegc + HYSTERESIS_DECIDEGC;
+				chip->warm_bat_decidegc;
 			chip->adc_param.low_temp =
 				chip->cool_bat_decidegc;
 			chip->adc_param.state_request =
@@ -1547,8 +1544,7 @@ static void smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 			else
 				chip->adc_param.low_temp =
 					chip->cold_bat_decidegc;
-			chip->adc_param.high_temp =
-				chip->hot_bat_decidegc + HYSTERESIS_DECIDEGC;
+			chip->adc_param.high_temp = chip->hot_bat_decidegc;
 			chip->adc_param.state_request =
 					ADC_TM_HIGH_LOW_THR_ENABLE;
 		}

@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2009-2012, 2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1609,7 +1609,6 @@ struct msm_camera_csi_lane_params {
 
 struct camera_vreg_t {
 	const char *reg_name;
-	enum camera_vreg_type type;
 	int min_voltage;
 	int max_voltage;
 	int op_mode;
@@ -1767,9 +1766,6 @@ struct msm_actuator_params_t {
 	enum msm_actuator_data_type i2c_data_type;
 	struct msm_actuator_reg_params_t *reg_tbl_params;
 	struct reg_settings_t *init_settings;
-       /* < DTS2015032610000 l00271394 20150326 begin */
-       char actuator_name[MAX_ACT_MOD_NAME_SIZE];
-       /* DTS2015032610000 l00271394 20150326 end > */
 };
 
 struct msm_actuator_set_info_t {

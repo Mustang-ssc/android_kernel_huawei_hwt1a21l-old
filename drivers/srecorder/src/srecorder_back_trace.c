@@ -5,11 +5,11 @@
     
     @brief: 
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 **/
@@ -49,7 +49,9 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
+#ifdef CONFIG_ARM
 #include <asm/system.h>
+#endif
 #include <asm/traps.h>
 
 #include "srecorder_back_trace.h"
@@ -186,6 +188,7 @@ static unsigned long srecorder_get_unwind_instruction(struct unwind_ctrl_block *
 
 static void srecorder_dump_memory(const char *str, unsigned long bottom, unsigned long top);
 
+#ifdef CONFIG_ARM
 static void srecorder_dump_user_back_trace(void);
 
 static void srecorder_get_process_maps(struct task_struct *ptask);
@@ -220,6 +223,7 @@ static inline int srecorder_mnt_has_parent(struct mount *mnt)
     return mnt != mnt->mnt_parent;
 }
 #endif
+#endif
 
 static int back_trace_flag = 0;
 
@@ -245,6 +249,66 @@ void srecorder_disable_back_trace(void)
     back_trace_flag = 0;
 }
 
+/**
+    @function: static void srecorder_dump_memory(
+        const char *str, unsigned long bottom, unsigned long top)
+    @brief: Dump out the contents of some memory nicely...
+    @param: 
+    @return: none
+    @note: 
+*/
+ static void srecorder_dump_memory(const char *str, unsigned long bottom, unsigned long top)
+{
+    unsigned long first;
+    mm_segment_t fs;
+    int i = 0;
+
+    if (unlikely(NULL == str))
+    {
+        return;
+    }
+    
+    /*
+    * We need to switch to kernel mode so that we can use __get_user
+    * to safely read from kernel space.  Note that we now dump the
+    * code first, just in case the backtrace kills us.
+    */
+    fs = get_fs();
+    set_fs(KERNEL_DS);
+
+    SRECORDER_SNPRINTF("%s(0x%016lx to 0x%016lx)\n", str, bottom, top);
+    
+    for (first = bottom & (~31); first < top; first += 32)
+    {
+        unsigned long p;
+        char str[sizeof(" 12345678") * 8 + 1];
+
+        memset(str, ' ', sizeof(str));
+        str[sizeof(str) - 1] = '\0';
+
+        for (p = first, i = 0; i < 8 && p < top; i++, p += 4)
+        {
+            if (p >= bottom && p < top) 
+            {
+                unsigned int val;
+                if (__get_user(val, (unsigned int *)p) == 0)
+                {
+                    sprintf(str + i * 9, " %08x", val);
+                }
+                else
+                {
+                    sprintf(str + i * 9, " ????????");
+                }
+            }
+        }
+        
+        SRECORDER_SNPRINTF("%04lx:%s\n", first & 0xffff, str);
+    }
+
+    set_fs(fs);
+}
+
+#ifdef CONFIG_ARM
 /**
     @function: static int srecorder_prepend(char **buffer, int *buflen, const char *str, int namelen)
     @brief: 
@@ -882,65 +946,6 @@ static void srecorder_dump_user_back_trace(void)
     SRECORDER_SNPRINTF("%s", "\n****************************** dump user stack end ******************************\n");
 }
 
-/**
-    @function: static void srecorder_dump_memory(
-        const char *str, unsigned long bottom, unsigned long top)
-    @brief: Dump out the contents of some memory nicely...
-    @param: 
-    @return: none
-    @note: 
-*/
- static void srecorder_dump_memory(const char *str, unsigned long bottom, unsigned long top)
-{
-    unsigned long first;
-    mm_segment_t fs;
-    int i = 0;
-
-    if (unlikely(NULL == str))
-    {
-        return;
-    }
-    
-    /*
-    * We need to switch to kernel mode so that we can use __get_user
-    * to safely read from kernel space.  Note that we now dump the
-    * code first, just in case the backtrace kills us.
-    */
-    fs = get_fs();
-    set_fs(KERNEL_DS);
-
-    SRECORDER_SNPRINTF("%s(0x%08lx to 0x%08lx)\n", str, bottom, top);
-    
-    for (first = bottom & (~31); first < top; first += 32)
-    {
-        unsigned long p;
-        char str[sizeof(" 12345678") * 8 + 1];
-
-        memset(str, ' ', sizeof(str));
-        str[sizeof(str) - 1] = '\0';
-
-        for (p = first, i = 0; i < 8 && p < top; i++, p += 4)
-        {
-            if (p >= bottom && p < top) 
-            {
-                unsigned long val;
-                if (__get_user(val, (unsigned long *)p) == 0)
-                {
-                    sprintf(str + i * 9, " %08lx", val);
-                }
-                else
-                {
-                    sprintf(str + i * 9, " ????????");
-                }
-            }
-        }
-        
-        SRECORDER_SNPRINTF("%04lx:%s\n", first & 0xffff, str);
-    }
-
-    set_fs(fs);
-}
-
 #ifdef CONFIG_ARM_UNWIND
 /**
     @function:static void srecorder_dump_back_trace_entry( 
@@ -1528,7 +1533,6 @@ static int verify_stack(unsigned long sp)
 }
 #endif
 
-
 /**
     @function: void srecorder_dump_kernel_back_trace(struct task_struct *ptask)
     @brief: 
@@ -1583,6 +1587,75 @@ void srecorder_dump_kernel_back_trace(struct task_struct *ptask)
 #endif
 }
 
+#else
+
+/*  FOR ARM64 */
+
+/**
+    @function: void srecorder_dump_backtrace_entry64(unsigned long where, unsigned long stack)
+    @brief: 
+    @param: regs 
+    @return: none
+    @note: 
+*/
+void srecorder_dump_backtrace_entry64(unsigned long where, unsigned long stack)
+{
+    SRECORDER_SNPRINTF("[<%p>] %pS\n", (void *)where, (void *)where);
+
+    if (in_exception_text(where))
+    {
+        srecorder_dump_memory("Exception stack", stack, stack + sizeof(struct pt_regs));
+    }
+}
+
+/**
+    @function: void srecorder_dump_kernel_back_trace(struct task_struct *ptask)
+    @brief: 
+    @param: regs 
+    @return: none
+    @note: 
+*/
+void srecorder_dump_kernel_back_trace(struct task_struct *ptask)
+{
+    struct stackframe frame;
+    const register unsigned long current_sp asm ("sp");
+
+    if (NULL == ptask)
+    {
+        ptask = current;
+    }
+
+    if (ptask == current)
+    {
+        frame.fp = (unsigned long)__builtin_frame_address(0);
+        frame.sp = current_sp;
+        frame.pc = (unsigned long)srecorder_dump_kernel_back_trace;
+    } 
+    else
+    {
+        /*
+        * task blocked in __switch_to
+        */
+        frame.fp = thread_saved_fp(ptask);
+        frame.sp = thread_saved_sp(ptask);
+        frame.pc = thread_saved_pc(ptask);
+    }
+
+    while (1)
+    {
+        unsigned long where = frame.pc;
+        int ret;
+
+        ret = unwind_frame(&frame);
+        if (ret < 0)
+        {
+            break;
+        }
+        srecorder_dump_backtrace_entry64(where, frame.sp);
+    }
+}
+#endif
+
 /**
     @function: int srecorder_dump_current_ps_backtrace()
     @brief: 
@@ -1615,10 +1688,12 @@ int srecorder_dump_back_trace(void)
 
     srecorder_dump_kernel_back_trace(current);
 
+#ifdef CONFIG_ARM
     if (0 != is_user_thread)
     {
         srecorder_dump_user_back_trace();
     }
+#endif
 
     srecorder_log_header_l_end();
     

@@ -175,7 +175,6 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 #ifdef CONFIG_DEBUG_USER
 	if (((user_debug & UDBG_SEGV) && (sig == SIGSEGV)) ||
 	    ((user_debug & UDBG_BUS)  && (sig == SIGBUS))) {
-		/* < DTS2014042602437 duxiao 20140426 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 		/* when appeared user exception and repeated, 
 		   just print the first exception log */
@@ -195,7 +194,6 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 		show_pte(tsk->mm, addr);
 		show_regs(regs);
 #endif
-		/* DTS2014042602437 duxiao 20140426 end > */
 	}
 #endif
 

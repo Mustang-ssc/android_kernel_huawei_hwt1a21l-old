@@ -27,19 +27,15 @@
 #include <linux/iommu.h>
 #include <linux/platform_device.h>
 #include <media/v4l2-fh.h>
-/*<DTS2014073107807 xurenjie/wx208548 20140731 begin*/
 #include "hw_camera_log.h"
 #include <linux/wakelock.h>
-/*DTS2014073107807 xurenjie/wx208548 20140731 end>*/
 
 #include "camera.h"
 #include "msm.h"
 #include "msm_vb2.h"
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #include "msm_camera_dsm.h"
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 
 #define fh_to_private(__fh) \
 	container_of(__fh, struct camera_v4l2_private, fh)
@@ -50,10 +46,8 @@ struct camera_v4l2_private {
 	unsigned int is_vb2_valid; /*0 if no vb2 buffers on stream, else 1*/
 	struct vb2_queue vb2_q;
 };
-/*<DTS2014073107807 xurenjie/wx208548 20140731 begin*/
 static struct wake_lock cam_wakelock;
 static int cam_wakelock_init = 0;
-/*DTS2014073107807 xurenjie/wx208548 20140731 end>*/
 
 static void camera_pack_event(struct file *filep, int evt_id,
 	int command, int value, struct v4l2_event *event)
@@ -487,7 +481,7 @@ static int camera_v4l2_fh_open(struct file *filep)
 	/* stream_id = open id */
 	stream_id = atomic_read(&pvdev->opened);
 	sp->stream_id = find_first_zero_bit(
-		&stream_id, MSM_CAMERA_STREAM_CNT_BITS);
+		(const unsigned long *)&stream_id, MSM_CAMERA_STREAM_CNT_BITS);
 	pr_debug("%s: Found stream_id=%d\n", __func__, sp->stream_id);
 
 	v4l2_fh_init(&sp->fh, pvdev->vdev);
@@ -581,7 +575,7 @@ static int camera_v4l2_open(struct file *filep)
 		}
 
 		rc = msm_create_command_ack_q(pvdev->vdev->num,
-			find_first_zero_bit(&opn_idx,
+			find_first_zero_bit((const unsigned long *)&opn_idx,
 				MSM_CAMERA_STREAM_CNT_BITS));
 		if (rc < 0) {
 			pr_err("%s : creation of command_ack queue failed\n",
@@ -607,7 +601,7 @@ static int camera_v4l2_open(struct file *filep)
 		}
 	} else {
 		rc = msm_create_command_ack_q(pvdev->vdev->num,
-			find_first_zero_bit(&opn_idx,
+			find_first_zero_bit((const unsigned long *)&opn_idx,
 				MSM_CAMERA_STREAM_CNT_BITS));
 		if (rc < 0) {
 			pr_err("%s : creation of command_ack queue failed Line %d rc %d\n",
@@ -615,9 +609,8 @@ static int camera_v4l2_open(struct file *filep)
 			goto session_fail;
 		}
 	}
-	pr_debug("%s: Open stream_id=%d\n", __func__,
-		   find_first_zero_bit(&opn_idx, MSM_CAMERA_STREAM_CNT_BITS));
-	idx |= (1 << find_first_zero_bit(&opn_idx, MSM_CAMERA_STREAM_CNT_BITS));
+	idx |= (1 << find_first_zero_bit((const unsigned long *)&opn_idx,
+				MSM_CAMERA_STREAM_CNT_BITS));
 	atomic_cmpxchg(&pvdev->opened, opn_idx, idx);
 	return rc;
 
@@ -664,14 +657,11 @@ static int camera_v4l2_close(struct file *filep)
 	opn_idx &= ~mask;
 	atomic_set(&pvdev->opened, opn_idx);
 
-	/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	camera_is_closing = 1;
 #endif
-	/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 	if (atomic_read(&pvdev->opened) == 0) {
 
-        /*<DTS2014073107807 xurenjie/wx208548 20140731 begin*/
         if(1 == cam_wakelock_init && !wake_lock_active(&cam_wakelock))
         {
             hw_camera_log_info("%s: start camera wake_lock_timeout!\n",__func__);
@@ -683,7 +673,6 @@ static int camera_v4l2_close(struct file *filep)
             hw_camera_log_info("%s: do not need wake_lock now, cam_wakelock_init = %d\n",
 				__func__, cam_wakelock_init);
         }
-		/*DTS2014073107807 xurenjie/wx208548 20140731 end>*/
         
 		camera_pack_event(filep, MSM_CAMERA_SET_PARM,
 			MSM_CAMERA_PRIV_DEL_STREAM, -1, &event);
@@ -811,13 +800,11 @@ int camera_init_v4l2(struct device *dev, unsigned int *session)
 	atomic_set(&pvdev->opened, 0);
 	video_set_drvdata(pvdev->vdev, pvdev);
 	device_init_wakeup(&pvdev->vdev->dev, 1);
-    /*<DTS2014073107807 xurenjie/wx208548 20140731 begin*/
     if(!cam_wakelock_init)
     {
         cam_wakelock_init = 1;
         wake_lock_init(&cam_wakelock, WAKE_LOCK_SUSPEND, "cam_wakelock");
     }
-    /*DTS2014073107807 xurenjie/wx208548 20140731 end>*/
 	goto init_end;
 
 video_register_fail:

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,19 +17,15 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/memblock.h>
-/* < DTS2014102207427 zhoujian 20141023 begin */
 /*delete the DTS clerical error*/
 #include <mdss.h>
-/* DTS2014102207427 zhoujian 20141023 end > */
 #include "mdss_fb.h"
 #include "mdss_mdp.h"
 #include "mdss_panel.h"
 #include "mdss_debug.h"
 #include "mdss_mdp_trace.h"
-/* < DTS2014062505033 daiyuhong 20140707 begin */
 /* add log on panel resume and suspend module */
 #include <linux/hw_lcd_common.h>
-/* DTS2014062505033 daiyuhong 20140707 end > */
 /* wait for at least 2 vsyncs for lowest refresh rate (24hz) */
 #define VSYNC_TIMEOUT_US 100000
 
@@ -117,7 +113,7 @@ int mdss_mdp_video_addr_setup(struct mdss_data_type *mdata,
 		return -ENOMEM;
 
 	for (i = 0; i < count; i++) {
-		head[i].base = mdata->mdss_base + offsets[i];
+		head[i].base = mdata->mdss_io.base + offsets[i];
 		pr_debug("adding Video Intf #%d offset=0x%x virt=%p\n", i,
 				offsets[i], head[i].base);
 		head[i].ref_cnt = 0;
@@ -197,13 +193,22 @@ static void mdss_mdp_video_intf_recovery(void *data, int event)
 	if (delay > POLL_TIME_USEC_FOR_LN_CNT)
 		delay = POLL_TIME_USEC_FOR_LN_CNT;
 
+	mutex_lock(&ctl->offlock);
 	while (1) {
+		if (!ctl || ctl->mfd->shutdown_pending || !ctx ||
+				!ctx->timegen_en) {
+			pr_warn("Target is in suspend or shutdown pending\n");
+			mutex_unlock(&ctl->offlock);
+			return;
+		}
+
 		line_cnt = mdss_mdp_video_line_count(ctl);
 
 		if ((line_cnt >= min_ln_cnt) && (line_cnt <
 			(active_lns_cnt + min_ln_cnt))) {
 			pr_debug("%s, Needed lines left line_cnt=%d\n",
 						__func__, line_cnt);
+			mutex_unlock(&ctl->offlock);
 			return;
 		} else {
 			pr_warn("line count is less. line_cnt = %d\n",
@@ -223,8 +228,10 @@ static int mdss_mdp_video_timegen_setup(struct mdss_mdp_ctl *ctl,
 	u32 den_polarity, hsync_polarity, vsync_polarity;
 	u32 display_hctl, active_hctl, hsync_ctl, polarity_ctl;
 	struct mdss_mdp_video_ctx *ctx;
+	struct mdss_data_type *mdata;
 
 	ctx = ctl->priv_data;
+	mdata = ctl->mdata;
 	hsync_period = p->hsync_pulse_width + p->h_back_porch +
 			p->width + p->h_front_porch;
 	vsync_period = p->vsync_pulse_width + p->v_back_porch +
@@ -240,8 +247,13 @@ static int mdss_mdp_video_timegen_setup(struct mdss_mdp_ctl *ctl,
 		display_v_end -= p->h_front_porch;
 	}
 
-	ctl->flush_bits |= BIT(31) >>
-		(ctl->intf_num - MDSS_MDP_INTF0);
+	/* TIMING_2 flush bit on 8939 is BIT 31 */
+	if (mdata->mdp_rev == MDSS_MDP_HW_REV_108 &&
+				ctx->intf_num == MDSS_MDP_INTF2)
+		ctl->flush_bits |= BIT(31);
+	else
+		ctl->flush_bits |= BIT(31) >>
+			(ctx->intf_num - MDSS_MDP_INTF0);
 
 	hsync_start_x = p->h_back_porch + p->hsync_pulse_width;
 	hsync_end_x = hsync_period - p->h_front_porch - 1;
@@ -406,7 +418,7 @@ static int mdss_mdp_video_intfs_stop(struct mdss_mdp_ctl *ctl,
 	struct mdss_mdp_video_ctx *ctx;
 	struct mdss_mdp_vsync_handler *tmp, *handle;
 	struct mdss_mdp_ctl *sctl;
-	int rc;
+	int rc = 0;
 	u32 frame_rate = 0;
 	int ret = 0;
 
@@ -435,18 +447,17 @@ static int mdss_mdp_video_intfs_stop(struct mdss_mdp_ctl *ctl,
 		return -EINVAL;
 	}
 
+	mutex_lock(&ctl->offlock);
 	if (ctx->timegen_en) {
-	/*< DTS2014052207729 renxigang 20140520 begin */
 	/*cancle the esd delay work*/
 	#ifdef CONFIG_HUAWEI_LCD
 		mdss_dsi_status_check_ctl(ctl->mfd,false);
 	#endif
-	/* DTS2014052207729 renxigang 20140520 end >*/
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_BLANK, NULL);
 		if (rc == -EBUSY) {
 			pr_debug("intf #%d busy don't turn off\n",
 				 ctl->intf_num);
-			return rc;
+			goto end;
 		}
 		WARN(rc, "intf %d blank error (%d)\n", ctl->intf_num, rc);
 
@@ -459,7 +470,7 @@ static int mdss_mdp_video_intfs_stop(struct mdss_mdp_ctl *ctl,
 		msleep((1000/frame_rate) + 1);
 
 		mdss_iommu_ctrl(0);
-		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
+		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 		ctx->timegen_en = false;
 
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_OFF, NULL);
@@ -471,6 +482,8 @@ static int mdss_mdp_video_intfs_stop(struct mdss_mdp_ctl *ctl,
 		if (sctl)
 			mdss_mdp_irq_disable(MDSS_MDP_IRQ_INTF_UNDER_RUN,
 				sctl->intf_num);
+
+		mdss_bus_bandwidth_ctrl(false);
 	}
 
 	list_for_each_entry_safe(handle, tmp, &ctx->vsync_handlers, list)
@@ -482,12 +495,13 @@ static int mdss_mdp_video_intfs_stop(struct mdss_mdp_ctl *ctl,
 		(inum + MDSS_MDP_INTF0), NULL, NULL);
 
 	ctx->ref_cnt--;
-
-	return 0;
+end:
+	mutex_unlock(&ctl->offlock);
+	return rc;
 }
 
 
-static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl)
+static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 {
 	int intfs_num, ret = 0;
 
@@ -502,12 +516,10 @@ static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl)
 
 	mdss_mdp_ctl_reset(ctl);
 	ctl->priv_data = NULL;
-/* < DTS2014062505033 daiyuhong 20140707 begin */
 /* add log on panel resume and suspend module */
 #ifdef CONFIG_HUAWEI_LCD
 	LCD_LOG_INFO("exit %s\n",__func__);
 #endif
-/* DTS2014062505033 daiyuhong 20140707 end > */
 	return 0;
 }
 
@@ -548,13 +560,13 @@ static int mdss_mdp_video_pollwait(struct mdss_mdp_ctl *ctl)
 
 	mask = MDP_INTR_MASK_INTF_VSYNC(ctl->intf_num);
 
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 	rc = readl_poll_timeout(ctl->mdata->mdp_base + MDSS_MDP_REG_INTR_STATUS,
 		status,
 		(status & mask) || try_wait_for_completion(&ctx->vsync_comp),
 		1000,
 		VSYNC_TIMEOUT_US);
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 
 	if (rc == 0) {
 		MDSS_XLOG(ctl->num, ctl->vsync_cnt);
@@ -618,10 +630,22 @@ static int mdss_mdp_video_wait4comp(struct mdss_mdp_ctl *ctl, void *arg)
 
 	return rc;
 }
-/* < DTS2014101301850 zhoujian 20141013 begin */
-extern unsigned int cpufreq_get(unsigned int cpu); 
 extern unsigned long mdss_mdp_get_clk_rate(u32 clk_idx);
-/* DTS2014101301850 zhoujian 20141013 end > */
+static void recover_underrun_work(struct work_struct *work)
+{
+	struct mdss_mdp_ctl *ctl =
+		container_of(work, typeof(*ctl), recover_work);
+
+	if (!ctl || !ctl->add_vsync_handler) {
+		pr_err("ctl or vsync handler is NULL\n");
+		return;
+	}
+
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
+	ctl->add_vsync_handler(ctl, &ctl->recover_underrun_handler);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
+}
+
 static void mdss_mdp_video_underrun_intr_done(void *arg)
 {
 	struct mdss_mdp_ctl *ctl = arg;
@@ -634,32 +658,22 @@ static void mdss_mdp_video_underrun_intr_done(void *arg)
 	trace_mdp_video_underrun_done(ctl->num, ctl->underrun_cnt);
 	pr_debug("display underrun detected for ctl=%d count=%d\n", ctl->num,
 			ctl->underrun_cnt);
-	/* < DTS2014101301850 zhoujian 20141013 begin */
+
+	if (ctl->opmode & MDSS_MDP_CTL_OP_PACK_3D_ENABLE)
+		schedule_work(&ctl->recover_work);
 	/* report underrun error to dsm */
-	mdp_underrun_dsm_report(ctl->num,ctl->underrun_cnt,cpufreq_get(0),mdss_mdp_get_clk_rate(MDSS_CLK_MDP_SRC),mdss_mdp_get_clk_rate(MDSS_CLK_AXI),mdss_mdp_get_clk_rate(MDSS_CLK_AHB));
-	/* DTS2014101301850 zhoujian 20141013 end > */
+	/*reomve cpufreq_get(0) fuction to avoid crash as schedule in irq */
+	/*delete mdss_mdp_get_clk_rate() to avoid panic*/
+	mdp_underrun_dsm_report(ctl->num,ctl->underrun_cnt);
 }
 
-static int mdss_mdp_video_vfp_fps_update(struct mdss_mdp_ctl *ctl, int new_fps)
+static int mdss_mdp_video_vfp_fps_update(struct mdss_mdp_video_ctx *ctx,
+				 struct mdss_panel_data *pdata, int new_fps)
 {
 	int curr_fps;
 	u32 add_v_lines = 0;
 	u32 current_vsync_period_f0, new_vsync_period_f0;
-	struct mdss_panel_data *pdata;
-	struct mdss_mdp_video_ctx *ctx;
 	u32 vsync_period, hsync_period;
-
-	ctx = (struct mdss_mdp_video_ctx *) ctl->priv_data;
-	if (!ctx) {
-		pr_err("invalid ctx\n");
-		return -ENODEV;
-	}
-
-	pdata = ctl->panel_data;
-	if (pdata == NULL) {
-		pr_err("%s: Invalid panel data\n", __func__);
-		return -EINVAL;
-	}
 
 	vsync_period = mdss_panel_get_vtotal(&pdata->panel_info);
 	hsync_period = mdss_panel_get_htotal(&pdata->panel_info, true);
@@ -741,20 +755,21 @@ static int mdss_mdp_video_dfps_check_line_cnt(struct mdss_mdp_ctl *ctl)
 }
 
 static void mdss_mdp_video_timegen_flush(struct mdss_mdp_ctl *ctl,
-					struct mdss_mdp_ctl *sctl)
+					struct mdss_mdp_video_ctx *sctx)
 {
-	u32 ctl_flush, sctl_flush = 0;
+	u32 ctl_flush;
+	struct mdss_data_type *mdata;
+	mdata = ctl->mdata;
 	ctl_flush = (BIT(31) >> (ctl->intf_num - MDSS_MDP_INTF0));
-	if (sctl) {
-		sctl_flush = (BIT(31) >> (sctl->intf_num - MDSS_MDP_INTF0));
-		if (ctl->split_flush_en) {
-			ctl_flush |= sctl_flush;
-			sctl_flush = 0;
-		}
+	if (sctx) {
+		/* For 8939, sctx is always INTF2 and the flush bit is BIT 31 */
+		if (mdata->mdp_rev == MDSS_MDP_HW_REV_108)
+			ctl_flush |= BIT(31);
+		else
+			ctl_flush |= (BIT(31) >>
+					(sctx->intf_num - MDSS_MDP_INTF0));
 	}
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_FLUSH, ctl_flush);
-	if (sctl_flush)
-		mdss_mdp_ctl_write(sctl, MDSS_MDP_REG_CTL_FLUSH, sctl_flush);
 }
 
 static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
@@ -765,8 +780,7 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 	int rc = 0;
 	u32 hsync_period, vsync_period;
 	struct mdss_data_type *mdata;
-
-	pr_debug("Updating fps for ctl=%d\n", ctl->num);
+	u32 inum = ctl->intf_num - MDSS_MDP_INTF0;
 
 	ctx = (struct mdss_mdp_video_ctx *) ctl->priv_data;
 	if (!ctx) {
@@ -774,10 +788,30 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 		return -ENODEV;
 	}
 
+	mdata = ctl->mdata;
 	if (sctl) {
 		sctx = (struct mdss_mdp_video_ctx *) sctl->priv_data;
 		if (!sctx) {
 			pr_err("invalid ctx\n");
+			return -ENODEV;
+		}
+	} else if (is_split_dst(ctl->mfd)) {
+		/*
+		 * On targets when destination split is enabled, mixer swap
+		 * is not valid. So we can safely assume that ctl->intf_num
+		 * is INTF1. For this case, increment inum to retrieve sctx.
+		 */
+		inum += 1;
+		if (inum < mdata->nintf) {
+			sctx = ((struct mdss_mdp_video_ctx *)
+						mdata->video_intf) + inum;
+			if (!sctx) {
+				pr_err("invalid sctx\n");
+				return -ENODEV;
+			}
+		} else {
+			pr_err("Invalid intf number: %d\n",
+						(inum + MDSS_MDP_INTF0));
 			return -ENODEV;
 		}
 	}
@@ -788,7 +822,6 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 		return -EINVAL;
 	}
 
-	mdata = ctl->mdata;
 	if (!pdata->panel_info.dynamic_fps) {
 		pr_err("%s: Dynamic fps not enabled for this panel\n",
 						__func__);
@@ -806,31 +839,11 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 				pr_err("TG is OFF. DFPS mode invalid\n");
 				return -EINVAL;
 			}
-			ctl->force_screen_state = MDSS_SCREEN_FORCE_BLANK;
-			mdss_mdp_display_commit(ctl, NULL, NULL);
-			mdss_mdp_display_wait4comp(ctl);
-			mdp_video_write(ctx,
-					MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 0);
-			/*
-			 * Need to wait for atleast one vsync time for proper
-			 * TG OFF before doing changes on interfaces
-			 */
-			msleep(20);
 			rc = mdss_mdp_ctl_intf_event(ctl,
 					MDSS_EVENT_PANEL_UPDATE_FPS,
 					(void *) (unsigned long) new_fps);
 			WARN(rc, "intf %d panel fps update error (%d)\n",
 							ctl->intf_num, rc);
-			mdp_video_write(ctx,
-					MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 1);
-			/*
-			 * Add memory barrier to make sure the MDP Video
-			 * mode engine is enabled before next frame is sent
-			 */
-			mb();
-			ctl->force_screen_state = MDSS_SCREEN_DEFAULT;
-			mdss_mdp_display_commit(ctl, NULL, NULL);
-			mdss_mdp_display_wait4comp(ctl);
 		} else if (pdata->panel_info.dfps_update
 				== DFPS_IMMEDIATE_PORCH_UPDATE_MODE) {
 			bool wait4vsync;
@@ -841,12 +854,10 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 			}
 
 			/*
-			 * MDP INTF registers are double buffered on
-			 * 8916/8939. No need to wait for vsync for
-			 * these targets.
+			 * MDP INTF registers are double buffered starting from
+			 * MDP v1.5. No need to wait for vsync on these targets.
 			 */
-			wait4vsync = (mdata->mdp_rev != MDSS_MDP_HW_REV_106) &&
-                                (mdata->mdp_rev != MDSS_MDP_HW_REV_108);
+			wait4vsync = (mdata->mdp_rev < MDSS_MDP_HW_REV_105);
 
 			if (wait4vsync) {
 				rc = mdss_mdp_video_dfps_wait4vsync(ctl);
@@ -856,7 +867,7 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 				}
 			}
 
-			mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+			mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 			spin_lock_irqsave(&ctx->dfps_lock, flags);
 
 			if (wait4vsync) {
@@ -865,14 +876,14 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 					goto exit_dfps;
 			}
 
-			rc = mdss_mdp_video_vfp_fps_update(ctl, new_fps);
+			rc = mdss_mdp_video_vfp_fps_update(ctx, pdata, new_fps);
 			if (rc < 0) {
 				pr_err("%s: Error during DFPS\n", __func__);
 				goto exit_dfps;
 			}
-			if (sctl) {
-				rc = mdss_mdp_video_vfp_fps_update(sctl,
-								new_fps);
+			if (sctx) {
+				rc = mdss_mdp_video_vfp_fps_update(sctx,
+							pdata->next, new_fps);
 				if (rc < 0) {
 					pr_err("%s: DFPS error\n", __func__);
 					goto exit_dfps;
@@ -885,16 +896,19 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 							ctl->intf_num, rc);
 
 			mdss_mdp_fetch_start_config(ctx, ctl);
-			if (sctl)
-				mdss_mdp_fetch_start_config(sctx, sctl);
+			if (sctx)
+				mdss_mdp_fetch_start_config(sctx, ctl);
 
-			/* MDP INTF registers support DB on 8916/8939 */
+			/*
+			 * MDP INTF registers support DB on targets
+			 * starting from MDP v1.5.
+			 */
 			if (!wait4vsync)
-				mdss_mdp_video_timegen_flush(ctl, sctl);
+				mdss_mdp_video_timegen_flush(ctl, sctx);
 
 exit_dfps:
 			spin_unlock_irqrestore(&ctx->dfps_lock, flags);
-			mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
+			mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 		} else {
 			pr_err("intf %d panel, unknown FPS mode\n",
 							ctl->intf_num);
@@ -916,7 +930,7 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 	struct mdss_mdp_video_ctx *ctx;
 	struct mdss_mdp_ctl *sctl;
 	struct mdss_panel_data *pdata = ctl->panel_data;
-	int rc = 0;
+	int rc;
 
 	pr_debug("kickoff ctl=%d\n", ctl->num);
 
@@ -932,25 +946,26 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 		INIT_COMPLETION(ctx->vsync_comp);
 	} else {
 		WARN(1, "commit without wait! ctl=%d", ctl->num);
-/* < DTS2014111001776 zhaoyuxia 20141114 begin */
 /* report video display dsm error */
 #ifdef CONFIG_HUAWEI_LCD
 		lcd_report_dsm_err(DSM_LCD_MDSS_VIDEO_DISPLAY_ERROR_NO,ctl->num,0);
 #endif
-/* DTS2014111001776 zhaoyuxia 20141114 end > */
 	}
 
 	MDSS_XLOG(ctl->num, ctl->underrun_cnt);
 
 	if (!ctx->timegen_en) {
-		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_UNBLANK, NULL);
+		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_LINK_READY, NULL);
 		if (rc) {
-			pr_warn("intf #%d unblank error (%d)\n",
+			pr_warn("intf #%d link ready error (%d)\n",
 					ctl->intf_num, rc);
 			video_vsync_irq_disable(ctl);
 			ctx->wait_pending = 0;
 			return rc;
 		}
+
+		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_UNBLANK, NULL);
+		WARN(rc, "intf %d unblank error (%d)\n", ctl->intf_num, rc);
 
 		pr_debug("enabling timing gen for intf=%d\n", ctl->intf_num);
 
@@ -966,13 +981,15 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 			return rc;
 		}
 
-		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 
 		mdss_mdp_irq_enable(MDSS_MDP_IRQ_INTF_UNDER_RUN, ctl->intf_num);
 		sctl = mdss_mdp_get_split_ctl(ctl);
 		if (sctl)
 			mdss_mdp_irq_enable(MDSS_MDP_IRQ_INTF_UNDER_RUN,
 				sctl->intf_num);
+
+		mdss_bus_bandwidth_ctrl(true);
 
 		mdp_video_write(ctx, MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 1);
 		wmb();
@@ -985,12 +1002,10 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 		ctx->timegen_en = true;
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_ON, NULL);
 		WARN(rc, "intf %d panel on error (%d)\n", ctl->intf_num, rc);
-	/*< DTS2014052207729 renxigang 20140520 begin */
 	/*scheduled the esd delay work*/
 	#ifdef CONFIG_HUAWEI_LCD
 		mdss_dsi_status_check_ctl(ctl->mfd,true);
 	#endif
-	/* DTS2014052207729 renxigang 20140520 end >*/
 	}
 
 	return 0;
@@ -1003,6 +1018,7 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	int i, ret = 0, off;
 	u32 data, flush;
 	struct mdss_mdp_video_ctx *ctx;
+	struct mdss_mdp_ctl *sctl = mdss_mdp_get_split_ctl(ctl);
 
 	off = 0;
 	ctx = (struct mdss_mdp_video_ctx *) ctl->priv_data;
@@ -1014,6 +1030,10 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	pdata = ctl->panel_data;
 
 	pdata->panel_info.cont_splash_enabled = 0;
+	if (sctl)
+		sctl->panel_data->panel_info.cont_splash_enabled = 0;
+	else if (ctl->panel_data->next && is_split_dst(ctl->mfd))
+		ctl->panel_data->next->panel_info.cont_splash_enabled = 0;
 
 	if (!handoff) {
 		ret = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_CONT_SPLASH_BEGIN,
@@ -1060,7 +1080,7 @@ static bool mdss_mdp_fetch_programable(struct mdss_mdp_ctl *ctl)
 	if (mdata->mdp_rev >= MDSS_MDP_HW_REV_105) {
 		if ((pinfo->lcdc.v_back_porch + pinfo->lcdc.v_front_porch) <
 				MDP_MIN_FETCH) {
-			pr_warn("low vbp+vfp may lead to perf issues in some cases\n");
+			pr_warn_once("low vbp+vfp may lead to perf issues in some cases\n");
 		}
 		ret = true;
 
@@ -1068,7 +1088,7 @@ static bool mdss_mdp_fetch_programable(struct mdss_mdp_ctl *ctl)
 			ret = false;
 	} else {
 		if (pinfo->lcdc.v_back_porch < MDP_MIN_FETCH)
-			pr_warn("low vbp may lead to display performance issues");
+			pr_warn_once("low vbp may lead to display performance issues");
 		ret = false;
 	}
 
@@ -1086,7 +1106,7 @@ static void mdss_mdp_fetch_start_config(struct mdss_mdp_video_ctx *ctx,
 
 	if (!mdss_mdp_fetch_programable(ctl)) {
 		pr_debug("programmable fetch is not needed/supported\n");
-		ctl->prg_fet = false;
+		ctl->prg_fet = 0;
 		return;
 	}
 
@@ -1096,13 +1116,33 @@ static void mdss_mdp_fetch_start_config(struct mdss_mdp_video_ctx *ctx,
 	 */
 	v_total = mdss_panel_get_vtotal(pinfo);
 	h_total = mdss_panel_get_htotal(pinfo, true);
-	fetch_start = (v_total - mdss_mdp_max_fetch_lines(pinfo)) * h_total + 1;
+	ctl->prg_fet = pinfo->lcdc.v_front_porch;
+	if (ctl->prg_fet > MDSS_MDP_MAX_FETCH)
+		ctl->prg_fet = MDSS_MDP_MAX_FETCH;
+	fetch_start = (v_total - ctl->prg_fet) * h_total + 1;
 	fetch_enable = BIT(31);
-	ctl->prg_fet = true;
 
 	pr_debug("ctl:%d, fetch start=%d\n", ctl->num, fetch_start);
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_PROG_FETCH_START, fetch_start);
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_CONFIG, fetch_enable);
+}
+
+static void mdss_mdp_handoff_programmable_fetch(struct mdss_mdp_ctl *ctl,
+	struct mdss_mdp_video_ctx *ctx)
+{
+	u32 fetch_start_handoff, v_total_handoff, h_total_handoff;
+	ctl->prg_fet = 0;
+	if (mdp_video_read(ctx, MDSS_MDP_REG_INTF_CONFIG) & BIT(31)) {
+		fetch_start_handoff = mdp_video_read(ctx,
+			MDSS_MDP_REG_INTF_PROG_FETCH_START);
+		h_total_handoff = mdp_video_read(ctx,
+			MDSS_MDP_REG_INTF_HSYNC_CTL) >> 16;
+		v_total_handoff = mdp_video_read(ctx,
+			MDSS_MDP_REG_INTF_VSYNC_PERIOD_F0)/h_total_handoff;
+		ctl->prg_fet = v_total_handoff -
+			((fetch_start_handoff - 1)/h_total_handoff);
+		pr_debug("programmable fetch lines %d\n", ctl->prg_fet);
+	}
 }
 
 static int mdss_mdp_video_intfs_setup(struct mdss_mdp_ctl *ctl,
@@ -1114,12 +1154,10 @@ static int mdss_mdp_video_intfs_setup(struct mdss_mdp_ctl *ctl,
 	struct intf_timing_params itp = {0};
 	u32 dst_bpp;
 	int ret = 0;
-/* < DTS2014062505033 daiyuhong 20140707 begin */
 /* add log on panel resume and suspend module */
 #ifdef CONFIG_HUAWEI_LCD
 	LCD_LOG_INFO("start %s\n",__func__);
 #endif
-/* DTS2014062505033 daiyuhong 20140707 end > */
 
 	if (pdata == NULL)
 		return 0;
@@ -1154,6 +1192,7 @@ static int mdss_mdp_video_intfs_setup(struct mdss_mdp_ctl *ctl,
 	spin_lock_init(&ctx->dfps_lock);
 	mutex_init(&ctx->vsync_mtx);
 	atomic_set(&ctx->vsync_ref, 0);
+	INIT_WORK(&ctl->recover_work, recover_underrun_work);
 
 	if (ctl->intf_type == MDSS_INTF_DSI) {
 		ctx->intf_recovery.fxn = mdss_mdp_video_intf_recovery;
@@ -1187,16 +1226,11 @@ static int mdss_mdp_video_intfs_setup(struct mdss_mdp_ctl *ctl,
 
 	itp.xres = mult_frac(pinfo->xres, dst_bpp, pinfo->bpp);
 	itp.yres = pinfo->yres;
-	itp.h_back_porch = mult_frac(pinfo->lcdc.h_back_porch, dst_bpp,
-			pinfo->bpp);
-	itp.h_front_porch = mult_frac(pinfo->lcdc.h_front_porch, dst_bpp,
-			pinfo->bpp);
-	itp.v_back_porch = mult_frac(pinfo->lcdc.v_back_porch, dst_bpp,
-			pinfo->bpp);
-	itp.v_front_porch = mult_frac(pinfo->lcdc.v_front_porch, dst_bpp,
-			pinfo->bpp);
-	itp.hsync_pulse_width = mult_frac(pinfo->lcdc.h_pulse_width, dst_bpp,
-			pinfo->bpp);
+	itp.h_back_porch = pinfo->lcdc.h_back_porch;
+	itp.h_front_porch = pinfo->lcdc.h_front_porch;
+	itp.v_back_porch = pinfo->lcdc.v_back_porch;
+	itp.v_front_porch = pinfo->lcdc.v_front_porch;
+	itp.hsync_pulse_width = pinfo->lcdc.h_pulse_width;
 	itp.vsync_pulse_width = pinfo->lcdc.v_pulse_width;
 
 	if (!ctl->panel_data->panel_info.cont_splash_enabled) {
@@ -1206,6 +1240,8 @@ static int mdss_mdp_video_intfs_setup(struct mdss_mdp_ctl *ctl,
 			return -EINVAL;
 		}
 		mdss_mdp_fetch_start_config(ctx, ctl);
+	} else {
+		mdss_mdp_handoff_programmable_fetch(ctl, ctx);
 	}
 
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_PANEL_FORMAT, ctl->dst_format);
@@ -1216,12 +1252,10 @@ static int mdss_mdp_video_intfs_setup(struct mdss_mdp_ctl *ctl,
 int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 {
 	int intfs_num, ret = 0;
-	/* <DTS2014102803801  zhoujian 20141028 begin */
 		//add log on panel resume and suspend module
 #ifdef CONFIG_HUAWEI_LCD
 		LCD_LOG_INFO("start %s\n",__func__);
 #endif
-	/* DTS2014102803801  zhouijian 20141028 end > */
 
 	intfs_num = ctl->intf_num - MDSS_MDP_INTF0;
 	ret = mdss_mdp_video_intfs_setup(ctl, ctl->panel_data, intfs_num);

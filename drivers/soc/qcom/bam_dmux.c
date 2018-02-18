@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -234,9 +234,7 @@ static struct srcu_struct bam_dmux_srcu;
 
 /* A2 power collaspe */
 #define UL_TIMEOUT_DELAY 1000	/* in ms */
-/* DTS2014091809919 added by linghuabing 20140918 begin */
-#define SHUTDOWN_TIMEOUT_MS	5000
-/* DTS2014091809919 added by linghuabing 20140918 end */
+#define SHUTDOWN_TIMEOUT_MS	500
 #define UL_WAKEUP_TIMEOUT_MS	2000
 static void toggle_apps_ack(void);
 static void reconnect_to_bam(void);
@@ -333,7 +331,7 @@ static void *bam_ipc_log_txt;
  * D: 1 = Disconnect ACK active
  */
 
-#define BAM_DMUX_LOG(fmt, args...) \
+#define BAM_DMUX_LOG_XXX(fmt, args...) \
 do { \
 	if (bam_ipc_log_txt) { \
 		ipc_log_string(bam_ipc_log_txt, \
@@ -351,9 +349,15 @@ do { \
 	} \
 } while (0)
 
+#define BAM_DMUX_LOG(fmt, args...) \
+do { \
+	BAM_DMUX_LOG_XXX(fmt, args); \
+	pr_err(fmt, args); \
+} while (0)
+
 #define DMUX_LOG_KERR(fmt, args...) \
 do { \
-	BAM_DMUX_LOG(fmt, args); \
+	BAM_DMUX_LOG_XXX(fmt, args); \
 	pr_err(fmt, args); \
 } while (0)
 
@@ -634,6 +638,16 @@ static inline void handle_bam_mux_cmd_open(struct bam_mux_hdr *rx_hdr)
 		set_ul_mtu(0, false);
 	}
 	spin_lock_irqsave(&bam_ch[rx_hdr->ch_id].lock, flags);
+	if (bam_ch_is_remote_open(rx_hdr->ch_id)) {
+		/*
+		 * Receiving an open command for a channel that is already open
+		 * is an invalid operation and likely signifies a significant
+		 * issue within the A2 which should be caught immediately
+		 * before it snowballs and the root cause is lost.
+		 */
+		panic("A2 sent invalid duplicate open for channel %d\n",
+								rx_hdr->ch_id);
+	}
 	bam_ch[rx_hdr->ch_id].status |= BAM_CH_REMOTE_OPEN;
 	bam_ch[rx_hdr->ch_id].num_tx_pkts = 0;
 	spin_unlock_irqrestore(&bam_ch[rx_hdr->ch_id].lock, flags);
@@ -844,6 +858,11 @@ static void bam_mux_write_done(struct work_struct *work)
 	kfree(info);
 	hdr = (struct bam_mux_hdr *)skb->data;
 	DBG_INC_WRITE_CNT(skb->len);
+	/* Restore skb for client */
+	skb_pull(skb, sizeof(*hdr));
+	if (hdr->pad_len)
+		skb_trim(skb, skb->len - hdr->pad_len);
+
 	event_data = (unsigned long)(skb);
 	spin_lock_irqsave(&bam_ch[hdr->ch_id].lock, flags);
 	bam_ch[hdr->ch_id].num_tx_pkts--;
@@ -2016,10 +2035,8 @@ static void disconnect_to_bam(void)
 				&shutdown_completion,
 				msecs_to_jiffies(SHUTDOWN_TIMEOUT_MS));
 		if (time_remaining == 0) {
-            /* DTS2014091809919 added by linghuabing 20140918 begin */
-			DMUX_LOG_KERR("%s: shutdown completion timed out %d\n",
-					__func__, SHUTDOWN_TIMEOUT_MS);
-            /* DTS2014091809919 added by linghuabing 20140918 end */
+			DMUX_LOG_KERR("%s: shutdown completion timed out\n",
+					__func__);
 			log_rx_timestamp();
 			ssrestart_check();
 		}
@@ -2266,7 +2283,7 @@ static int bam_init(void)
 	a2_props.virt_addr = a2_virt_addr;
 	a2_props.virt_size = a2_phys_size;
 	a2_props.irq = a2_bam_irq;
-	a2_props.options = SPS_BAM_OPT_IRQ_WAKEUP | SPS_BAM_ATMC_MEM;
+	a2_props.options = SPS_BAM_OPT_IRQ_WAKEUP;
 	a2_props.num_pipes = A2_NUM_PIPES;
 	a2_props.summing_threshold = A2_SUMMING_THRESHOLD;
 	a2_props.constrained_logging = true;
@@ -2799,7 +2816,8 @@ static int __init bam_dmux_init(void)
 	}
 #endif
 
-	bam_ipc_log_txt = ipc_log_context_create(BAM_IPC_LOG_PAGES, "bam_dmux");
+	bam_ipc_log_txt = ipc_log_context_create(BAM_IPC_LOG_PAGES, "bam_dmux",
+			0);
 	if (!bam_ipc_log_txt) {
 		pr_err("%s : unable to create IPC Logging Context", __func__);
 	}

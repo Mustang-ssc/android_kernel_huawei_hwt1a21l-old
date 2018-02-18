@@ -1,4 +1,3 @@
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #include "msm_camera_vid_dsm.h"
 
 /* buffer size for dsm camera_vid client */
@@ -70,4 +69,3 @@ int camera_vid_report_dsm_err( int type, int err_num, const char* str )
 	return 0;
 
 }
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */

@@ -12,31 +12,19 @@
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
+#include <linux/err.h>
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/types.h>
-/* < DTS2014100804605 taohanwen 20141008 begin */
+#include <linux/batterydata-lib.h>
+#include <linux/power_supply.h>
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/of_batterydata.h>
 #endif
-/* DTS2014100804605 taohanwen 20141008 end > */
-/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <misc/app_info.h>
 #endif
-/* DTS2014042804721 chenyuanquan 20140428 end> */
-/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
-#include <linux/dsm_pub.h>
-#endif
-
-#ifdef CONFIG_HUAWEI_DSM
-extern struct dsm_client *charger_dclient;
-extern struct qpnp_lbc_chip *g_lbc_chip;
-extern int dump_registers_and_adc(struct dsm_client *dclient, struct qpnp_lbc_chip *chip, int type);
-#endif
-/* DTS2014112905428 jiangfei 20141201 end> */
 
 static int of_batterydata_read_lut(const struct device_node *np,
 			int max_cols, int max_rows, int *ncols, int *nrows,
@@ -84,9 +72,13 @@ static int of_batterydata_read_lut(const struct device_node *np,
 	}
 
 	prop = of_find_property(np, "qcom,lut-data", NULL);
+	if (!prop) {
+		pr_err("prop 'qcom,lut-data' not found\n");
+		return -EINVAL;
+	}
 	data = prop->value;
 	size = prop->length/sizeof(int);
-	if (!prop || size != cols * rows) {
+	if (size != cols * rows) {
 		pr_err("%s: data size mismatch, %dx%d != %d\n",
 				np->name, cols, rows, size);
 		return -EINVAL;
@@ -206,9 +198,7 @@ static int of_batterydata_read_batt_id_kohm(const struct device_node *np,
 	const __be32 *data;
 	int num, i, *id_kohm = batt_ids->kohm;
 
-	/* < DTS2014100804605 taohanwen 20141008 begin */
 	prop = of_find_property(np, propname, NULL);
-	/*  DTS2014100804605 taohanwen 20141008 end > */
 	if (!prop) {
 		pr_err("%s: No battery id resistor found\n", np->name);
 		return -EINVAL;
@@ -252,7 +242,6 @@ static int of_batterydata_load_battery_data(struct device_node *node,
 {
 	int rc;
 
-	/* <DTS2014042804721 chenyuanquan 30140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	int warm_bat_decidegc = 0;
 	int warm_bat_chg_ma = 0;
@@ -294,7 +283,6 @@ static int of_batterydata_load_battery_data(struct device_node *node,
 
 	rc = 0;
 #endif
-	/* DTS2014042804721 chenyuanquan 30140428 end> */
 
 	rc = of_batterydata_read_single_row_lut(node, "qcom,fcc-temp-lut",
 			batt_data->fcc_temp_lut);
@@ -366,7 +354,6 @@ static int64_t of_batterydata_convert_battery_id_kohm(int batt_id_uv,
 	return resistor_value_kohm;
 }
 
-/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define BATT_ID_TYPE 7
 
@@ -392,10 +379,94 @@ struct batt_id_map batt_id_map[BATT_ID_TYPE] =
 	{470,335,700},
 };
 #endif
-/* DTS2014060303681 zhaoxiaoli 20140603 end> */
 /*modify the wrong word unknow to unknown */
-/* DTS2014042804721 chenyuanquan 20140428 end> */
-/* <DTS2014062601697 jiangfei 20140626 begin */
+struct device_node *of_batterydata_get_best_profile(
+		const struct device_node *batterydata_container_node,
+		const char *psy_name,  const char  *batt_type)
+{
+	struct batt_ids batt_ids;
+	struct device_node *node, *best_node = NULL;
+	struct power_supply *psy;
+	const char *battery_type = NULL;
+	union power_supply_propval ret = {0, };
+	int delta = 0, best_delta = 0, best_id_kohm = 0, id_range_pct,
+		batt_id_kohm = 0, i = 0, rc = 0;
+
+	psy = power_supply_get_by_name(psy_name);
+	if (!psy) {
+		pr_err("%s supply not found. defer\n", psy_name);
+		return ERR_PTR(-EPROBE_DEFER);
+	}
+
+	rc = psy->get_property(psy, POWER_SUPPLY_PROP_RESISTANCE_ID, &ret);
+	if (rc) {
+		pr_err("failed to retrieve resistance value rc=%d\n", rc);
+		return ERR_PTR(-ENOSYS);
+	}
+
+	batt_id_kohm = ret.intval / 1000;
+
+	/*
+	 * Find the battery data with a battery id resistor closest to this one
+	 */
+	for_each_child_of_node(batterydata_container_node, node) {
+		if (batt_type != NULL) {
+			rc = of_property_read_string(node, "qcom,battery-type",
+							&battery_type);
+			if (!rc && strcmp(battery_type, batt_type) == 0) {
+				best_node = node;
+				best_id_kohm = batt_id_kohm;
+				break;
+			}
+		} else {
+			rc = of_batterydata_read_batt_id_kohm(node,
+							"qcom,batt-id-kohm",
+							&batt_ids);
+			if (rc)
+				continue;
+			for (i = 0; i < batt_ids.num; i++) {
+				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
+				if (delta < best_delta || !best_node) {
+					best_node = node;
+					best_delta = delta;
+					best_id_kohm = batt_ids.kohm[i];
+				}
+			}
+		}
+	}
+
+	if (best_node == NULL) {
+		pr_err("No battery data found\n");
+		return best_node;
+	}
+
+	/* read battery id value for best profile */
+	rc = of_property_read_u32(batterydata_container_node,
+			"qcom,batt-id-range-pct", &id_range_pct);
+	if (!rc) {
+		/* check that profile id is in range of the measured batt_id */
+		if (abs(best_id_kohm - batt_id_kohm) >
+				((best_id_kohm * id_range_pct) / 100)) {
+			pr_err("out of range: profile id %d batt id %d pct %d",
+				best_id_kohm, batt_id_kohm, id_range_pct);
+			return NULL;
+		}
+	} else if (rc == -EINVAL) {
+		rc = 0;
+	} else {
+		pr_err("failed to read battery id range\n");
+		return ERR_PTR(-ENXIO);
+	}
+
+	rc = of_property_read_string(best_node, "qcom,battery-type",
+							&battery_type);
+	if (!rc)
+		pr_info("%s found\n", battery_type);
+	else
+		pr_info("%s found\n", best_node->name);
+
+	return best_node;
+}
 int of_batterydata_read_data(struct device_node *batterydata_container_node,
 				struct bms_battery_data *batt_data,
 				int batt_id_uv)
@@ -403,7 +474,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 	struct device_node *node, *best_node;
 	struct batt_ids batt_ids;
 	const char *battery_type = NULL;
-	/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	static int app_info_set_done = 0;
 	int counter = 0;
@@ -413,7 +483,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 	int delta, best_delta, batt_id_kohm, rpull_up_kohm,
 		vadc_vdd_uv, best_id_kohm, i, rc = 0;
 #endif
-	/* DTS2014042804721 chenyuanquan 20140428 end> */
 
 	node = batterydata_container_node;
 	OF_PROP_READ(rpull_up_kohm, "rpull-up-kohm", node, rc, false);
@@ -427,7 +496,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 	best_delta = 0;
 	best_id_kohm = 0;
 
-	/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	pr_info("batt_id_kohm = %d\n", batt_id_kohm);
 	for (counter = 0; counter < BATT_ID_TYPE; counter++)
@@ -447,7 +515,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 		return -ENODATA;
 	}
 #endif
-	/* DTS2014042804721 chenyuanquan 20140428 end> */
 	/*
 	 * Find the battery data with a battery id resistor closest to this one
 	 */
@@ -457,7 +524,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 						&batt_ids);
 		if (rc)
 			continue;
-		/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 		if (batt_id_map[counter].design_kohm == batt_ids.kohm[0])
 		{
@@ -475,11 +541,9 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 			}
 		}
 #endif
-		/* DTS2014042804721 chenyuanquan 20140428 end> */
 	}
 
 	if (best_node == NULL) {
-		/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 		if(!app_info_set_done)
 		{
@@ -491,7 +555,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 			app_info_set_done = 1;
 		}
 #endif
-		/* DTS2014042804721 chenyuanquan 20140428 end> */
 		pr_err("No battery data found\n");
 		return -ENODATA;
 	}
@@ -502,7 +565,6 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 	else
 		pr_info("%s loaded\n", best_node->name);
 
-	/* <DTS2014042804721 chenyuanquan 20140428 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	if (!app_info_set_done)
 	{
@@ -522,15 +584,11 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 		app_info_set_done = 1;
 	}
 #endif
-	/* DTS2014042804721 chenyuanquan 20140428 end> */
 
 	return of_batterydata_load_battery_data(best_node,
 					best_id_kohm, batt_data);
 }
-/* DTS2014062601697 jiangfei 20140626 end> */
-/* DTS2014060303681 zhaoxiaoli 20140603 end> */
 
-/* < DTS2014100804605 taohanwen 20141008 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 
 int of_batterydata_batt_kohm_maxim(struct device_node *main_node,
@@ -634,11 +692,6 @@ Unknown_batt:
 			pr_err("Set battery_name unknown battery failed!! \n");
 		}
 		bset_batt_name = true;
-		/* <DTS2014112905428 jiangfei 20141201 begin */
-#ifdef CONFIG_HUAWEI_DSM
-		dump_registers_and_adc(charger_dclient, g_lbc_chip, DSM_BATTERY_ID_UNKNOW);
-#endif
-		/* DTS2014112905428 jiangfei 20141201 end> */
 	}
 	return NULL;
 }
@@ -677,10 +730,8 @@ int of_batterydata_read_fgauge_data_maxim(struct device_node *main_node,
 		pr_err("Set battery_name failed!! \n");
 	}
 
-	/* < DTS2014102005552 taohanwen 20141020 begin */
 	OF_HW_READ_PROPERTY_VAL(pfnd_node, 
 		"maxim,full_capacity", pbatt_data->full_capacity);
-	/* DTS2014102005552 taohanwen 20141020 end > */
 
 	/* maxim,ini_rcompseg */
 	OF_HW_READ_PROPERTY_VAL(pfnd_node, 
@@ -803,6 +854,5 @@ int of_batterydata_read_tempctrl_info_maxim(struct device_node *main_node,
 }
 
 #endif
-/* DTS2014100804605 taohanwen 20141008 end > */
 
 MODULE_LICENSE("GPL v2");

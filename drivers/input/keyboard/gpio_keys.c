@@ -31,12 +31,10 @@
 #include <linux/spinlock.h>
 #include <linux/pinctrl/consumer.h>
 
-/* < DTS2014121803938 yangzhonghua 20141218 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #include <linux/dsm_pub.h>
 static int vol_up_times = 0;
 #endif
-/* DTS2014121803938 yangzhonghua 20141218 end > */
 
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
@@ -344,6 +342,7 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	} else {
 		input_event(input, type, button->code, !!state);
 	}
+	dev_err(&bdata->input->dev, "%s, volume up key,button->code=%d, type=%d, state=%d\n", __func__, button->code, type, state);
 	input_sync(input);
 }
 
@@ -362,14 +361,12 @@ static void gpio_keys_gpio_timer(unsigned long _data)
 {
 	struct gpio_button_data *bdata = (struct gpio_button_data *)_data;
 
-/* < DTS2014121803938 yangzhonghua 20141218 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	if((++vol_up_times + 1) % 2 != 0 ){
 		dsm_key_pressed(DSM_VOL_UP_KEY);
 		vol_up_times = (vol_up_times >= 99) ? 1 : vol_up_times;
 	}
 #endif
-/* DTS2014121803938 yangzhonghua 20141218 end > */
 
 	schedule_work(&bdata->work);
 }

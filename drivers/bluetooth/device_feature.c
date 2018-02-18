@@ -1,6 +1,3 @@
-/* < DTS2014041604760 shaopengxiang 20140417 modifying for MSM8916 > */
-/* < DTS2013061902355 wangjian 20130620 porting and modifying from 8930 > */
-/* < DTS2013120606057 zhangcunfei 20131206 modifying for MSM8926 > */
 // Sine so many modification made, we just add DTS number in the begging
 /*
 
@@ -43,12 +40,14 @@
 #include <asm/uaccess.h>
 #include <linux/of.h>
 #include <asm/uaccess.h>
-/* < DTS2014021108071 liwei 20140214 begin */
 //#include <media/v4l2-dev.h>
 //#include <media/radio-iris.h>
 //#include <hsad/config_interface.h>
 
-/* < DTS2014072100633 niuyongmin 20140724 begin */
+#ifndef KERNEL_HWFLOW
+#define KERNEL_HWFLOW true
+#endif
+
 #undef FMDBG
 #define FMDBG(fmt, args...) \
 	do \
@@ -56,7 +55,6 @@
 		  if (KERNEL_HWFLOW) \
 			pr_info("bt_fm_feature: " fmt, ##args); \
 	} while (0)
-/* DTS2014072100633 niuyongmin 20140724 end > */
 #undef FMDERR
 #define FMDERR(fmt, args...) pr_err("bt_fm_feature: " fmt, ##args)
 
@@ -65,7 +63,6 @@
 #ifndef BT_DEVICE_DBG
 #define BT_DBG(fmt, arg...)
 #endif
-/* DTS2014021108071 liwei 20140214 end > */
 
 #define LOG_TAG "FeatureTransfer"
 
@@ -177,7 +174,6 @@ static struct platform_driver featuretransfer_driver = {
 
 EXPORT_SYMBOL(get_bt_fm_device_name);
 
-/* < DTS2014072100633 niuyongmin 20140724 begin */
 /* modify printk to FMDBG or FMDERR */
 static int chiptype_proc_show(struct seq_file *m, void *v)
 {
@@ -290,7 +286,6 @@ static int bt_power_level_proc_show(struct seq_file *m, void *v)
 	}
 	return 0;
 }
-/* DTS2014072100633 niuyongmin 20140724 end > */
 static int bt_power_level_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, bt_power_level_proc_show, NULL);
@@ -367,11 +362,9 @@ static int fm_sinr_threshold_proc_open(struct inode *inode, struct file *file)
 static ssize_t fm_sinr_threshold_write(struct file *filp, const char __user *userbuf,
 						size_t count, loff_t *ppos)
 {
-	/* < DTS2014062408385 niuyongmin 20140625 begin */
 	char sinr_threshold[10] = {0};
-	/* DTS2014062408385 niuyongmin 20140625 end > */
 
-	FMDBG("fm_sinr_threshold_write.  count:%d\n", count);
+	FMDBG("fm_sinr_threshold_write.  count:%d\n", (int)count);
 
 	if (NULL == userbuf )
 	{
@@ -462,11 +455,9 @@ static int fm_sinr_samples_proc_open(struct inode *inode, struct file *file)
 static ssize_t fm_sinr_samples_write(struct file *filp, const char __user *userbuf,
 						size_t count, loff_t *ppos)
 {
-	/* < DTS2014062408385 niuyongmin 20140625 begin */
 	char sinr_samples[10] = {0};
-	/* DTS2014062408385 niuyongmin 20140625 end > */
 
-	FMDBG("fm_sinr_samples_write  enter.  count:%d\n", count);
+	FMDBG("fm_sinr_samples_write  enter.  count:%d\n", (int)count);
 
 
 	if (NULL == userbuf)

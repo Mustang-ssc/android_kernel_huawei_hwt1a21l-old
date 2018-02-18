@@ -41,9 +41,7 @@ obj-$(CONFIG_BACKLIGHT_LOCOMO)		+= locomolcd.o
 obj-$(CONFIG_BACKLIGHT_LP855X)		+= lp855x_bl.o
 obj-$(CONFIG_BACKLIGHT_LP8788)		+= lp8788_bl.o
 obj-$(CONFIG_BACKLIGHT_MAX8925)		+= max8925_bl.o
-#/* <DTS2014080900552 chenyuanquan 20140825 begin */
 obj-$(CONFIG_BACKLIGHT_MAX77819)	+= max77819_bl.o
-#/* DTS2014080900552 chenyuanquan 20140825 end> */
 obj-$(CONFIG_BACKLIGHT_OMAP1)		+= omap1_bl.o
 obj-$(CONFIG_BACKLIGHT_OT200)		+= ot200_bl.o
 obj-$(CONFIG_BACKLIGHT_PANDORA)		+= pandora_bl.o

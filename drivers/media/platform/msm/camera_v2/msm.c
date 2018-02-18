@@ -29,14 +29,10 @@
 #include "msm_vb2.h"
 #include "msm_sd.h"
 #include <media/msmb_generic_buf_mgr.h>
-/* <DTS2014061705119 xiongtao/wx217212 20140617 begin*/
 #include <linux/jiffies.h>
-/* DTS2014061705119  xiongtao/wx217212 20140617 end>*/
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #include "msm_camera_dsm.h"
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 
 static struct v4l2_device *msm_v4l2_dev;
 static struct list_head    ordered_sd_list;
@@ -460,6 +456,16 @@ static inline int __msm_sd_close_subdevs(struct msm_sd_subdev *msm_sd,
 	return 0;
 }
 
+static inline int __msm_sd_notify_freeze_subdevs(struct msm_sd_subdev *msm_sd)
+{
+	struct v4l2_subdev *sd;
+	sd = &msm_sd->sd;
+
+	v4l2_subdev_call(sd, core, ioctl, MSM_SD_NOTIFY_FREEZE, NULL);
+
+	return 0;
+}
+
 static inline int __msm_destroy_session_streams(void *d1, void *d2)
 {
 	struct msm_stream *stream = d1;
@@ -513,6 +519,7 @@ int msm_destroy_session(unsigned int session_id)
 {
 	struct msm_session *session;
 	struct v4l2_subdev *buf_mgr_subdev;
+	struct msm_sd_close_ioctl session_info;
 
 	session = msm_queue_find(msm_session_q, struct msm_session,
 		list, __msm_queue_find_session, &session_id);
@@ -526,8 +533,10 @@ int msm_destroy_session(unsigned int session_id)
 		list, session);
 	buf_mgr_subdev = msm_buf_mngr_get_subdev();
 	if (buf_mgr_subdev) {
+		session_info.session = session_id;
+		session_info.stream = 0;
 		v4l2_subdev_call(buf_mgr_subdev, core, ioctl,
-			MSM_SD_SHUTDOWN, NULL);
+			MSM_SD_SHUTDOWN, &session_info);
 	} else {
 		pr_err("%s: Buff manger device node is NULL\n", __func__);
 	}
@@ -561,6 +570,7 @@ static long msm_private_ioctl(struct file *file, void *fh,
 	unsigned int session_id;
 	unsigned int stream_id;
 	unsigned long spin_flags = 0;
+	struct msm_sd_subdev *msm_sd;
 
 	session_id = event_data->session_id;
 	stream_id = event_data->stream_id;
@@ -617,6 +627,14 @@ static long msm_private_ioctl(struct file *file, void *fh,
 		complete(&cmd_ack->wait_complete);
 		spin_unlock_irqrestore(&(session->command_ack_q.lock),
 		   spin_flags);
+	}
+		break;
+
+	case MSM_CAM_V4L2_IOCTL_NOTIFY_FREEZE: {
+		if (!list_empty(&msm_v4l2_dev->subdevs)) {
+			list_for_each_entry(msm_sd, &ordered_sd_list, list)
+				__msm_sd_notify_freeze_subdevs(msm_sd);
+		}
 	}
 		break;
 
@@ -695,15 +713,11 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 	struct msm_command *cmd;
 	int session_id, stream_id;
 	unsigned long flags = 0;
-	/* <DTS2014061705119 xiongtao/wx217212 20140617 begin*/
 	uint32_t start_time = 0;
 	uint32_t cost_time = 0;
-	/* DTS2014061705119  xiongtao/wx217212 20140617 end>*/
-    /* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	int len = 0;
 #endif
-	/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 
 	session_id = event_data->session_id;
 	stream_id = event_data->stream_id;
@@ -745,11 +759,10 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 
 	if (timeout < 0) {
 		mutex_unlock(&session->lock);
-		pr_err("%s : timeout cannot be negative Line %d\n",
+		pr_debug("%s : timeout cannot be negative Line %d\n",
 				__func__, __LINE__);
 		return rc;
 	}
-	/* <DTS2014061705119 xiongtao/wx217212 20140617 begin*/
 	start_time = jiffies;
 	do{
 		/* should wait on session based condition */
@@ -771,7 +784,6 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 		if (!rc) {
 			pr_err("%s: Timed out\n", __func__);
 			msm_print_event_error(event);
-			/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 			memset(camera_dsm_log_buff, 0, MSM_CAMERA_DSM_BUFFER_SIZE);
 			len += snprintf(camera_dsm_log_buff+len, MSM_CAMERA_DSM_BUFFER_SIZE-len, "[msm_camera] kernel post event timeout.\n");
@@ -801,8 +813,8 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 			     pr_err("%s. report dsm err fail.\n", __func__);
 			}
 #endif
-			/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
-			rc = -ETIMEDOUT;
+			mutex_unlock(&session->lock);
+			return -ETIMEDOUT;
 		} else {
 			pr_err("%s: Error: rc=%d  No timeout but list empty!",
 					__func__, rc);
@@ -811,7 +823,6 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 			return -EINVAL;
 		}
 	}
-	/* DTS2014061705119 xiongtao/wx217212 20140617 end>*/
 
 	cmd = msm_dequeue(&cmd_ack->command_q,
 		struct msm_command, list);
@@ -1009,7 +1020,6 @@ static struct v4l2_subdev *msm_sd_find(const char *name)
 	return subdev_out;
 }
 
-/* <DTS2014090305008 xiongtao/wx217212 20140903 begin*/
 /*
 msm_actuator
 msm_csid
@@ -1035,7 +1045,6 @@ void msm_sd_get_subdevs(struct v4l2_subdev *subdev_s[], int max_num, const char 
 	}
 	spin_unlock_irqrestore(&msm_v4l2_dev->lock, flags);
 }
-/* DTS2014090305008 xiongtao/wx217212 20140903 end>*/
 
 static void msm_sd_notify(struct v4l2_subdev *sd,
 	unsigned int notification, void *arg)
@@ -1161,11 +1170,9 @@ static int msm_probe(struct platform_device *pdev)
 	spin_lock_init(&msm_eventq_lock);
 	spin_lock_init(&msm_pid_lock);
 	INIT_LIST_HEAD(&ordered_sd_list);
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	camera_dsm_client = camera_dsm_get_client();
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 	goto probe_end;
 
 v4l2_fail:

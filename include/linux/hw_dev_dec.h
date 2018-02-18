@@ -1,4 +1,3 @@
-/* < DTS2014041705903 zhangmin 20140418 begin */
 #ifndef _HUAWEI_DEV_DCT_H_
 #define _HUAWEI_DEV_DCT_H_
 
@@ -24,6 +23,8 @@ enum hw_device_type {
     DEV_I2C_NTC,
     DEV_I2C_MHL,
     DEV_I2C_AUDIENCE,
+    DEV_I2C_USB_SWITCH,
+	DEV_I2C_SAR_SENSOR,
     DEV_I2C_MAX,
 };
 
@@ -31,4 +32,3 @@ enum hw_device_type {
 void set_hw_dev_flag( int dev_id );
 
 #endif
-/* DTS2014041705903 zhangmin 20140418 end > */

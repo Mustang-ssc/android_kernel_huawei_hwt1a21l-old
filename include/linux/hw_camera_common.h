@@ -1,26 +1,14 @@
-/* < DTS2014072601546 yanhuiwen/0083550 20140723 begin */
-/*************************************************
-Copyright . Huawei Technologies Co., Ltd. 1998-2014. All rights reserved.
-File name:  hw_camera_common.h
-Author:     yanhuiwen
-ID:        00283550
-Version:    Initial Draft
-Date:       2014/07/23
-Description: The camera common used macros and functions
-Others: none
-History:
-1.  Date:           2014/07/23
-    Author:         yanhuiwen
-    ID:             00283550
-    Modification:   Created File,define the camera log macros
-    DTS:            DTS2014072601546
 
-*************************************************/
 
 #ifndef HW_CAMERA_COMMON_H__
 #define HW_CAMERA_COMMON_H__
 
 #include<linux/printk.h>
+
+
+#ifndef KERNEL_HWFLOW
+    #define KERNEL_HWFLOW 0  //define the file log switch
+#endif
 
 #ifndef HW_CMR_LOGSWC
     #define HW_CMR_LOGSWC 1  //define the file log switch
@@ -75,4 +63,3 @@ extern unsigned int hw_cmr_log_mask;    /*dynamic camera log mask */
 
 
 #endif  /*HW_CAMERA_COMMON_H__*/
-/* DTS2014072601546 yanhuiwen/00283550 20140723 end > */

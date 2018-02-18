@@ -36,13 +36,11 @@ config NFC_MEI_PHY
 
 	  If unsure, say N.
 
-#/* < DTS2014053100334 songxiaoming 20140531 begin */
 config NFC_PN547
      tristate "PN547 NFC driver"
      depends on I2C
      help
        NXP PN547 driver.
-#/* DTS2014053100334 songxiaoming 20140531 end > */
 
 source "drivers/nfc/pn544/Kconfig"
 source "drivers/nfc/microread/Kconfig"

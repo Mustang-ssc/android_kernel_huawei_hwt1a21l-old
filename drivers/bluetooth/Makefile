@@ -30,7 +30,7 @@ hci_uart-$(CONFIG_BT_HCIUART_BCSP)	+= hci_bcsp.o
 hci_uart-$(CONFIG_BT_HCIUART_LL)	+= hci_ll.o
 hci_uart-$(CONFIG_BT_HCIUART_ATH3K)	+= hci_ath.o
 hci_uart-$(CONFIG_BT_HCIUART_3WIRE)	+= hci_h5.o
+hci_uart-$(CONFIG_BT_HCIUART_IBS)	+= hci_ibs.o
 hci_uart-objs				:= $(hci_uart-y)
-#/* < DTS2014041604760 shaopengxiang 20140417 begin */
-obj-$(CONFIG_HUAWEI_FM)                 += device_feature.o
-#/* DTS2014041604760 shaopengxiang 20140417 end > */
+obj-y                                   += device_feature.o
+obj-$(CONFIG_HUAWEI_DSM)  += bluetooth-dsm.o

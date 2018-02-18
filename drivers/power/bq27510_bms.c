@@ -1,4 +1,3 @@
-/*<DTS2014061605512 liyuping 20140617 begin */
 /*
  * Copyright (C) 2012-2014 HUAWEI, Inc.
  * Author: HUAWEI, Inc.
@@ -31,19 +30,17 @@
 #include <linux/firmware.h>
 #include <linux/power/bq27510_bms.h>
 #include <linux/power/bq24152_charger.h>
-/* <DTS2014073007419 jiangfei 20140815 begin */
 #include <linux/of_gpio.h>
-/* DTS2014073007419 jiangfei 20140815 end> */
 
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <linux/hw_dev_dec.h>
 #endif
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
-#include <linux/dsm_pub.h>
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+#include <linux/power/huawei_dsm_charger.h>
 #include <linux/rtc.h>
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
+/* DTS201505289999M chendeng 20150603 end> */
 #define ID_LEN   12
 extern int is_usb_chg_exist(void);
 struct bq2415x_device *bq_device;
@@ -63,27 +60,23 @@ struct bq27510_device_info* g_battery_measure_by_bq27510_device = NULL;
 static struct i2c_driver bq27510_battery_driver;
 static unsigned int gBq27510DownloadFirmwareFlag = BSP_NORMAL_MODE;
 static bool force_update_flag = false;
-/* <DTS2014072905230 liyuping 20140729 begin */
 #define FW_UPD_OK            0
 #define FW_UPD_FAIL          1
 #define FW_UPD_PROCESSING    2
 static char fw_version_export[ID_LEN] = {0};
 static int fw_update_ok = FW_UPD_PROCESSING;
-/* DTS2014072905230 liyuping 20140729 end> */
-/* <DTS2014073007419 jiangfei 20140815 begin */
 static bool battery_alarm_enabled = false;
-/* DTS2014073007419 jiangfei 20140815 end> */
 #define HIGH_TEMP		55
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
-#define OCP_CURRENT	5000
-#define HIGH_VOL	4500
-#define LOW_VOL		2500
-#define HOT_TEMP	60
-#define LOW_TEMP	0
-#define ONE_MINUTE		60 //60 seconds
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+#define OVER_CURRENT_27510	5000
+#define HIGH_VOL_27510	4500
+#define LOW_VOL_27510	2500
+#define HOT_TEMP_27510	60
+#define LOW_TEMP_27510	0
+#define ONE_MINUTE_27510	60 //60 seconds
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
+/* DTS201505289999M chendeng 20150603 end> */
 
 enum
 {
@@ -108,7 +101,6 @@ struct bq27510_context
     unsigned int lock_count;
 };
 
-/*<DTS2014080707237 liyuping 20140807 begin */
 struct bq27510_context gauge_context =
 {
     .temperature = 2820,//9 degree
@@ -122,14 +114,14 @@ struct bq27510_context gauge_context =
     .state = BQ27510_NORMAL_MODE,
     .i2c_error_count = 0
 };
-/* DTS2014080707237 liyuping 20140807 end> */
 
 
 #define GAS_GAUGE_I2C_ERR_STATICS() ++gauge_context.i2c_error_count
 #define GAS_GAUGE_LOCK_STATICS() ++gauge_context.lock_count
 
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+/* DTS201505289999M chendeng 20150603 end> */
 extern struct qpnp_lbc_chip *g_lbc_chip;
 extern struct dsm_client *charger_dclient;
 extern struct dsm_client *bms_dclient;
@@ -139,7 +131,6 @@ static unsigned long start_tm_sec = 0;
 extern int dump_registers_and_adc(struct dsm_client *dclient, struct qpnp_lbc_chip *chip, int type);
 void bq27510_dump_regs(struct dsm_client *dclient);
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
 
 static bool factory_flag = false;
 static int __init early_parse_factory_flag(char * p)
@@ -185,13 +176,12 @@ static int bq27510_i2c_read_word(struct bq27510_device_info *di,u8 reg)
 {
     int err = 0;
     int i = 0;
-
-    /* <DTS2015010502088 zhaoxiaoli 20150106 begin */
+    /* <DTS201505289999M chengkai 20150609 begin */
     if(NULL == di)
-    {
+    {	
         return err;
     }
-    /* DTS2015010502088 zhaoxiaoli 20150106 end > */
+    /* DTS201505289999M chengkai 20150609 end> */
     mutex_lock(&bq27510_battery_mutex);
     for(i = 0; i < 5; i++)
     {
@@ -200,15 +190,15 @@ static int bq27510_i2c_read_word(struct bq27510_device_info *di,u8 reg)
         {
             GAS_GAUGE_I2C_ERR_STATICS();
             pr_info("[%s,%d] i2c_smbus_read_byte_data failed\n",__FUNCTION__,__LINE__);
-             /* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+            /* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
             /* if i2c read fail, record this log, and notify to the dsm server*/
             if(!dsm_client_ocuppy(charger_dclient)){
                 dsm_client_record(charger_dclient, "[%s]i2c read failed\n",__func__);
-                dsm_client_notify(charger_dclient, DSM_CHARGER_BQ_I2C_ERROR_NO);
+                dsm_client_notify(charger_dclient, DSM_BQ_I2C_ERROR);
             }
 #endif
-            /* DTS2014062100152 jiangfei 20140623 end> */
+            /* DTS201505289999M chendeng 20150603 end> */
         }
         else
         {
@@ -486,25 +476,23 @@ int bq27510_battery_tte(struct bq27510_device_info *di)
 }
 
 
-/* < DTS2015012603531 zhaoxiaoli 20150126 begin */
-int bq27510_battery_cyc(struct bq27510_device_info *di)
+int bq27510_battery_ttf(struct bq27510_device_info *di)
 {
     int data = 0;
 
     if(!bq27510_is_accessible())
         return 0;
 
-    data = bq27510_i2c_read_word(di,BQ27510_REG_CYC);
+    data = bq27510_i2c_read_word(di,BQ27510_REG_TTF);
     if(data < 0)
     {
-        pr_debug("i2c error in reading CYC!");
+        pr_debug("i2c error in reading TTF!");
         return 0;
     }
 
-    pr_debug("read cyc result = %d minutes\n",data);
+    pr_debug("read ttf result = %d minutes\n",data);
     return data;
 }
-/* DTS2015012603531 zhaoxiaoli 20150126 end > */
 
 
 int is_bq27510_battery_full(struct bq27510_device_info *di)
@@ -810,10 +798,8 @@ bq27510_firmware_program_begin:
         else if('X' == p_src[0])
         {
             memset(ucTmpBuf, 0x00, sizeof(ucTmpBuf));
-			/* <DTS2014071803033 liyuping 20140724 begin */
 			if(ulLineLen <= 2)
 				return -1;
-			/* DTS2014071803033 liyuping 20140724 end> */
             memcpy(ucTmpBuf, pBuf+2, ulLineLen-2);
             ulDelay = bq27510_atoi(ucTmpBuf);
         }
@@ -826,10 +812,8 @@ bq27510_firmware_program_begin:
             memcpy(ucTmpBuf, pBuf+4, 2);
             p_src[3] = bq27510_strtoul(ucTmpBuf, 16);
             memset(ucTmpBuf, 0x00, sizeof(ucTmpBuf));
-			/* <DTS2014071803033 liyuping 20140724 begin */
 			if(ulLineLen <= 6)
 				return -1;
-			/* DTS2014071803033 liyuping 20140724 end> */
             memcpy(ucTmpBuf, pBuf+6, ulLineLen-6);
             ulReadNum = bq27510_atoi(ucTmpBuf);
         }
@@ -892,15 +876,15 @@ static int bq27510_firmware_download(struct i2c_client *client, const unsigned c
     if(iRet)
     {
         pr_info("bq27510_firmware_program failed\n");
-        /* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+        /* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+        /* DTS201505289999M chendeng 20150603 end> */
         /* if firmware download failed, record this log, and notify to the dsm server*/
         if(!dsm_client_ocuppy(bms_dclient)){
             dsm_client_record(bms_dclient, "[%s]firmware download failed\n",__func__);
             dsm_client_notify(bms_dclient, DSM_BMS_BQ_UPDATE_FIRMWARE_FAIL_NO);
         }
 #endif
-        /* DTS2014062100152 jiangfei 20140623 end> */
     }
 
     /*change i2c addr*/
@@ -950,9 +934,7 @@ static void bq27510_firmware_update(struct work_struct *work)
     struct firmware_header *fw_header = NULL;
     struct bq27510_device_info *di = NULL;
     struct device_node *np = NULL;
-	/* <DTS2014072905230 liyuping 20140729 begin */
 	fw_update_ok = FW_UPD_PROCESSING;
-	/* DTS2014072905230 liyuping 20140729 end> */
 
     di = container_of(work, struct bq27510_device_info, update_work.work);
 
@@ -963,13 +945,16 @@ static void bq27510_firmware_update(struct work_struct *work)
     if(rc)
     {
         pr_info("need product name\n");
-        /* <DTS2014072905230 liyuping 20140729 begin */
         fw_update_ok = FW_UPD_FAIL;
-        /* DTS2014072905230 liyuping 20140729 end> */
         return;
     }
     pr_info("product name is %s\n",product_name);
-
+    /* <DTS201505289999M chengkai 20150609 begin */
+    if (!di->qcom_bms)
+    {
+        di->qcom_bms = power_supply_get_by_name("bms");
+    }
+    /* DTS201505289999M chengkai 20150609 end> */
     //get batt id
     if(di->qcom_bms)
     {
@@ -991,11 +976,9 @@ static void bq27510_firmware_update(struct work_struct *work)
     if(rc)
     {
         pr_err("request firmware failed \n");
-        /* <DTS2014072905230 liyuping 20140729 begin */
         fw_update_ok = FW_UPD_FAIL;
         snprintf(fw_version_export,sizeof fw_version_export,"%x", \
                 bq27510_get_firmware_version_by_i2c(di->client));
-        /* DTS2014072905230 liyuping 20140729 end> */
         return ;
     }
 
@@ -1007,9 +990,7 @@ static void bq27510_firmware_update(struct work_struct *work)
     {
         pr_info("failed to get firmware version\n");
         release_firmware(fw);
-        /* <DTS2014072905230 liyuping 20140729 begin */
         fw_update_ok = FW_UPD_FAIL;
-        /* DTS2014072905230 liyuping 20140729 end> */
         return;
     }
     pr_info("fw version of bqfs is %s\n",version);
@@ -1023,17 +1004,14 @@ static void bq27510_firmware_update(struct work_struct *work)
     {
         pr_info("no need update\n");
         release_firmware(fw);
-        /* <DTS2014072905230 liyuping 20140729 begin */
         fw_update_ok = FW_UPD_OK;
         memcpy(fw_version_export ,chip_fw_version,ID_LEN);
-        /* DTS2014072905230 liyuping 20140729 end> */
         return;
     }
     else
     {
         bq27510_firmware_download(di->client,(unsigned char *)fw_header+fw_header->offset,fw_header->length);
     }
-    /* <DTS2014072905230 liyuping 20140729 begin */
     snprintf(fw_version_export,sizeof fw_version_export,"%x", \
              bq27510_get_firmware_version_by_i2c(di->client));
 
@@ -1045,7 +1023,6 @@ static void bq27510_firmware_update(struct work_struct *work)
     {
         fw_update_ok = FW_UPD_FAIL;
     }
-    /* DTS2014072905230 liyuping 20140729 end> */
     pr_info("update success\n");
     release_firmware(fw);
 
@@ -1074,7 +1051,6 @@ static irqreturn_t bq27510_abnormal_status_interrupt(int irq, void *_di)
     return IRQ_HANDLED;
 }
 
-/* <DTS2014073007419 jiangfei 20140815 begin */
 static void interrupt_notifier_work(struct work_struct *work)
 {
     struct bq27510_device_info *di = container_of(work,
@@ -1105,10 +1081,10 @@ static int bq27510_dt_parse(struct device *dev, struct bq27510_device_info *di)
     }
     return rc;
 }
-/* DTS2014073007419 jiangfei 20140815 end> */
 
-/* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+/* DTS201505289999M chendeng 20150603 end> */
 static int get_current_time(unsigned long *now_tm_sec)
 {
     struct rtc_time tm;
@@ -1142,28 +1118,22 @@ close_time:
     return rc;
 }
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
 
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 static int battery_monitor_capacity_changed(struct bq27510_device_info *di)
 {
     int curr_capacity = 0;
     int curr_temperature = 0;
-    /* <DTS2014070706002 chenyuanquan 20140722 begin */
     int bat_exist = 1;
-    /* DTS2014070706002 chenyuanquan 20140722 end> */
-    /* <DTS2014122601446 zhaoxiaoli 20141227 begin */
     /* Remove the code: int battery_voltage = 0 */
     static int zero_level_count = 0;
     int voltage_now = 0;
-    /* DTS2014122601446 zhaoxiaoli 20141227 end> */
     union power_supply_propval val = {0};
-    /* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+    /* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+    /* DTS201505289999M chendeng 20150603 end> */
     unsigned long now_tm_sec = 0;
     int vbat_mv, current_ma, batt_temp;
 #endif
-    /* DTS2014062100152 jiangfei 20140623 end> */
 
     if(di->ti_charger)
     {
@@ -1178,14 +1148,12 @@ static int battery_monitor_capacity_changed(struct bq27510_device_info *di)
     else
     {
         curr_capacity = bq27510_battery_capacity(di);
-        /* <DTS2014073007419 jiangfei 20140815 begin */
         /* If battery alarm is enabled, but we charge the battery again at 2%,*/
         /* we should release the pm lock to allow the phone to sleep when >=3% */
         if(battery_alarm_enabled && (FAKE_CUTOFF_LEVEL <= curr_capacity)){
             pm_relax(&di->client->dev);
             battery_alarm_enabled = false;
         }
-        /* DTS2014073007419 jiangfei 20140815 end> */
         if(true == factory_flag  &&  0 == curr_capacity)
         {
             pr_info("do not report zero in factory mode \n");
@@ -1193,13 +1161,11 @@ static int battery_monitor_capacity_changed(struct bq27510_device_info *di)
         }
         if ((bq_device != NULL) && (bq_device->charge_status == POWER_SUPPLY_STATUS_DISCHARGING))
         {
-            /* <DTS2014122601446 zhaoxiaoli 20141227 begin */
             /* Remove the code of get battery voltage and fake cutoff capacity*/
             if(curr_capacity <= CUTOFF_LEVEL)
             {
                 curr_capacity = CUTOFF_LEVEL;
             }
-            /* DTS2014122601446 zhaoxiaoli 20141227 end> */
         }
     }
 
@@ -1245,21 +1211,21 @@ static int battery_monitor_capacity_changed(struct bq27510_device_info *di)
         di->charge_full_count = 0;
     }
 
-    /* <DTS2014062100152 jiangfei 20140623 begin */
-#ifdef CONFIG_HUAWEI_DSM
+    /* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
     /*if battery voltage or current or temp is abnormal, dump pmic*/
     /*registers and adc values, and notify to dsm server */
     vbat_mv = bq27510_battery_voltage(di);
     current_ma = -1*bq27510_battery_current(di);
     batt_temp = bq27510_battery_temperature(di);
-    if((OCP_CURRENT <= current_ma) || (HIGH_VOL <= vbat_mv)
-        ||(LOW_VOL >=vbat_mv) ||(HOT_TEMP <= batt_temp) ||(LOW_TEMP >= batt_temp)){
+    if((OVER_CURRENT_27510 <= current_ma) || (HIGH_VOL_27510 <= vbat_mv)
+        ||(LOW_VOL_27510 >=vbat_mv) ||(HOT_TEMP_27510 <= batt_temp) ||(LOW_TEMP_27510 >= batt_temp)){
         pr_err("Find abnormal ADC values! The values are:"
             "current_ma=%d vbat_mv=%d batt_temp=%d\n",
             current_ma,
             vbat_mv,
             batt_temp);
-        dump_registers_and_adc(charger_dclient,g_lbc_chip,DSM_CHARGER_ADC_ABNORMAL_ERROR_NO);
+        /*delete one line*/
     }
 
     /* if the soc changed more than 5 percent in 1 minute*/
@@ -1271,20 +1237,20 @@ static int battery_monitor_capacity_changed(struct bq27510_device_info *di)
     }
 
     get_current_time(&now_tm_sec);
-    if(ONE_MINUTE >= (now_tm_sec - start_tm_sec)){
+    if(ONE_MINUTE_27510 >= (now_tm_sec - start_tm_sec)){
         if(abs(di->saved_soc - curr_capacity) > CAPACITY_JUMP_THRESHOLD){
             pr_err("soc changed more than 5 percent during recent one minute"
                     "di->saved_soc=%d curr_capacity=%d\n",
                     di->saved_soc,
                     curr_capacity);
-            dump_registers_and_adc(bms_dclient,g_lbc_chip,DSM_BMS_NORMAL_SOC_ERROR_NO);
+            /*delete one line*/
         }
     }else{
             normal_soc_cal_flag = 0;
             start_tm_sec = 0;
     }
 #endif
-    /* DTS2014062100152 jiangfei 20140623 end> */
+    /* DTS201505289999M chendeng 20150603 end> */
     if ((bq_device != NULL) && (bq_device->charge_status == POWER_SUPPLY_STATUS_CHARGING)
         && (ZERO_LEVEL == curr_capacity)){
         voltage_now = bq27510_battery_voltage(di);
@@ -1376,7 +1342,6 @@ static int battery_monitor_capacity_changed(struct bq27510_device_info *di)
 
     return 1;
 }
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 
 static void battery_monitor_work(struct work_struct *work)
 {
@@ -1395,12 +1360,13 @@ static void battery_monitor_work(struct work_struct *work)
 
     di->prev_temp = current_temp;
 
-    /* <DTS2014070706002 chenyuanquan 20140722 begin */
     /* schedule the soc calculating work more frequently when other related module doesn't init well */
-    if (!di->ti_charger || !bq_device || !bq_device->qcom_charger_psy) {
+    /* <DTS201505289999M chendeng 20150603 begin */
+    /* Delete qcom_charger_psy */
+    if (!di->ti_charger || !bq_device) {
             di->monitoring_interval = BOOT_MONITOR_TIME;
     }
-    /* DTS2014070706002 chenyuanquan 20140722 end> */
+    /* DTS201505289999M chendeng 20150603 end> */
     schedule_delayed_work(&di->battery_monitor_work,
                           msecs_to_jiffies(1000 * di->monitoring_interval));
 }
@@ -1412,9 +1378,7 @@ static enum power_supply_property ti_bms_power_props[] =
         POWER_SUPPLY_PROP_VOLTAGE_NOW,
         POWER_SUPPLY_PROP_CURRENT_NOW,
         POWER_SUPPLY_PROP_HEALTH,
-        /* <DTS2014072905230 liyuping 20140729 begin */
         POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-        /* DTS2014072905230 liyuping 20140729 end> */
     };
 
 static int ti_bms_power_get_property(struct power_supply *psy,
@@ -1438,11 +1402,10 @@ static int ti_bms_power_get_property(struct power_supply *psy,
     case POWER_SUPPLY_PROP_HEALTH:
         val->intval = bq27510_battery_health(g_battery_measure_by_bq27510_device);
         break;
-    /* <DTS2014072905230 liyuping 20140729 begin */
     case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-        val->intval = bq27510_battery_fcc(g_battery_measure_by_bq27510_device);
+        /* return value must be 'uAh' */
+        val->intval = 1000 * bq27510_battery_fcc(g_battery_measure_by_bq27510_device);
         break;
-    /* DTS2014072905230 liyuping 20140729 end> */
     default:
         return -EINVAL;
     }
@@ -1451,7 +1414,9 @@ static int ti_bms_power_get_property(struct power_supply *psy,
 
 static void ti_bms_external_power_changed(struct power_supply *psy)
 {
-    g_battery_measure_by_bq27510_device->ti_charger = power_supply_get_by_name("ti-charger");
+    /* <DTS201505289999M chendeng 20150603 begin */
+    g_battery_measure_by_bq27510_device->ti_charger = power_supply_get_by_name("battery");
+    /* DTS201505289999M chendeng 20150603 end> */
     if(g_battery_measure_by_bq27510_device->ti_charger)
     {
         bq_device = container_of(g_battery_measure_by_bq27510_device->ti_charger,struct bq2415x_device,charger);
@@ -1459,16 +1424,17 @@ static void ti_bms_external_power_changed(struct power_supply *psy)
     g_battery_measure_by_bq27510_device->qcom_bms = power_supply_get_by_name("bms");
 }
 
+/* <DTS201505289999M chendeng 20150603 begin */
 static char *bq27510_supplied_to[] =
 {
-    "ti-charger",
+    "battery",
 };
+/* DTS201505289999M chendeng 20150603 end> */
 
-/* < DTS2015012603531 zhaoxiaoli 20150126 begin */
 static ssize_t bq27510_show_gaugelog(struct device_driver *driver, char *buf)
 {
     int temp = 0, voltage = 0, capacity = 100, rm = 0, fcc = 0;
-    int cur = 0,cyc = 0,si = 0;
+    int cur = 0,ttf = 0,si = 0;
     u16 flag = 0,control_status = 0;
     int qmax = 0;
 
@@ -1478,10 +1444,8 @@ static ssize_t bq27510_show_gaugelog(struct device_driver *driver, char *buf)
     {
         return -1;
     }
-    /*<DTS2014072301355 jiangfei 20140723 begin */
     if(!bq27510_is_accessible())
         return snprintf(buf, PAGE_SIZE, "bq27510 is busy because of updating(%d)",gauge_context.state);
-    /* DTS2014072301355 jiangfei 20140723 end> */
     if(BSP_NORMAL_MODE != gBq27510DownloadFirmwareFlag)
     {
         return -1;
@@ -1491,9 +1455,7 @@ static ssize_t bq27510_show_gaugelog(struct device_driver *driver, char *buf)
     mdelay(2);
     voltage = bq27510_battery_voltage(di);
     mdelay(2);
-	/*<DTS2014070404260 liyuping 20140704 begin */
     cur = (-1)*bq27510_battery_current(di);
-	/* DTS2014061605512 liyuping 20140617 end> */
     mdelay(2);
     capacity = bq27510_battery_capacity(di);
     mdelay(2);
@@ -1503,7 +1465,7 @@ static ssize_t bq27510_show_gaugelog(struct device_driver *driver, char *buf)
     mdelay(2);
     fcc =  bq27510_battery_fcc(di);
     mdelay(2);
-    cyc = bq27510_i2c_read_word(di,BQ27510_REG_CYC);
+    ttf = bq27510_i2c_read_word(di,BQ27510_REG_TTF);
     mdelay(2);
     si = bq27510_i2c_read_word(di,BQ27510_REG_SI);
 
@@ -1516,7 +1478,6 @@ static ssize_t bq27510_show_gaugelog(struct device_driver *driver, char *buf)
     mdelay(2);
     qmax =  bq27510_get_gasgauge_qmax(di);
     mdelay(2);
-    /*<DTS2014072301355 jiangfei 20140723 begin */
     if(qmax < 0)
     {
         return snprintf(buf, PAGE_SIZE, "%s", "Coulometer Damaged or Firmware Error \n");
@@ -1524,16 +1485,12 @@ static ssize_t bq27510_show_gaugelog(struct device_driver *driver, char *buf)
     else
     {
         snprintf(buf, PAGE_SIZE, "%-9d  %-9d  %-4d  %-5d  %-6d  %-6d  %-6d  %-6d  0x%-5.4x  0x%-5.4x  %-6d  ",
-                voltage,  (signed short)cur, capacity, rm, fcc, (signed short)cyc, (signed short)si, temp, flag, control_status, qmax);
+                voltage,  (signed short)cur, capacity, rm, fcc, (signed short)ttf, (signed short)si, temp, flag, control_status, qmax);
     }
-    /* DTS2014072301355 jiangfei 20140723 end> */
     return strlen(buf);
 }
-/* DTS2015012603531 zhaoxiaoli 20150126 end > */
 
-/*<DTS2014062102624 liyuping 20140705 begin */
 static DRIVER_ATTR(gaugelog, S_IRUGO, bq27510_show_gaugelog,NULL);
-/* DTS2014062102624 liyuping 20140705 end> */
 
 static ssize_t force_update_trigger(struct device_driver *driver,const char *buf, size_t count)
 {
@@ -1542,12 +1499,9 @@ static ssize_t force_update_trigger(struct device_driver *driver,const char *buf
     return count;
 }
 
-/*<DTS2014062102624 liyuping 20140705 begin */
 static DRIVER_ATTR(force_update_trigger, S_IWUSR | S_IWGRP, NULL,force_update_trigger);
-/* DTS2014062102624 liyuping 20140705 end> */
 
 
-/* <DTS2014071803033 liyuping 20140724 begin */
 static ssize_t remaining_capacity_show(struct device_driver *driver, char *buf)
 {
 	int rm = 0;
@@ -1561,8 +1515,6 @@ static ssize_t remaining_capacity_show(struct device_driver *driver, char *buf)
 }
 
 static DRIVER_ATTR(remaining_capacity, S_IRUGO, remaining_capacity_show, NULL);
-/* DTS2014071803033 liyuping 20140724 end> */
-/* <DTS2014072905230 liyuping 20140729 begin */
 static ssize_t firmware_version_show(struct device_driver *driver, char *buf)
 {
     return snprintf(buf, ID_LEN, "%s\n", fw_version_export);
@@ -1576,27 +1528,19 @@ static ssize_t firmware_update_success_show(struct device_driver *driver, char *
 }
 
 static DRIVER_ATTR(firmware_update_success, S_IRUGO, firmware_update_success_show, NULL);
-/* DTS2014072905230 liyuping 20140729 end> */
-/* <DTS2014072905230 liyuping 20140729 begin */
 static struct attribute *bq27510_sysfs_attributes[] =
 {
     &driver_attr_gaugelog.attr,
     &driver_attr_force_update_trigger.attr,
-	/* <DTS2014071803033 liyuping 20140724 begin */
     &driver_attr_remaining_capacity.attr,
-	/* DTS2014071803033 liyuping 20140724 end> */
 	&driver_attr_firmware_version.attr,
 	&driver_attr_firmware_update_success.attr,
     NULL,
 };
-/* DTS2014072905230 liyuping 20140729 end> */
 
-/*<DTS2014062102624 liyuping 20140705 begin */
-    /* < DTS2015012907660 zhaoxiaoli 20150130 begin */
 static umode_t ti_bms_prop_is_visible(struct kobject *a,struct attribute *b, int i)
 {
 	bool use_other_charger = false;
-    bool use_ti_coulometer = false;
 	struct device_node *qcom_charger = of_find_node_by_name(NULL,"qcom,charger");
 	if (!qcom_charger)
 	{
@@ -1605,25 +1549,18 @@ static umode_t ti_bms_prop_is_visible(struct kobject *a,struct attribute *b, int
 	}
 
 	use_other_charger = of_property_read_bool(qcom_charger, "qcom,use-other-charger");
-    use_ti_coulometer = of_property_read_bool(qcom_charger, "qcom,use-ti-coulometer");
 	of_node_put(qcom_charger);
 
-	if(use_other_charger && use_ti_coulometer)
-    {
-        return b->mode;
-    }
+	if(use_other_charger)
+		return b->mode;
 	else
 		return 0;
 }
-    /* DTS2015012907660 zhaoxiaoli 20150130 end> */
-/* DTS2014062102624 liyuping 20140705 end> */
 static const struct attribute_group bq27510_sysfs_attr_group =
 {
     .name = "ti-bms-prop",
     .attrs = bq27510_sysfs_attributes,
-	/*<DTS2014062102624 liyuping 20140705 begin */
     .is_visible = ti_bms_prop_is_visible
-	/* DTS2014062102624 liyuping 20140705 end> */
 };
 
 static const struct attribute_group *driver_groups[] =
@@ -1632,9 +1569,9 @@ static const struct attribute_group *driver_groups[] =
     NULL
 };
 
-/* <DTS2014062100152 jiangfei 20140623 begin */
-/* <DTS2014073007208 jiangfei 20140801 begin */
-#ifdef CONFIG_HUAWEI_DSM
+/* <DTS201505289999M chendeng 20150603 begin */
+#ifdef CONFIG_HUAWEI_PMU_DSM
+/* DTS201505289999M chendeng 20150603 end> */
 #define INTERNAL_TEMPERATURE		0x28
 void bq27510_dump_regs(struct dsm_client *dclient)
 {
@@ -1658,8 +1595,6 @@ void bq27510_dump_regs(struct dsm_client *dclient)
     }
 }
 #endif
-/* DTS2014073007208 jiangfei 20140801 end> */
-/* DTS2014062100152 jiangfei 20140623 end> */
 
 static int bq27510_battery_probe(struct i2c_client *client,
                                  const struct i2c_device_id *id)
@@ -1673,15 +1608,10 @@ static int bq27510_battery_probe(struct i2c_client *client,
     if(retval < 0)
     {
         pr_info("coulometer damaged or firmware error\n");
-		/* <DTS2014071608042 jiangfei 20140716 begin */
-		/* < DTS2014091808880 xujian 20140919 begin */
 		//if i2c read word fail,we will not prob TI.
-        /* <DTS2015010502088 zhaoxiaoli 20150106 begin */
-		//if i2c read fail go on TI probe,otherwith there wil be NULL pointer problem
-		//return -ENODEV;
-        /* DTS2015010502088 zhaoxiaoli 20150106 end > */
-		/* DTS2014091808880 xujian 20140919 end > */
-		/* DTS2014071608042 jiangfei 20140716 end> */
+		/* <DTS201505289999M chengkai 20150609 begin */
+		/*if i2c update firmware failed,go on and try to update again*/
+		/* DTS201505289999M chengkai 20150609 end> */
     }
     else
     {
@@ -1718,9 +1648,7 @@ static int bq27510_battery_probe(struct i2c_client *client,
 
     bq27510_dt_parse(&client->dev, di);
 
-	/* < DTS2014091104628 taohanwen 20140910 begin */
     if (client->irq > 0)
-	/* DTS2014091104628 taohanwen 20140910 end > */
     {
         retval = gpio_request(client->irq, "battary-alarm");
         if(retval < 0)
@@ -1747,9 +1675,7 @@ static int bq27510_battery_probe(struct i2c_client *client,
         }
     }
 
-	/*<DTS2014062506205 liyuping 20140625 begin */
 	//remove redundant code
-	/* DTS2014062506205 liyuping 20140625 end> */
     g_battery_measure_by_bq27510_i2c_client = client;
     g_battery_measure_by_bq27510_device = di;
 
@@ -1803,10 +1729,7 @@ static int bq27510_battery_suspend(struct i2c_client *client,
 {
     struct bq27510_device_info *di = i2c_get_clientdata(client);
     cancel_delayed_work_sync(&di->battery_monitor_work);
-    /* <DTS2014122601446 zhaoxiaoli 20141227 begin */
-    /*soc changes by step of 1% in battery_monitor_work after resume */
-    /*so remove the code: di->last_soc_unbound = true; */
-    /* DTS2014122601446 zhaoxiaoli 20141227 end> */
+    di->last_soc_unbound = true;
     return 0;
 }
 
@@ -1845,4 +1768,3 @@ module_i2c_driver(bq27510_battery_driver);
 MODULE_AUTHOR("HUAWEI");
 MODULE_DESCRIPTION("BQ27510 battery monitor driver");
 MODULE_LICENSE("GPL");
-/* DTS2014061605512 liyuping 20140617 end> */

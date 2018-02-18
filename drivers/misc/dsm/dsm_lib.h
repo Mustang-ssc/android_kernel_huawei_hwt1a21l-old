@@ -1,4 +1,3 @@
-/* < DTS2014042900710 shenjinming 20140430 begin */
 /*
  * Copyright (C) 2008 The Android Open Source Project
  * All rights reserved.
@@ -153,4 +152,3 @@ static void printf_putc(unsigned n, void *cookie)
 }
 #endif
 
-/* DTS2014042900710 shenjinming 20140430 end > */

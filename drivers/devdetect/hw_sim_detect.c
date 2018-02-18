@@ -1,4 +1,4 @@
-/*<DTS2014070706478 zhanglei 20141204 begin  */
+/* < DTS2015051206005 chendong cwx241705 begin */
 /* Begin DTS2014070706478 for sim detect by c00217097 2014/7/7  */
 #include <linux/module.h>
 #include <linux/gfp.h>
@@ -53,7 +53,7 @@ unsigned int get_sim_status(unsigned int sim_detection_gpio)
     pr_info(" electrical_lvl = %d  \n", electrical_lvl);
     return electrical_lvl;
 }
-/* <DTS2015010300377 zhanglei 20150103 begin */
+
 /* DTS2014121900627 guoling WX232221 start */
 #define SIM_DETECT_COUNT    2
 
@@ -90,7 +90,7 @@ static void sim_detect_work(struct work_struct *work)
     }
 }
 /* DTS2014121900627 guoling WX232221 end */
-/* DTS2015010300377 zhanglei 20150103 end> */
+
 static void timer_detect_func(unsigned long arg)
 {
     pr_info("sim -%s[%d]: %s\n", __FILE__, __LINE__, __FUNCTION__);  
@@ -105,14 +105,14 @@ irqreturn_t sim_gpio_irq_handler(int irq, void *dev_id)
         return IRQ_NONE;
     
     wake_lock(&sim_wake_lock);
-    /* <DTS2015010300377 zhanglei 20150103 begin */
+    
     /* DTS2014121900627 guoling WX232221 start */
     mod_timer(&sim_host->timer_detect, jiffies+HZ/4);
     /* DTS2014121900627 guoling WX232221 end */
-    /* DTS2015010300377 zhanglei 20150103 end> */
+
     return IRQ_HANDLED;
 }
- /* <DTS2015010300377 zhanglei 20150103 begin */
+
 /* DTS2014123100782 modified by guoling WX232221 start */
  /* Move the code requesting irq to function probe */
 static int msm_sim_gpio_init(void)
@@ -133,7 +133,7 @@ static int msm_sim_gpio_init(void)
         goto request_gpio_err;  
     
     irq = gpio_to_irq(sim_host->gpio_pin);
-     if (irq < 0)
+    if (irq < 0)
     {
         pr_err("msm_sim: probe gpio_to_irq  error!\n");
         goto  get_irq_err;
@@ -152,7 +152,7 @@ get_gpio_err:
     return err;
 }
 /* DTS2014123100782 modified by guoling WX232221 end */
-/* DTS2015010300377 zhanglei 20150103 end> */
+
 static ssize_t online_show(struct device *dev, struct device_attribute *attr,
                 char *buf)
 {	
@@ -198,11 +198,12 @@ static int sim_pinctrl_init(struct msm_sim *host)
      return 0;
 }
 /* DTS2014081410800 gwx199358 20140815 end > */
- /* <DTS2015010300377 zhanglei 20150103 begin */
+
 /* DTS2014123100782 modified by guoling WX232221 start */
 static int sim_msm_probe(struct platform_device  *pdev)
 {
     int ret = 0;
+    pr_info("sim_msm_probe START\n");  
     sim_host = devm_kzalloc(&pdev->dev, sizeof(struct msm_sim), GFP_KERNEL);
     if (!sim_host)
         return -ENOMEM;
@@ -261,7 +262,7 @@ err_sim_init:
 		
 }
 /* DTS2014123100782 modified by guoling WX232221 end */
-/* DTS2015010300377 zhanglei 20150103 end> */
+
 static int sim_msm_remove(struct platform_device *pdev)
 {
     if (gpio_is_valid(sim_host->gpio_pin))
@@ -308,4 +309,4 @@ module_exit(msm_sim_exit);
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:dev_sim");
 /* End DTS2014070706478 for sim detect by c00217097 2014/7/7  */
-/*DTS2014070706478 zhanglei 20141204 end>  */
+/*  DTS2015051206005 chendong cwx241705 end > */

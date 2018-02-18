@@ -61,6 +61,4 @@ obj-$(CONFIG_BRCMSMAC)	+= brcm80211/
 obj-$(CONFIG_LIBRA_SDIOIF)	+= libra/
 obj-$(CONFIG_WCNSS_CORE)	+= wcnss/
 obj-$(CONFIG_CNSS)		+= cnss/
-#/* < DTS2014041008275 chenjikun 20140410 begin */
 obj-$(CONFIG_HUAWEI_WIFI)	+= wlan_feature.o
-#/* DTS2014041008275 chenjikun 20140410 end > */

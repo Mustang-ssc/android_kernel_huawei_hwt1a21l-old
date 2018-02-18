@@ -8,13 +8,12 @@
 
 extern const char linux_banner[];
 extern const char linux_proc_banner[];
-/* < DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 begin */
+
 #ifdef CONFIG_HUAWEI_KERNEL
 #ifndef HIDE_PRODUCT_INFO_KERNEL
 extern const char hide_version[];
 #endif
 #endif
-/* DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 end > */
 
 static inline int printk_get_level(const char *buffer)
 {
@@ -412,10 +411,12 @@ static inline void oops_printk_start(void)
 }
 #endif
 
-/* < DTS2014070303497 shenjinming 20140703 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 extern int KERNEL_HWFLOW;
 #endif
-/* DTS2014070303497 shenjinming 20140703 end > */
+
+#ifdef CONFIG_HUAWEI_KERNEL
+extern int KERNEL_HWFLOW;
+#endif
 
 #endif

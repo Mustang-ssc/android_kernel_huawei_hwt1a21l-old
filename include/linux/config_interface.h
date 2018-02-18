@@ -1,4 +1,3 @@
-/* < DTS2014041609079 liuzhefeng 20140417 begin */
 #ifndef CONFIG_INTERFACE_H
 #define CONFIG_INTERFACE_H
 #include <linux/of.h>
@@ -19,4 +18,3 @@ int set_product_name_to_appinfo(void);
 int set_software_ver_to_appinfo(void);
 
 #endif
-/* < DTS2014041609079 liuzhefeng 20140417 end */

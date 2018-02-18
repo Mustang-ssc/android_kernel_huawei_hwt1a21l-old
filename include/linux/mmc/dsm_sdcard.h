@@ -1,4 +1,3 @@
-/*< DTS2014112104831 luchao 20141121 begin */
 #ifdef CONFIG_HUAWEI_SDCARD_DSM
 #ifndef LINUX_MMC_DSM_SDCARD_H
 #define LINUX_MMC_DSM_SDCARD_H
@@ -46,9 +45,11 @@ struct dsm_sdcard_cmd_log
 {
         char *log;
         u32  value;
+        u32  manfid;
 };
 
 extern struct dsm_client *sdcard_dclient;
+extern u32  sd_manfid;
 
 extern char g_dsm_log_sum[1024];
 extern struct dsm_sdcard_cmd_log dsm_sdcard_cmd_logs[];
@@ -64,4 +65,3 @@ extern char *dsm_sdcard_get_log(int cmd,int err);
 
 #endif /* LINUX_MMC_DSM_SDCARD_H */
 #endif /* CONFIG_HUAWEI_SDCARD_DSM */
-/* DTS2014112104831 luchao 20141121 end>*/

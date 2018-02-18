@@ -1,4 +1,4 @@
-/* < DTS2014072602310 zhaoyingchun 20140726 begin */ 
+/* zhaoyingchun add for emmc 5.0 firmware update begin */
 /*
  * *  ffu.c
  *
@@ -614,6 +614,6 @@ exit:
 	return err;
 }
 EXPORT_SYMBOL(mmc_ffu_install);
-/* DTS2014072602310 zhaoyingchun 20140726 end > */ 
+/* zhaoyingchun add for emmc 5.0 firmware update end */ 
 
 

@@ -87,6 +87,7 @@
 #include <linux/slab.h>
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
+#include <linux/qmp_sphinx_instrumentation.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -219,15 +220,8 @@ static int proc_pid_cmdline(struct task_struct *task, char * buffer)
  	len = mm->arg_end - mm->arg_start;
  
 	if (len > PAGE_SIZE)
-		len = PAGE_SIZE;			
-/*<DTS2015010300107 zhanglei 20150103 begin */
-/*<DTS2015031002248 zhanglei 20150311 begin */		
-//    if(!strcmp(current->comm,"ActivityManager")){ 
-//        printk("[ActivityManager]task = 0x%p, task_name = %s,pid = %d\n", task,task->comm,task->pid); 
-//    } 
-/*DTS2015031002248 zhanglei 20150311 end> */
-/*DTS2015010300107 zhanglei 20150103 end> */	 
-	 	 
+		len = PAGE_SIZE;
+ 
 	res = access_process_vm(task, mm->arg_start, buffer, len, 0);
 
 	// If the nul at the end of args has been overwritten, then
@@ -973,6 +967,9 @@ static ssize_t oom_adj_write(struct file *file, const char __user *buf,
 		goto out;
 	}
 
+	qmp_sphinx_logk_oom_adjust_write(task->pid,
+			task->cred->uid, oom_adj);
+
 	task_lock(task);
 	if (!task->mm) {
 		err = -EINVAL;
@@ -1104,6 +1101,9 @@ static ssize_t oom_score_adj_write(struct file *file, const char __user *buf,
 		err = -ESRCH;
 		goto out;
 	}
+
+	qmp_sphinx_logk_oom_adjust_write(task->pid,
+			task->cred->uid, oom_score_adj);
 
 	task_lock(task);
 	if (!task->mm) {
@@ -1872,6 +1872,7 @@ static int proc_map_files_get_link(struct dentry *dentry, struct path *path)
 	if (rc)
 		goto out_mmput;
 
+	rc = -ENOENT;
 	down_read(&mm->mmap_sem);
 	vma = find_exact_vma(mm, vm_start, vm_end);
 	if (vma && vma->vm_file) {
@@ -2717,6 +2718,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("mounts",     S_IRUGO, proc_mounts_operations),
 	REG("mountinfo",  S_IRUGO, proc_mountinfo_operations),
 	REG("mountstats", S_IRUSR, proc_mountstats_operations),
+#ifdef CONFIG_PROCESS_RECLAIM
+	REG("reclaim", S_IWUSR, proc_reclaim_operations),
+#endif
 #ifdef CONFIG_PROC_PAGE_MONITOR
 	REG("clear_refs", S_IWUSR, proc_clear_refs_operations),
 	REG("smaps",      S_IRUGO, proc_pid_smaps_operations),

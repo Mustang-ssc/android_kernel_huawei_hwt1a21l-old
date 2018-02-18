@@ -461,6 +461,26 @@ config QPNP_CHARGER
 	  also offers relevant information to userspace via the power supply
 	  framework.
 
+config QPNP_SMBCHARGER
+	tristate "QPNP SMB Charger driver"
+	depends on SPMI
+	depends on OF_SPMI
+	help
+	  Say Y here to enable the dual path switch mode battery charger which
+	  supports USB detection and battery charging up to 3A.
+	  The driver also offers relevant information to userspace via the
+	  power supply framework.
+
+config QPNP_FG
+	tristate "QPNP fuel gauge driver"
+	depends on SPMI
+	depends on OF_SPMI
+	help
+	  Say Y here to enable the Fuel Gauge driver. This adds support for
+	  battery fuel gauging and state of charge of battery connected to the
+	  fuel gauge. The state of charge is reported through a BMS power
+	  supply property and also sends uevents when the capacity is updated.
+
 config PM8921_BMS
 	tristate "PM8921 Battery Monitoring System driver"
 	depends on MFD_PM8921_CORE
@@ -532,44 +552,54 @@ config QPNP_LINEAR_CHARGER
 	  detection and charging. The driver also offers relevant information
 	  to userspace via the power supply framework.
 
-config QPNP_LINEAR_CHARGER_PAD
-        tristate "QPNP Linear Charger driver for Pad"
-        depends on SPMI
-        depends on OF_SPMI
-        depends on MSM_QPNP_INT
-        depends on THERMAL_QPNP_ADC_TM
-        help
-          Say Y here to enable the Linear battery charger which supports USB
-          detection and charging. The driver also offers relevant information
-          to userspace via the power supply framework.
-
-#/* < DTS2014051908036 liyuping 20140519 begin */
-
+# /* remove bq27510 and bq24152 kconfig code */
+# /* Add G7 charger driver */
 config BATTERY_BQ27510
-	tristate "Power supply class support"
-	depends on I2C
-	depends on HUAWEI_KERNEL
+        tristate "Power supply class support"
+        depends on I2C
+        depends on HUAWEI_KERNEL
 
 config CHARGER_BQ24152
+        tristate "Power supply class support"
+        depends on I2C
+        depends on HUAWEI_KERNEL
+
+config BQ24296M_CHARGER
 	tristate "Power supply class support"
 	depends on I2C
 	depends on HUAWEI_KERNEL
 
-#/* DTS2014051908036 liyuping 20140519 end > */
+config HUAWEI_PMU_DSM
+	tristate "huawei dsm charger"
+	depends on HUAWEI_DSM
 
-#/* DTS2014071806762 lWX198526 l00220156 20140718 begin */
-config CHARGER_BQ2419x
-	tristate "Power supply class support"
-	depends on I2C
-#/* DTS2014071806762 lWX198526 l00220156 20140718 end */
-	
-#/* < DTS2014122909056 tanyanying 20141229 begin */
-config HUAWEI_HLTHERM_CHARGING
-	bool "High and low tem charging"
-#/* DTS2014122909056 tanyanying 20141229 end > */
+config HUAWEI_THERMAL
+	bool "Use huawei thermal code"
+	default n
+	help
+	  Use huawei thermal code
+
+config MSM_BCL_CTL
+	bool "BCL Framework driver"
+	help
+	  Say Y here to enable this BCL Framework driver. This driver provides
+	  interface, which can be used by the BCL h/w drivers to implement the
+	  basic functionalities. This framework abstracts the underlying
+	  hardware for the top level modules.
+
+config MSM_BCL_PERIPHERAL_CTL
+	bool "BCL driver to control the PMIC BCL peripheral"
+	depends on SPMI
+	depends on MSM_BCL_CTL
+	help
+	  Say Y here to enable this BCL PMIC peripheral driver. This driver
+	  provides routines to configure and monitor the BCL
+	  PMIC peripheral.
+
 source "drivers/power/reset/Kconfig"
 
 endif # POWER_SUPPLY
 
 source "drivers/power/avs/Kconfig"
 source "drivers/power/qcom/Kconfig"
+source "drivers/power/msgnotify/Kconfig"

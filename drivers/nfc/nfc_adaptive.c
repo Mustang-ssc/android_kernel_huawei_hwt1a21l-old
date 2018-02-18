@@ -1,4 +1,3 @@
-/* < DTS2014053100334 songxiaoming 20140531 add */
 /*
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License version 2 as

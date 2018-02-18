@@ -1,8 +1,5 @@
-/* < DTS2014041609079 liuzhefeng 20140417 begin */
 #include <linux/config_interface.h>
-/*<DTS2013060302673 zhaorenjie 20130603 begin*/
 #include <misc/app_info.h>
-/*DTS2013060302673 zhaorenjie 20130603 end>*/
 
 const void* dt_get_property_for_fac (char* key, int* pvalue_len)
 {
@@ -31,9 +28,7 @@ int get_product_name(char* product_name, int name_len)
    if(product_name == NULL)
    {
        printk(KERN_ERR " param is NULL\n");
-       /* < DTS2014062102074 lijulong 20140621 begin */
        return DT_PROP_ERROR;
-       /*  DTS2014062102074 lijulong 20140621 end > */
    }
    memset(product_name,0,name_len);
    temp = dt_get_property_for_fac("fac,product_name",&product_name_len);
@@ -55,9 +50,7 @@ int get_hardware_ver(char* hardware_ver, int name_len)
    if(hardware_ver == NULL)
    {
        printk(KERN_ERR " param is NULL\n");
-       /* < DTS2014062102074 lijulong 20140621 begin */
        return DT_PROP_ERROR;
-       /*  DTS2014062102074 lijulong 20140621 end > */
    }
    memset(hardware_ver,0,name_len);
    temp = dt_get_property_for_fac("fac,hardware_ver",&hardware_ver_len);
@@ -80,9 +73,7 @@ int get_software_ver(char* software_ver, int name_len)
    if(software_ver == NULL)
    {
        printk(KERN_ERR " param is NULL\n");
-       /* < DTS2014062102074 lijulong 20140621 begin */
        return DT_PROP_ERROR;
-       /*  DTS2014062102074 lijulong 20140621 end > */
    }
    memset(software_ver,0,name_len);
    temp = dt_get_property_for_fac("fac,software_ver",&software_ver_len);
@@ -94,7 +85,6 @@ int get_software_ver(char* software_ver, int name_len)
    memcpy(software_ver, temp, software_ver_len);
    return DT_PROP_SUUCESS;
 }
-/*<DTS2013060302673 zhaorenjie 20130603 begin*/
 int set_sbl1_ver_to_appinfo()
 {
 
@@ -174,7 +164,6 @@ int set_product_name_to_appinfo()
    }
    return DT_PROP_SUUCESS;
 }
-/*<DTS2013062902198 lishiliang 20130629 begin*/
 int set_software_ver_to_appinfo(void)
 {
 
@@ -194,6 +183,3 @@ int set_software_ver_to_appinfo(void)
    }
    return DT_PROP_SUUCESS;
 }
-/*DTS2013062902198 lishiliang 20130629 end>*/
-/*DTS2013060302673 zhaorenjie 20130603 end>*/
-/*DTS2014041609079 liuzhefeng 20140417 end > */

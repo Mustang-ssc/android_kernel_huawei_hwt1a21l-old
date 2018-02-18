@@ -538,7 +538,9 @@ config BALANCE_ANON_FILE_RECLAIM
 	  Swapping anonymous pages out to memory can be efficient enough to justify
 	  treating anonymous and file backed pages equally.
 
-#/* < DTS2014052805125 liwei 20140528 begin */
+config GENERIC_EARLY_IOREMAP
+	bool
+
 config DEBUG_VMALLOC
 	bool "Enable VMALLOC debugging support"
 	help
@@ -546,4 +548,18 @@ config DEBUG_VMALLOC
 	  are the PID and the name of the task requesting vmalloc.
 
 	  Disabling these can result in savings in code size.
-#/* DTS2014052805125 liwei 20140528 end > */
+config PROCESS_RECLAIM
+	bool "Enable process reclaim"
+	depends on PROC_FS
+	default n
+	help
+	 It allows to reclaim pages of the process by /proc/pid/reclaim.
+
+	 (echo file > /proc/PID/reclaim) reclaims file-backed pages only.
+	 (echo anon > /proc/PID/reclaim) reclaims anonymous pages only.
+	 (echo all > /proc/PID/reclaim) reclaims all pages.
+
+	 (echo addr size-byte > /proc/PID/reclaim) reclaims pages in
+	 (addr, addr + size-bytes) of the process.
+
+	 Any other vaule is ignored.

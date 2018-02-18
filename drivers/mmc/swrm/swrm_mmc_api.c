@@ -1,4 +1,4 @@
-/* < DTS2014062704895 zhaoyingchun 20140628 begin */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */
 /*
  * *  swrm_mmc_api.c
  *
@@ -453,4 +453,4 @@ exit:
 	mmc_swrm_area_cleanup(&mem);
 	return rc;
 }
-/* DTS2014062704895 zhaoyingchun 20140628 end > */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update end */

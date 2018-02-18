@@ -65,7 +65,7 @@ struct cyttsp5_btn_data {
 static void cyttsp5_btn_key_action(struct cyttsp5_btn_data *bd,
 	int cur_btn, u8 cur_btn_mask, int num_btns, int new_btn_state)
 {
-	struct device *dev = &bd->ttsp->dev;
+	//struct device *dev = &bd->ttsp->dev;
 	struct cyttsp5_sysinfo *si = bd->si;
 	int i;
 	int btn;
@@ -469,6 +469,7 @@ static int cyttsp5_btn_probe(struct cyttsp5_device *ttsp)
 #if defined (CONFIG_FB)
 	bd->fb_notify.notifier_call = fb_notifier_btn_callback;
 	fb_register_client(&bd->fb_notify);
+#endif
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	bd->es.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
 	bd->es.suspend = cyttsp5_btn_early_suspend;

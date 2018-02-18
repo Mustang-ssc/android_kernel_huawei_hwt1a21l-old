@@ -1,4 +1,3 @@
-/* < DTS2014041705903 zhangmin 20140418 begin */
 #ifndef _HUAWEI_DEV_ARRAY_H_
 #define _HUAWEI_DEV_ARRAY_H_
 #include "hw_dev_dec.h"
@@ -29,8 +28,9 @@ static hw_dec_struct hw_dec_device_array[] =
 	{ DEV_I2C_NTC,"ntc" },
 	{ DEV_I2C_MHL,"mhl" },
 	{ DEV_I2C_AUDIENCE,"audience" },
+	{ DEV_I2C_USB_SWITCH,"usb_switch"},
+	{ DEV_I2C_SAR_SENSOR, "sar_sensor"},
 	{ DEV_I2C_MAX,"NULL" },
 };
 
 #endif
-/* DTS2014041705903 zhangmin 20140418 end > */

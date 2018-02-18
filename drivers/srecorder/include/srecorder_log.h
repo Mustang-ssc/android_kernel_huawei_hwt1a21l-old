@@ -5,11 +5,11 @@
     
     @brief: 
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 **/
@@ -37,6 +37,24 @@ typedef enum
     CATEGORY_EXT,
     CATEGORY_MAX = CATEGORY_EXT
 } log_category_e;
+
+/**
+    @function: void srecorder_ioremap_dts_memory(void)
+    @brief: dump 
+    @param: reason
+    @return: none
+    @note:
+**/
+void srecorder_ioremap_dts_memory(void);
+
+/**
+    @function: void srecorder_iounremap_dts_memory(void)
+    @brief: dump 
+    @param: reason
+    @return: none
+    @note:
+**/
+void srecorder_iounremap_dts_memory(void);
 
 /**
     @function: void srecorder_init_log_headers()

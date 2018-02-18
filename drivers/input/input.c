@@ -28,9 +28,9 @@
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
 #include "input-compat.h"
-/*<DTS2014111701156 l00101002 20140924 begin*/
+#ifdef CONFIG_LOG_JANK
 #include <linux/log_jank.h>
-/*DTS2014111701156 l00101002 20140924 end>*/
+#endif
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
 MODULE_DESCRIPTION("Input core");
 MODULE_LICENSE("GPL");
@@ -268,6 +268,8 @@ static int input_get_disposition(struct input_dev *dev,
 	case EV_SYN:
 		switch (code) {
 		case SYN_CONFIG:
+		case SYN_TIME_SEC:
+		case SYN_TIME_NSEC:
 			disposition = INPUT_PASS_TO_ALL;
 			break;
 
@@ -430,13 +432,12 @@ void input_event(struct input_dev *dev,
 		spin_lock_irqsave(&dev->event_lock, flags);
 		input_handle_event(dev, type, code, value);
 		spin_unlock_irqrestore(&dev->event_lock, flags);
-/*<DTS2014111701156 l00101002 20140924 begin*/
 #ifdef CONFIG_LOG_JANK
 		if(EV_MSC == type)
 		{
 			if((code == MSC_SCAN)&&(!value))
 			{
-				pr_jank(JL_COVER_WAKE_LOCK,"%s#T:%5lu","JL_COVER_WAKE_LOCK",getrealtime());
+				LOG_JANK_D(JLID_COVER_WAKE_LOCK,"%s","JL_COVER_WAKE_LOCK");
 			}
 		}
 		else if(EV_ABS == type)
@@ -444,13 +445,12 @@ void input_event(struct input_dev *dev,
 			if(code == ABS_DISTANCE)
 			{
 				if(value)
-					pr_jank(JL_PROXIMITY_SENSOR_FAR, "%s#T:%5lu", "JL_PROXIMITY_SENSOR_FAR",getrealtime());
+					LOG_JANK_D(JLID_PROXIMITY_SENSOR_FAR, "%s", "JL_PROXIMITY_SENSOR_FAR");
 				else
-					pr_jank(JL_PROXIMITY_SENSOR_NEAR, "%s#T:%5lu", "JL_PROXIMITY_SENSOR_NEAR",getrealtime());
+					LOG_JANK_D(JLID_PROXIMITY_SENSOR_NEAR, "%s", "JL_PROXIMITY_SENSOR_NEAR");
 			}
 		}
 #endif
-/*DTS2014111701156 l00101002 20140924 end>*/
 	}
 }
 EXPORT_SYMBOL(input_event);

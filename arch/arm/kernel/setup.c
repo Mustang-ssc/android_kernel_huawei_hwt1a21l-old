@@ -38,6 +38,7 @@
 #include <asm/cputype.h>
 #include <asm/elf.h>
 #include <asm/procinfo.h>
+#include <asm/psci.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/smp_plat.h>
@@ -57,14 +58,12 @@
 #include <asm/memblock.h>
 #include <asm/virt.h>
 
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
+#include "atags.h"
+
 #ifdef CONFIG_DUMP_SYS_INFO
 #include <linux/module.h>
 #include <linux/srecorder.h>
 #endif
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
-#include "atags.h"
-
 
 #if defined(CONFIG_FPE_NWFPE) || defined(CONFIG_FPE_FASTFPE)
 char fpe_type[8];
@@ -78,10 +77,10 @@ static int __init fpe_setup(char *line)
 __setup("fpe=", fpe_setup);
 #endif
 
-extern void paging_init(struct machine_desc *desc);
+extern void paging_init(const struct machine_desc *desc);
 extern void sanity_check_meminfo(void);
 extern enum reboot_mode reboot_mode;
-extern void setup_dma_zone(struct machine_desc *desc);
+extern void setup_dma_zone(const struct machine_desc *desc);
 
 unsigned int processor_id;
 EXPORT_SYMBOL(processor_id);
@@ -109,15 +108,13 @@ EXPORT_SYMBOL(boot_reason);
 
 unsigned int cold_boot;
 EXPORT_SYMBOL(cold_boot);
-
-/* < DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #ifndef HIDE_PRODUCT_INFO_KERNEL
+//Define the valuable which declared in processor.h
 unsigned int hide_info;
 EXPORT_SYMBOL(hide_info);
 #endif
 #endif
-/* DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 end > */
 
 char* (*arch_read_hardware_id)(void);
 EXPORT_SYMBOL(arch_read_hardware_id);
@@ -159,8 +156,14 @@ EXPORT_SYMBOL(elf_platform);
 
 static const char *cpu_name;
 static const char *machine_name;
+static char __initdata cmd_line[COMMAND_LINE_SIZE];
+const struct machine_desc *machine_desc __initdata;
 
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 begin */ 
+static union { char c[4]; unsigned long l; } endian_test __initdata = { { 'l', '?', '?', 'b' } };
+#define ENDIANNESS ((char)endian_test.l)
+
+DEFINE_PER_CPU(struct cpuinfo_arm, cpu_data);
+
 #ifdef CONFIG_DUMP_SYS_INFO
 unsigned long get_cpu_name(void)
 {
@@ -174,15 +177,6 @@ unsigned long get_machine_name(void)
 }
 EXPORT_SYMBOL(get_machine_name);
 #endif
-/* DTS20141205XXXXX qidechun/yantongguang 2014-12-05 end */ 
-
-static char __initdata cmd_line[COMMAND_LINE_SIZE];
-struct machine_desc *machine_desc __initdata;
-
-static union { char c[4]; unsigned long l; } endian_test __initdata = { { 'l', '?', '?', 'b' } };
-#define ENDIANNESS ((char)endian_test.l)
-
-DEFINE_PER_CPU(struct cpuinfo_arm, cpu_data);
 
 /*
  * Standard memory resources
@@ -622,7 +616,7 @@ static void __init setup_processor(void)
 
 void __init dump_machine_table(void)
 {
-	struct machine_desc *p;
+	const struct machine_desc *p;
 
 	early_print("Available machine support:\n\nID (hex)\tNAME\n");
 	for_each_machine_desc(p)
@@ -636,15 +630,23 @@ void __init dump_machine_table(void)
 
 int __init arm_add_memory(phys_addr_t start, phys_addr_t size)
 {
+	u64 aligned_start;
+
 	/*
 	 * Ensure that start/size are aligned to a page boundary.
 	 * Size is appropriately rounded down, start is rounded up.
 	 */
 	size -= start & ~PAGE_MASK;
-	start = PAGE_ALIGN(start);
+	aligned_start = PAGE_ALIGN(start);
 
-#ifndef CONFIG_ARM_LPAE
-	if (start + size < start) {
+#ifndef CONFIG_ARCH_PHYS_ADDR_T_64BIT
+	if (aligned_start > ULONG_MAX) {
+		printk(KERN_CRIT "Ignoring memory at 0x%08llx outside "
+		       "32-bit physical address space\n", (long long)start);
+		return -EINVAL;
+	}
+
+	if (aligned_start + size > ULONG_MAX) {
 		printk(KERN_CRIT "Truncating memory at 0x%08llx to fit in "
 			"32-bit physical address space\n", (long long)start);
 		/*
@@ -652,9 +654,23 @@ int __init arm_add_memory(phys_addr_t start, phys_addr_t size)
 		 * 32 bits, we use ULONG_MAX as the upper limit rather than 4GB.
 		 * This means we lose a page after masking.
 		 */
-		size = ULONG_MAX - start;
+		size = ULONG_MAX - aligned_start;
 	}
 #endif
+
+	if (aligned_start < PHYS_OFFSET) {
+		if (aligned_start + size <= PHYS_OFFSET) {
+			pr_info("Ignoring memory below PHYS_OFFSET: 0x%08llx-0x%08llx\n",
+				aligned_start, aligned_start + size);
+			return -EINVAL;
+		}
+
+		pr_info("Ignoring memory below PHYS_OFFSET: 0x%08llx-0x%08llx\n",
+			aligned_start, (u64)PHYS_OFFSET);
+
+		size -= PHYS_OFFSET - aligned_start;
+		aligned_start = PHYS_OFFSET;
+	}
 
 	size = size & ~(phys_addr_t)(PAGE_SIZE - 1);
 
@@ -673,6 +689,7 @@ int __init arm_add_memory(phys_addr_t start, phys_addr_t size)
  * Pick out the memory size.  We look for mem=size@start,
  * where start and size are "size[KkMm]"
  */
+
 static int __init early_mem(char *p)
 {
 	static int usermem __initdata = 0;
@@ -702,7 +719,6 @@ static int __init early_mem(char *p)
 }
 early_param("mem", early_mem);
 
-/* < DTS2014042500397 shiguojun 20140425 begin */
 #ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
 #define DATAMOUNT_FLAG_FAIL 0x0587C90A
 #define DATAMOUNT_FLAG_SUCCESS 0 // datamount_flag initialization value
@@ -737,9 +753,8 @@ static int __init early_param_huaweitype(char * p)
 }
 early_param("androidboot.huawei_type", early_param_huaweitype);
 #endif
-/* DTS2014042500397 shiguojun 20140425 end > */
 
-static void __init request_standard_resources(struct machine_desc *mdesc)
+static void __init request_standard_resources(const struct machine_desc *mdesc)
 {
 	struct memblock_region *region;
 	struct resource *res;
@@ -794,13 +809,8 @@ struct screen_info screen_info = {
  .orig_video_points	= 8
 };
 #endif
-
-/*< DTS2014040701285 zhouhaibo 20140407 begin*/
 #ifdef CONFIG_HUAWEI_KERNEL
-/*< DTS2012092200747 dingzhipeng 20120922 begin*/
-/*< DTS2012062802656 dingzhipeng 20120628 begin*/
 
-/* <DTS2014102405622 lijulong 20141024 begin*/
 typedef enum
 {
     RUNMODE_FLAG_NORMAL,
@@ -821,21 +831,15 @@ static int __init init_runmode(char *str)
         return 0;
     }
 
-    if(!strncmp(str, RUNMODE_FLAG_NORMAL_KEY, sizeof(RUNMODE_FLAG_NORMAL_KEY)-1))
-    {
-        runmode_factory = RUNMODE_FLAG_NORMAL;
-        printk(KERN_NOTICE "%s:run mode is normal\n", __func__);
-    }
-    else if(!strncmp(str, RUNMODE_FLAG_FACTORY_KEY, sizeof(RUNMODE_FLAG_FACTORY_KEY)-1))
+    if(!strncmp(str, RUNMODE_FLAG_FACTORY_KEY, sizeof(RUNMODE_FLAG_FACTORY_KEY)-1))
     {
         runmode_factory = RUNMODE_FLAG_FACTORY;
         printk(KERN_NOTICE "%s:run mode is factory\n", __func__);
     }
     else
     {
-        runmode_factory = RUNMODE_FLAG_UNKNOW;
-        printk(KERN_CRIT "%s:run mode unknow,str=%-10s\n", __func__,str);
-        return 0;
+        runmode_factory = RUNMODE_FLAG_NORMAL;
+        printk(KERN_NOTICE "%s:run mode is normal\n", __func__);
     }
     return 1;
 }
@@ -853,12 +857,8 @@ bool is_runmode_factory(void)
 }
 
 EXPORT_SYMBOL(is_runmode_factory);
-/* DTS2014102405622 lijulong 20141024 end >*/
 
-/* DTS2012062802656 dingzhipeng 20120628 end >*/
-/* DTS2012092200747 dingzhipeng 20120922 end >*/
 #endif
-/* DTS2014040701285 zhouhaibo 20140407 end >*/
 
 static int __init customize_machine(void)
 {
@@ -951,9 +951,11 @@ void __init hyp_mode_check(void)
 #endif
 }
 
+void __init __weak init_random_pool(void) { }
+
 void __init setup_arch(char **cmdline_p)
 {
-	struct machine_desc *mdesc;
+	const struct machine_desc *mdesc;
 
 	setup_processor();
 	mdesc = setup_machine_fdt(__atags_pointer);
@@ -990,14 +992,19 @@ void __init setup_arch(char **cmdline_p)
 
 	unflatten_device_tree();
 
+	psci_init();
 #ifdef CONFIG_SMP
 	if (is_smp()) {
-		smp_set_ops(mdesc->smp);
+		if (psci_smp_available())
+			smp_set_ops(&psci_smp_ops);
+		else if (mdesc->smp)
+			smp_set_ops(mdesc->smp);
 		smp_init_cpus();
 		arm_dt_init_cpu_maps();
 		smp_build_mpidr_hash();
 	}
 #endif
+
 	if (!is_smp())
 		hyp_mode_check();
 
@@ -1017,6 +1024,8 @@ void __init setup_arch(char **cmdline_p)
 
 	if (mdesc->init_early)
 		mdesc->init_early();
+
+	init_random_pool();
 }
 
 
@@ -1077,13 +1086,6 @@ static int c_show(struct seq_file *m, void *v)
 {
 	int i, j;
 	u32 cpuid;
-    /* < DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-    /*<DTS2014072506807 lijiechun 00101002 changed the default hide info begin*/
-    static const char hide_machine_name[]="Qualcomm MSM 8926";
-    /* DTS2014072506807 lijiechun 00101002 changed the default hide info end>*/
-#endif
-    /* DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 end > */
 
 	for_each_present_cpu(i) {
 		/*
@@ -1134,32 +1136,11 @@ static int c_show(struct seq_file *m, void *v)
 		}
 		seq_printf(m, "CPU revision\t: %d\n\n", cpuid & 15);
 	}
-    /* < DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-#ifdef HIDE_PRODUCT_INFO_KERNEL
-    seq_printf(m, "Hardware\t: %sH\n", hide_machine_name);
-#else
-    if(hide_info)
-    {
-        /*<DTS2014072506807 lijiechun 00101002 changed the default hide info begin*/
-        seq_printf(m, "Hardware\t: %s\n", hide_machine_name);
-        /* DTS2014072506807 lijiechun 00101002 changed the default hide info end>*/
-    }
-    else
-    {
-        if (!arch_read_hardware_id)
-            seq_printf(m, "Hardware\t: %s\n", machine_name);
-        else
-            seq_printf(m, "Hardware\t: %s\n", arch_read_hardware_id());
-    }
-#endif
-#else
+
 	if (!arch_read_hardware_id)
 		seq_printf(m, "Hardware\t: %s\n", machine_name);
 	else
 		seq_printf(m, "Hardware\t: %s\n", arch_read_hardware_id());
-#endif
-    /* DTS2014071201040 wuzhen/00213434 yuanxiaofeng/278246 20140711 end > */
 	seq_printf(m, "Revision\t: %04x\n", system_rev);
 	seq_printf(m, "Serial\t\t: %08x%08x\n",
 		   system_serial_high, system_serial_low);

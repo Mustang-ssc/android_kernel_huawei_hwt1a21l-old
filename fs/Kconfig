@@ -67,9 +67,8 @@ source "fs/quota/Kconfig"
 
 source "fs/autofs4/Kconfig"
 source "fs/fuse/Kconfig"
-#/* < DTS2014050406410 wenshuai 20140504 begin */
 source "fs/sdcardfs/Kconfig"
-#/* DTS2014050406410 wenshuai 20140504 end > */
+
 config GENERIC_ACL
 	bool
 	select FS_POSIX_ACL
@@ -273,7 +272,5 @@ endif # NETWORK_FILESYSTEMS
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
-#/*Begin DTS2015022803688  Added by lvxinkai/lwx270663 2015/2/28*/
 source "fs/exfat/Kconfig"
-#/*End DTS2015022803688  Added by lvxinkai/lwx270663 2015/2/28*/
 endmenu

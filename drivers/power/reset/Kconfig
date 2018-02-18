@@ -53,12 +53,10 @@ config POWER_RESET_VEXPRESS
 	  Power off and reset support for the ARM Ltd. Versatile
 	  Express boards.
 
-#/* < DTS2014052905391 gaoxu 20140610 begin */
 config HUAWEI_DEBUG_MODE
 	bool "debug mode support"
 	depends on HUAWEI_KERNEL
         default n
 	help
 	  in debug mode,you can use sysrq and dump mode 	 
-#/* DTS2014052905391 zhaoyingchun 20140610 end > */
 

@@ -16,7 +16,5 @@ ifeq ($(CONFIG_SND),y)
   obj-y += last.o
 endif
 
-# /* < DTS2014041201607 yangxiaocong 20140412 begin */
 obj-y += hw_audio_info.o
-# /* DTS2014041201607 yangxiaocong 20140412 end > */
 soundcore-objs  := sound_core.o

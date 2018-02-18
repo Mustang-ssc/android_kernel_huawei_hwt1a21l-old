@@ -1,4 +1,3 @@
-/* < DTS2014082110037 shenchen 20140821 begin */
 #include<linux/kernel.h>
 #include<linux/module.h>
 #include<linux/fs.h>
@@ -65,5 +64,3 @@ int store_exception(char* name, char* msg)
     set_fs(oldfs);
     return ret;
 }
-/* DTS2014082110037 shenchen 20140821 end> */
-

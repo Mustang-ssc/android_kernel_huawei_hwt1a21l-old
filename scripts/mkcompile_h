@@ -52,12 +52,12 @@ if test -z "$KBUILD_BUILD_HOST"; then
 else
 	LINUX_COMPILE_HOST=$KBUILD_BUILD_HOST
 fi
-#/* < DTS2014071201040 wuzhen/00213434 20140711 begin */
-if [ "$HIDE_PRODUCT_INFO" == "true" ]; then
+#/*<DTS2015012801569 fanxiaozhen/wx272807 20150206 begin*/
+if [ "$HIDE_PRODUCT_INFO" == "true" ]; then	
 	LINUX_COMPILE_BY="android"
 	LINUX_COMPILE_HOST="localhost"
 fi
-#/* DTS2014071201040 wuzhen/00213434 20140711 end > */
+#/* DTS2015012801569 fanxiaozhen/wx272807 20150206 end >*/
 
 UTS_VERSION="#$VERSION"
 CONFIG_FLAGS=""

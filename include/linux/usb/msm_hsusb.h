@@ -2,7 +2,7 @@
  *
  * Copyright (C) 2008 Google, Inc.
  * Author: Brian Swetland <swetland@google.com>
- * Copyright (c) 2009-2014, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2015, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -71,13 +71,7 @@ enum usb_mode_type {
 	USB_OTG,
 };
 
-/*DTS2015011206855 shangzhi 20150112 begin*/
- enum usb_otg_chargerIC {
-    OTG_CHGIC_NONE = 0,
-    OTG_CHGIC_BQ24152 = 1,
-    OTG_CHGIC_MAX77819 = 2,
-};
-/*DTS2015011206855 shangzhi 20150112 end*/
+/* remove redundant code */
 /**
  * OTG control
  *
@@ -99,22 +93,22 @@ enum otg_control_type {
  * PHY used in
  *
  * INVALID_PHY			Unsupported PHY
- * CI_45NM_INTEGRATED_PHY	Chipidea 45nm integrated PHY
- * SNPS_28NM_INTEGRATED_PHY	Synopsis 28nm integrated PHY
+ * CI_PHY			Chipidea PHY
+ * SNPS_PICO_PHY		Synopsis Pico PHY
+ * SNPS_FEMTO_PHY		Synopsis Femto PHY
  *
  */
 enum msm_usb_phy_type {
 	INVALID_PHY = 0,
-	CI_45NM_INTEGRATED_PHY,
-	SNPS_28NM_INTEGRATED_PHY,
+	CI_PHY,			/* not supported */
+	SNPS_PICO_PHY,
+	SNPS_FEMTO_PHY,
 };
 
 #define IDEV_CHG_MAX	1500
+#define IDEV_CHG_FLOATED	1000
 #define IDEV_CHG_MIN	500
 #define IUNIT		100
-/* <DTS2014073102071  liyu 20140811 begin */
-//reuse the default USB current limit
-/* DTS2014073102071  liyu 20140811 end> */
 
 #define IDEV_ACA_CHG_MAX	1500
 #define IDEV_ACA_CHG_LIMIT	500
@@ -201,6 +195,19 @@ enum usb_vdd_value {
 };
 
 /**
+ * Maintain state for hvdcp external charger status
+ * DEFAULT	This is used when DCP is detected
+ * ACTIVE	This is used when ioctl is called to block LPM
+ * INACTIVE	This is used when ioctl is called to unblock LPM
+ */
+
+enum usb_ext_chg_status {
+	DEFAULT = 1,
+	ACTIVE,
+	INACTIVE,
+};
+
+/**
  * Supported USB controllers
  */
 enum usb_ctrl {
@@ -261,18 +268,18 @@ enum usb_ctrl {
  * @bool disable_retention_with_vdd_min: Indicates whether to enable
 		allowing VDDmin without putting PHY into retention.
  * @usb_id_gpio: Gpio used for USB ID detection.
+ * @bool phy_dvdd_always_on: PHY DVDD is supplied by always on PMIC LDO.
  */
 struct msm_otg_platform_data {
 	int *phy_init_seq;
+	int *phy_init_seq_host;
 	int (*vbus_power)(bool on);
 	unsigned power_budget;
 	enum usb_mode_type mode;
 	enum otg_control_type otg_control;
 	enum usb_mode_type default_mode;
 	enum msm_usb_phy_type phy_type;
-    /*DTS2015011206855 shangzhi 20150112 begin*/
-    enum usb_otg_chargerIC chargerIC;
-    /*DTS2015011206855 shangzhi 20150112 end*/
+	/* remove redundant code */
 	int pmic_id_irq;
 	unsigned int mpm_otgsessvld_int;
 	unsigned int mpm_dpshv_int;
@@ -295,6 +302,8 @@ struct msm_otg_platform_data {
 	bool enable_ahb2ahb_bypass;
 	bool disable_retention_with_vdd_min;
 	int usb_id_gpio;
+	bool phy_dvdd_always_on;
+	struct clk *system_clk;
 };
 
 /* phy related flags */
@@ -352,10 +361,16 @@ struct msm_otg_platform_data {
  * @pdata: otg device platform data.
  * @irq: IRQ number assigned for HSUSB controller.
  * @async_irq: IRQ number used by some controllers during low power state
- * @clk: clock struct of alt_core_clk.
  * @pclk: clock struct of iface_clk.
  * @core_clk: clock struct of core_bus_clk.
  * @sleep_clk: clock struct of sleep_clk for USB PHY.
+ * @phy_reset_clk: clock struct of phy_reset_clk for USB PHY. This clock is
+		a reset only clock and resets the PHY, ULPI bridge and
+		CSR wrapper.
+ * @phy_por_clk: clock struct of phy_por_clk for USB PHY. This clock is
+		a reset only clock and resets only the PHY (POR).
+ * @phy_csr_clk: clock struct of phy_csr_clk for USB PHY. This clock is
+		required to acess PHY CSR registers via AHB2PHY interface.
  * @bus_clks: bimc/snoc/pcnoc clock struct.
  * @core_clk_rate: core clk max frequency
  * @regs: ioremapped register base address.
@@ -392,8 +407,8 @@ struct msm_otg_platform_data {
  * @ui_enabled: USB Intterupt is enabled or disabled.
  * @pm_done: It is used to increment the pm counter using pm_runtime_get_sync.
 	     This handles the race case when PM resume thread returns before
-	     the charger detection starts. When USB is disconnected pm_done
-	     is set to true.
+	     the charger detection starts. When USB is disconnected and in lpm
+	     pm_done is set to true.
  * @ext_id_irq: IRQ for ID interrupt.
  */
 struct msm_otg {
@@ -402,14 +417,17 @@ struct msm_otg {
 	int irq;
 	int async_irq;
 	struct clk *xo_clk;
-	struct clk *clk;
 	struct clk *pclk;
 	struct clk *core_clk;
 	struct clk *sleep_clk;
+	struct clk *phy_reset_clk;
+	struct clk *phy_por_clk;
+	struct clk *phy_csr_clk;
 	struct clk *bus_clks[USB_NUM_BUS_CLOCKS];
 	long core_clk_rate;
 	struct resource *io_res;
 	void __iomem *regs;
+	void __iomem *phy_csr_regs;
 	void __iomem *usb_phy_ctrl_reg;
 #define ID		0
 #define B_SESS_VLD	1
@@ -490,6 +508,14 @@ struct msm_otg {
 	* for fixing PHY current leakage issue when LDOs ar turned off.
 	*/
 #define ALLOW_VDD_MIN_WITH_RETENTION_DISABLED BIT(5)
+
+	/*
+	 * PHY can keep D+ pull-up during peripheral bus suspend and
+	 * D+/D- pull-down during host bus suspend without any
+	 * re-work. This is possible only when PHY DVDD is supplied
+	 * by a PMIC LDO (unlike VDDCX/VDDMX).
+	 */
+#define ALLOW_BUS_SUSPEND_WITHOUT_REWORK BIT(6)
 	unsigned long lpm_flags;
 #define PHY_PWR_COLLAPSED		BIT(0)
 #define PHY_RETENTIONED			BIT(1)
@@ -513,13 +539,14 @@ struct msm_otg {
 	struct class *ext_chg_class;
 	struct device *ext_chg_device;
 	bool ext_chg_opened;
-	bool ext_chg_active;
+	enum usb_ext_chg_status ext_chg_active;
 	struct completion ext_chg_wait;
 	struct pinctrl *phy_pinctrl;
 	int ui_enabled;
 	bool pm_done;
 	struct qpnp_vadc_chip	*vadc_dev;
 	int ext_id_irq;
+	wait_queue_head_t	host_suspend_wait;
 };
 
 struct ci13xxx_platform_data {
@@ -532,6 +559,7 @@ struct ci13xxx_platform_data {
 	void *prv_data;
 	bool l1_supported;
 	bool enable_ahb2ahb_bypass;
+	struct clk *system_clk;
 };
 
 /**
@@ -630,6 +658,8 @@ void msm_bam_wait_for_hsic_host_prod_granted(void);
 bool msm_bam_hsic_lpm_ok(void);
 void msm_bam_usb_host_notify_on_resume(void);
 void msm_bam_hsic_host_notify_on_resume(void);
+bool msm_bam_hsic_host_pipe_empty(void);
+void msm_bam_set_qdss_usb_active(bool is_active);
 #else
 static inline bool msm_bam_usb_lpm_ok(enum usb_ctrl ctrl) { return true; }
 static inline void msm_bam_notify_lpm_resume(enum usb_ctrl ctrl) {}
@@ -641,6 +671,8 @@ static inline void msm_bam_wait_for_hsic_host_prod_granted(void) {}
 static inline bool msm_bam_hsic_lpm_ok(void) { return true; }
 static inline void msm_bam_hsic_host_notify_on_resume(void) {}
 static inline void msm_bam_usb_host_notify_on_resume(void) {}
+static inline bool msm_bam_hsic_host_pipe_empty(void) { return true; }
+static inline void msm_bam_set_qdss_usb_active(bool is_active) {}
 #endif
 #ifdef CONFIG_USB_CI13XXX_MSM
 void msm_hw_bam_disable(bool bam_disable);
@@ -707,4 +739,21 @@ static inline int msm_dwc3_reset_dbm_ep(struct usb_ep *ep)
 }
 
 #endif
+
+#ifdef CONFIG_HUAWEI_EXTERN_ID_DETECT
+/*
+ * USB ID STATUS, only support 0 or 1
+ * the USB ID is pulled up internal
+ * USB_ID_STATUS_LOW :  id is pulled down, should switch to usb host mode
+ * USB_ID_STATUS_HIGH:  id is pulled up,   should switch to usb peripheral mode
+ *
+ */
+typedef enum enum_usb_id_status_type {
+	USB_ID_STATUS_LOW = 0,
+	USB_ID_STATUS_HIGH,
+}USB_ID_STATUS_TYPE;
+
+extern void msm_id_status_changed(USB_ID_STATUS_TYPE id_state);
+#endif
+
 #endif

@@ -55,6 +55,66 @@ struct sched_param {
 
 #include <asm/processor.h>
 
+#define SCHED_ATTR_SIZE_VER0	48	/* sizeof first published struct */
+
+/*
+ * Extended scheduling parameters data structure.
+ *
+ * This is needed because the original struct sched_param can not be
+ * altered without introducing ABI issues with legacy applications
+ * (e.g., in sched_getparam()).
+ *
+ * However, the possibility of specifying more than just a priority for
+ * the tasks may be useful for a wide variety of application fields, e.g.,
+ * multimedia, streaming, automation and control, and many others.
+ *
+ * This variant (sched_attr) is meant at describing a so-called
+ * sporadic time-constrained task. In such model a task is specified by:
+ *  - the activation period or minimum instance inter-arrival time;
+ *  - the maximum (or average, depending on the actual scheduling
+ *    discipline) computation time of all instances, a.k.a. runtime;
+ *  - the deadline (relative to the actual activation time) of each
+ *    instance.
+ * Very briefly, a periodic (sporadic) task asks for the execution of
+ * some specific computation --which is typically called an instance--
+ * (at most) every period. Moreover, each instance typically lasts no more
+ * than the runtime and must be completed by time instant t equal to
+ * the instance activation time + the deadline.
+ *
+ * This is reflected by the actual fields of the sched_attr structure:
+ *
+ *  @size		size of the structure, for fwd/bwd compat.
+ *
+ *  @sched_policy	task's scheduling policy
+ *  @sched_flags	for customizing the scheduler behaviour
+ *  @sched_nice		task's nice value      (SCHED_NORMAL/BATCH)
+ *  @sched_priority	task's static priority (SCHED_FIFO/RR)
+ *  @sched_deadline	representative of the task's deadline
+ *  @sched_runtime	representative of the task's runtime
+ *  @sched_period	representative of the task's period
+ *
+ * Given this task model, there are a multiplicity of scheduling algorithms
+ * and policies, that can be used to ensure all the tasks will make their
+ * timing constraints.
+ */
+struct sched_attr {
+	u32 size;
+
+	u32 sched_policy;
+	u64 sched_flags;
+
+	/* SCHED_NORMAL, SCHED_BATCH */
+	s32 sched_nice;
+
+	/* SCHED_FIFO, SCHED_RR */
+	u32 sched_priority;
+
+	/* SCHED_DEADLINE */
+	u64 sched_runtime;
+	u64 sched_deadline;
+	u64 sched_period;
+};
+
 struct exec_domain;
 struct futex_pi_state;
 struct robust_list_head;
@@ -207,6 +267,8 @@ extern char ___assert_task_state[1 - 2*!!(
 
 /* Task command name length */
 #define TASK_COMM_LEN 16
+
+extern const char *sched_window_reset_reasons[];
 
 enum task_event {
 	PUT_PREV_TASK   = 0,
@@ -941,7 +1003,7 @@ struct sched_avg {
 	 * choices of y < 1-2^(-32)*1024.
 	 */
 	u32 runnable_avg_sum, runnable_avg_period;
-#if defined(CONFIG_SCHED_FREQ_INPUT) || defined(CONFIG_SCHED_HMP)
+#ifdef CONFIG_SCHED_HMP
 	u32 runnable_avg_sum_scaled;
 #endif
 	u64 last_runnable_update;
@@ -1005,12 +1067,18 @@ struct ravg {
 	 * sysctl_sched_ravg_hist_size windows. 'demand' could drive frequency
 	 * demand for tasks.
 	 *
-	 * 'flags' can have either or both of PREV_WINDOW_CONTRIB and
-	 * CURR_WINDOW_CONTRIB set.
+	 * 'curr_window' represents task's contribution to cpu busy time
+	 * statistics (rq->curr_runnable_sum) in current window
+	 *
+	 * 'prev_window' represents task's contribution to cpu busy time
+	 * statistics (rq->prev_runnable_sum) in previous window
 	 */
 	u64 mark_start;
-	u32 sum, demand, partial_demand, flags;
+	u32 sum, demand;
 	u32 sum_history[RAVG_HIST_SIZE_MAX];
+#ifdef CONFIG_SCHED_FREQ_INPUT
+	u32 curr_window, prev_window;
+#endif
 };
 
 struct sched_entity {
@@ -1075,6 +1143,13 @@ enum perf_event_task_context {
 	perf_nr_task_contexts,
 };
 
+#ifdef CONFIG_HUAWEI_MSG_POLICY
+struct msg_stat {
+	bool main_looper_thread;
+	struct timespec sched_time;
+};
+#endif
+
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
@@ -1093,7 +1168,7 @@ struct task_struct {
 	const struct sched_class *sched_class;
 	struct sched_entity se;
 	struct sched_rt_entity rt;
-#if defined(CONFIG_SCHED_FREQ_INPUT) || defined(CONFIG_SCHED_HMP)
+#ifdef CONFIG_SCHED_HMP
 	struct ravg ravg;
 #endif
 #ifdef CONFIG_CGROUP_SCHED
@@ -1363,6 +1438,10 @@ struct task_struct {
 	/* cg_list protected by css_set_lock and tsk->alloc_lock */
 	struct list_head cg_list;
 #endif
+#ifdef CONFIG_CGROUP_PIDS
+	struct list_head group_pids_list;
+	struct group_pids *group_pids;
+#endif
 #ifdef CONFIG_FUTEX
 	struct robust_list_head __user *robust_list;
 #ifdef CONFIG_COMPAT
@@ -1462,6 +1541,9 @@ struct task_struct {
 #if defined(CONFIG_BCACHE) || defined(CONFIG_BCACHE_MODULE)
 	unsigned int	sequential_io;
 	unsigned int	sequential_io_avg;
+#endif
+#ifdef CONFIG_HUAWEI_MSG_POLICY
+	struct msg_stat ms;
 #endif
 };
 
@@ -1655,9 +1737,21 @@ extern void thread_group_cputime_adjusted(struct task_struct *p, cputime_t *ut, 
 
 extern int task_free_register(struct notifier_block *n);
 extern int task_free_unregister(struct notifier_block *n);
+#ifdef CONFIG_SCHED_FREQ_INPUT
 extern int sched_set_window(u64 window_start, unsigned int window_size);
 extern unsigned long sched_get_busy(int cpu);
 extern void sched_set_io_is_busy(int val);
+#else
+static inline int sched_set_window(u64 window_start, unsigned int window_size)
+{
+	return -EINVAL;
+}
+static inline unsigned long sched_get_busy(int cpu)
+{
+	return 0;
+}
+static inline void sched_set_io_is_busy(int val) {};
+#endif
 
 /*
  * Per process flags
@@ -1828,7 +1922,16 @@ sched_set_cpu_cstate(int cpu, int cstate, int wakeup_energy, int wakeup_latency)
 #endif
 
 #ifdef CONFIG_SCHED_HMP
+
 extern int sched_set_boost(int enable);
+extern int sched_set_cpu_mostly_idle_load(int cpu, int mostly_idle_pct);
+extern int sched_get_cpu_mostly_idle_load(int cpu);
+extern int sched_set_cpu_mostly_idle_nr_run(int cpu, int nr_run);
+extern int sched_get_cpu_mostly_idle_nr_run(int cpu);
+extern int
+sched_set_cpu_mostly_idle_freq(int cpu, unsigned int mostly_idle_freq);
+extern unsigned int sched_get_cpu_mostly_idle_freq(int cpu);
+
 #else
 static inline int sched_set_boost(int enable)
 {
@@ -1976,6 +2079,8 @@ extern int sched_setscheduler(struct task_struct *, int,
 			      const struct sched_param *);
 extern int sched_setscheduler_nocheck(struct task_struct *, int,
 				      const struct sched_param *);
+extern int sched_setattr(struct task_struct *,
+			 const struct sched_attr *);
 extern struct task_struct *idle_task(int cpu);
 /**
  * is_idle_task - is the specified task an idle task?
@@ -2057,7 +2162,7 @@ extern void wake_up_new_task(struct task_struct *tsk);
 #endif
 extern void sched_fork(struct task_struct *p);
 extern void sched_dead(struct task_struct *p);
-#if defined(CONFIG_SCHED_HMP) || defined(CONFIG_SCHED_FREQ_INPUT)
+#ifdef CONFIG_SCHED_HMP
 extern void sched_exit(struct task_struct *p);
 #else
 static inline void sched_exit(struct task_struct *p) { }
@@ -2604,10 +2709,8 @@ static inline bool __must_check current_set_polling_and_test(void)
 	/*
 	 * Polling state must be visible before we test NEED_RESCHED,
 	 * paired by resched_task()
-	 *
-	 * XXX: assumes set/clear bit are identical barrier wise.
 	 */
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 
 	return unlikely(tif_need_resched());
 }
@@ -2625,7 +2728,7 @@ static inline bool __must_check current_clr_polling_and_test(void)
 	 * Polling state must be visible before we test NEED_RESCHED,
 	 * paired by resched_task()
 	 */
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 
 	return unlikely(tif_need_resched());
 }

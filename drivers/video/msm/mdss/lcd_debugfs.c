@@ -1,4 +1,3 @@
-/* < DTS2014050808504 daiyuhong 20140508 begin */
 /* Copyright (c) 2009-2013, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,9 +16,7 @@
 #include <linux/delay.h>
 #include <linux/unistd.h>
 #include <linux/hw_lcd_common.h>
-/* < DTS2014111001776 zhaoyuxia 20141114 begin */
 #include "hw_lcd_debug.h"
-/* DTS2014111001776 zhaoyuxia 20141114 end > */
 
 /* define macro */
 #define DCS_STR ("dcs_")
@@ -483,4 +480,3 @@ err_create_mipi:
 err_create_dir:
 	return -1;
 }
-/* DTS2014050808504 daiyuhong 20140508 end > */

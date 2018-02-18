@@ -15,13 +15,11 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 
-/* <DTS2014050904735  wuliuzhen 20140509 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 int msm_show_resume_irq_mask = 1;
 #else
 int msm_show_resume_irq_mask = 0;
 #endif
-/* DTS2014050904735  wuliuzhen 20140509 end> */
 
 module_param_named(
 	debug_mask, msm_show_resume_irq_mask, int, S_IRUGO | S_IWUSR | S_IWGRP

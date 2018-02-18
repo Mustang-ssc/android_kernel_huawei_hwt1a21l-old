@@ -1,5 +1,3 @@
-/* < DTS2014081209165 Zhangbo 00166742 20140812 begin */
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #include "msm_camera_dsm.h"
 
 /* buffer size for dsm camera client */
@@ -99,6 +97,3 @@ int camera_report_dsm_err( int type, int err_num, const char* str)
 	return 0;
 
 }
-
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
-/* DTS2014081209165 Zhangbo 00166742 20140812 end > */

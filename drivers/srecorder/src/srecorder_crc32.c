@@ -5,11 +5,11 @@
     
     @brief: 
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 **/
@@ -19,7 +19,7 @@
 
 #define CRC32_SEED_VALUE (0xFFFFFFFF)
 
-static const unsigned long s_crc32tab[256] =
+static const unsigned int s_crc32tab[256] =
 {
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3, 
     0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91, 

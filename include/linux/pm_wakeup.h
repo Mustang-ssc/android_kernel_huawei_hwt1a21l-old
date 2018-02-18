@@ -28,7 +28,6 @@
 
 #include <linux/types.h>
 
-/* < DTS2014051906661 zhongming 20140520 begin */
 /**
  * struct wakeup_source - Representation of wakeup sources
  *
@@ -67,7 +66,6 @@ struct wakeup_source {
 	bool			active:1;
 	bool			autosleep_enabled:1;
 };
-/* DTS2014051906661 zhongming 20140520 end > */
 
 #ifdef CONFIG_PM_SLEEP
 

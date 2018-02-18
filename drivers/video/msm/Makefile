@@ -1,8 +1,5 @@
 ifeq ($(CONFIG_FB_MSM_MDSS_COMMON),y)
-#DTS2014120300339 modify by x00267953 2014-11-03 for LCD Ѕвсо begin
-#obj-y += mdss/
-obj-y += mdss_pad/
-#DTS2014120300339 modify by x00267953 2014-11-03 for LCD Ѕвсо end
+obj-y += mdss/
 else
 obj-y := msm_fb.o
 

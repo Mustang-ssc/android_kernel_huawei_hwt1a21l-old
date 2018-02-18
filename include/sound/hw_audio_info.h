@@ -1,39 +1,26 @@
-/* < DTS2014071005378 yubin 20140711 begin */
-
 #ifndef _HW_AUDIO_INFO_H
 #define _HW_AUDIO_INFO_H
 
-/* < DTS2014120102447 wangzefan/wx224779 20141202 begin */
-/* < DTS2015012005833 wangzefan/wwx224779 20150120 begin */
 #include <linux/dsm_pub.h>
-/* DTS2015012005833 wangzefan/wwx224779 20150120 end > */
-/* DTS2014120102447 wangzefan/wx224779 20141202 end > */
 
 #define DSM_AUDIO_BUF_SIZE           (1024)   /*Byte*/
 
-/* < DTS2014121000765 wangzefan/wx224779 20141209 begin */
 #define DSM_REPORT_DELAY_TIME        (40)
 #define DSM_REPORT_BUF_SIZE          (512)
-/* DTS2014121000765 wangzefan/wx224779 20141209 end > */
 
 #define DSM_AUDIO_MOD_NAME           "dsm_audio_info"
 
-/* < DTS2014120102447 wangzefan/wx224779 20141202 begin */
 #define DSM_AUDIO_LESS_HS_GAP        (500)     //ms
-/* DTS2014120102447 wangzefan/wx224779 20141202 end > */
 
 int audio_dsm_register(void);
 int audio_dsm_report_num(int error_no, unsigned int mesg_no);
-/* < DTS2014121000765 wangzefan/wx224779 20141209 begin */
 int audio_dsm_report_info(int error_no, char *fmt, ...);
-/* DTS2014121000765 wangzefan/wx224779 20141209 end > */
 
 /* DSM audio error message level */
 #define DSM_AUDIO_MESG_LEVEL_ERROR           (1)
 #define DSM_AUDIO_MESG_LEVEL_INFO            (2)
 
 /* DSM audio error message code */
-
 #define DSM_AUDIO_MESG_GET_PINCRTL_FAIL    ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 1)
 #define DSM_AUDIO_MESG_MACH_PROBE_FAIL     ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 2)
 #define DSM_AUDIO_MESG_MEDOM_LOAD_FAIL     ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 3)
@@ -43,7 +30,6 @@ int audio_dsm_report_info(int error_no, char *fmt, ...);
 #define DSM_AUDIO_MESG_IOREMAP_FAIL        ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 7)
 #define DSM_AUDIO_MESG_MEDOM_REGIST_FAIL   ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 8)
 #define DSM_AUDIO_MESG_HS_TYPE_DECT_FAIL   ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 9)
-/* < DTS2014120102447 wangzefan/wx224779 20141202 begin */
 #define DSM_AUDIO_MESG_MODEM_CALLBACK      ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 10)
 #define DSM_AUDIO_MESG_MODEM_STILL_NOTUP   ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 11)
 #define DSM_AUDIO_MESG_MODEM_SHUTDOWN      ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 12)
@@ -60,6 +46,4 @@ int audio_dsm_report_info(int error_no, char *fmt, ...);
 #define DSM_AUDIO_MESG_PRESS_RELEASE_ERROR ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 23)
 #define DSM_AUDIO_MESG_MODEM_HAS_SSR       ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 24)
 #define DSM_AUDIO_MESG_INSURT_TIME_SHORT   ((DSM_AUDIO_MESG_LEVEL_ERROR<<24) + 25)
-/* DTS2014120102447 wangzefan/wx224779 20141202 end > */
 #endif
-/* DTS2014071005378 yubin 20140711 end > */

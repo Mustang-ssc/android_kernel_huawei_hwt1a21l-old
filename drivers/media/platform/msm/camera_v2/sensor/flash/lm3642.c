@@ -10,24 +10,17 @@
  * GNU General Public License for more details.
  *
  */
- /* < DTS2013103008314 yangjiangjun 20131030 begin */
 #include <linux/module.h>
 #include <linux/export.h>
-#include <mach/gpiomux.h>
+//#include <mach/gpiomux.h>
 #include "msm_camera_io_util.h"
 #include "msm_led_flash.h"
 
-/*DTS2014120202744  20141201 shaohongyuan swx234330 for Flash MMI Test Begin*/
-#include <linux/equip.h>
-/*DTS2014120202744  20141201 shaohongyuan swx234330 for Flash MMI Test End*/
-
 #define FLASH_NAME "ti,lm3642"
 
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #include "msm_camera_dsm.h"
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 
 #define CONFIG_MSMB_CAMERA_DEBUG
 #ifdef CONFIG_MSMB_CAMERA_DEBUG
@@ -68,16 +61,13 @@
 // Default flash high current, 8 corresponds to 843.75mA.
 #define FLASH_HIGH_CURRENT 8 
 
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #define LED_SHORT                    (1<<1)
 #define LED_THERMAL_SHUTDOWN         (1<<2)
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 
 static struct msm_led_flash_ctrl_t fctrl;
 static struct i2c_driver lm3642_i2c_driver;
-
 
 /*Enable IFVM and set it threshold to 3.2v ,also set flash ramp time to 512us */
 static struct msm_camera_i2c_reg_array lm3642_init_array[] = {
@@ -106,7 +96,7 @@ static struct msm_camera_i2c_reg_array lm3642_high_array[] = {
 	// The duration of high flash, 0x05 corresponds to 600ms.
 	//{FLASH_FEATURE_REGISTER, 0x05},
 	{FLASH_FEATURE_REGISTER, 0x0D},//frash ramp time 512us and flash timeout 600ms
-	{ENABLE_REGISTER, MODE_BIT_FLASH | ENABLE_BIT_FLASH | EBABLE_BIT_IVFM},
+	{ENABLE_REGISTER, MODE_BIT_FLASH | EBABLE_BIT_IVFM},
 };
 
 static struct msm_camera_i2c_reg_array lm3642_torch_array[] = {
@@ -158,7 +148,6 @@ static int32_t msm_lm3642_torch_create_classdev(struct device *dev ,
 	return 0;
 };
 
-/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
 void camera_report_flash_dsm_err(int flash_reg, int rc_value)
 {
@@ -207,7 +196,6 @@ void camera_report_flash_dsm_err(int flash_reg, int rc_value)
 	return;
 }
 #endif
-/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
 
 /****************************************************************************
 * FunctionName: msm_flash_clear_err_and_unlock;
@@ -236,14 +224,12 @@ int msm_flash_clear_err_and_unlock(struct msm_led_flash_ctrl_t *fctrl){
                 }
 
                 LM3642_DBG("clear err and unlock success:%02x\n",reg_value);
-                /* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
 #ifdef CONFIG_HUAWEI_DSM
                 if (reg_value != 0)
                 {
                   camera_report_flash_dsm_err(reg_value, rc);
                 }
 #endif
-                /* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */
         }else{
                 pr_err("%s:%d flash_i2c_client NULL\n", __func__, __LINE__);
                 return -EINVAL;
@@ -418,12 +404,6 @@ int msm_torch_lm3642_led_on(struct msm_led_flash_ctrl_t *fctrl)
 	flashdata = fctrl->flashdata;
 	power_info = &flashdata->power_info;
 
-
-	gpio_set_value_cansleep(
-		power_info->gpio_conf->gpio_num_info->
-		gpio_num[SENSOR_GPIO_FL_NOW],
-		GPIO_OUT_HIGH);
-
 	//clear the err and unlock IC, this function must be called before read and write register
 	msm_flash_clear_err_and_unlock(fctrl);
 
@@ -434,98 +414,20 @@ int msm_torch_lm3642_led_on(struct msm_led_flash_ctrl_t *fctrl)
 		if (rc < 0)
 			pr_err("%s:%d failed\n", __func__, __LINE__);
 	}
+	gpio_set_value_cansleep(
+		power_info->gpio_conf->gpio_num_info->
+		gpio_num[SENSOR_GPIO_FL_NOW],
+		GPIO_OUT_HIGH);
 
 	return rc;
 }
-
-
-/*DTS2014120202744  20141201 shaohongyuan swx234330 for Flash MMI Test Begin*/
-static int flash_equip_init_flag = 0;
-static ssize_t flash_debug_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	unsigned int flag  = 0;
-	int r = 0;
-	if(NULL == buf)
-	{
-		pr_err("The buf is NULL!");
-		return count;
-	}
-	r = sscanf(buf,"%2x",&flag);
-	if (1 != r)
-	{
-		pr_err("%s sscanf return error", __func__);
-		return count;
-	}
-	switch(flag)
-	{
-		case 0x11:
-		case 0x22:
-			if(flash_equip_init_flag == 0)
-			{
-				msm_flash_lm3642_led_init(&fctrl);
-				flash_equip_init_flag = 1;
-			}
-			msm_torch_lm3642_led_on(&fctrl);
-			break;
-		case 0x00://disable all the leds
-			msm_flash_lm3642_led_off(&fctrl);
-			msm_flash_lm3642_led_release(&fctrl);	
-			flash_equip_init_flag = 0;
-			break;
-		default:
-			pr_err("Your input is wrong!");
-			break;
-	}
-	return count;    //return 2;
-}
-#define flash_attr(_name)                     \
-	static struct kobj_attribute _name##_attr = { \
-	.attr = {                                 \
-	.name = __stringify(_name),           \
-	.mode = 0664,                         \
-	},                                        \
-	.show  = NULL,                    \
-	.store = _name##_store,                   \
-	};
-flash_attr(flash_debug);
-static int flash_debug_file(void)
-{
-	int rc = -1;
-	struct kobject *kobject_ts = NULL;
-	
-	flash_equip_init_flag = 0;
-	
-	kobject_ts = kobject_create_and_add("flash",NULL);
-	if(!kobject_ts){
-		pr_err("creat kobject failed!\n");
-		return rc;
-	}
-	rc = sysfs_create_file(kobject_ts,&flash_debug_attr.attr);
-	if(rc){
-		kobject_put(kobject_ts);
-		pr_err("creat kobject file failed!\n");
-		return -1;
-	}
-	return rc;
-}
-void equip_set_flash_status(void * parg)
-{
-	struct EQUIP_PARAM* arg = (struct EQUIP_PARAM*)parg;
-	if(NULL != arg)
-	{
-		flash_debug_store(NULL, NULL, arg->str_in, sizeof(arg->str_in));
-	}
-}
-/*DTS2014120202744  20141201 shaohongyuan swx234330 for Flash MMI Test End*/
-
 
 static int msm_flash_lm3642_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	struct msm_camera_sensor_board_info *flashdata = NULL;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
-	int rc = 0 ;   
-
+	int rc = 0 ;
 	LM3642_DBG("%s entry\n", __func__);
 	if (!id) {
 		pr_err("msm_flash_lm3642_i2c_probe: id is NULL");
@@ -556,17 +458,6 @@ static int msm_flash_lm3642_i2c_probe(struct i2c_client *client,
 
 	if (!rc)
 		msm_lm3642_torch_create_classdev(&(client->dev),NULL);
-
-	/*DTS2014120202744  20141201 shaohongyuan swx234330 for Flash MMI Test Begin*/
-	rc = flash_debug_file();
-	if (rc != 0){
-		pr_err("register flash debug sys file error!");
-	} 
-	LM3642_DBG("Enter %s", __func__);
-	register_equip_func(FLASH, EP_READ, NULL);
-	register_equip_func(FLASH, EP_WRITE, equip_set_flash_status);	
-	/*DTS2014120202744  20141201 shaohongyuan swx234330 for Flash MMI Test End*/	
-		
 	return rc;
 }
 
@@ -597,8 +488,6 @@ static int msm_flash_lm3642_i2c_remove(struct i2c_client *client)
 	return rc;
 }
 
-/* < DTS2014072407479 Zhangbo 00166742 20140724 begin */
-/* < DTS2014022400464 guoyun 20140224 begin */
 static void lm3624_shutdown(struct i2c_client * client)
 {
     pr_err("[%s],[%d]\n", __func__, __LINE__);
@@ -617,8 +506,6 @@ static struct i2c_driver lm3642_i2c_driver = {
 	},
 	.shutdown = lm3624_shutdown,
 };
-/* DTS2014022400464 guoyun 20140224 end > */
-/* DTS2014072407479 Zhangbo 00166742 20140724 end > */
 
 static int __init msm_flash_lm3642_init(void)
 {
@@ -678,7 +565,6 @@ static struct msm_camera_i2c_reg_setting lm3642_high_setting = {
 	.delay = 0,
 };
 
-
 static struct msm_camera_i2c_reg_setting lm3642_torch_setting = {
 	.reg_setting = lm3642_torch_array,
 	.size = ARRAY_SIZE(lm3642_torch_array),
@@ -719,4 +605,3 @@ module_init(msm_flash_lm3642_init);
 module_exit(msm_flash_lm3642_exit);
 MODULE_DESCRIPTION("lm3642 FLASH");
 MODULE_LICENSE("GPL v2");
-/* DTS2014042700594 yangjiangjun 20140427 end > */

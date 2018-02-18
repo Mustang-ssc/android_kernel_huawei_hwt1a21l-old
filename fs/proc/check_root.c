@@ -1,4 +1,3 @@
-/*< DTS2014091203249 yangpanfei 20140915 begin*/
 #include <linux/init.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -51,7 +50,7 @@
 #include <check_root.h>
 
 #define ANDROID_THIRD_PART_APK_UID 10000
-#define AID_SHELL		   2000
+#define AID_SHELL      2000
 
 /* uncomment this for force stop setXid */
 // #define CONFIG_CHECKROOT_FORCE_STOP
@@ -60,80 +59,79 @@ static struct checkroot_ref_cnt checkroot_ref;
 
 static int checkroot_risk_id(int curr_id, int flag)
 {
-	const struct cred *now;
-	now = current_cred();
+    const struct cred *now;
+    now = current_cred();
 
-	if ((curr_id <= ANDROID_THIRD_PART_APK_UID) && (curr_id != AID_SHELL)) {
-		return 0;
-	}
-	printk(KERN_EMERG "check_root: Uid %d, Gid %d, try to Privilege Escalate\n",
-			now->uid, now->gid);
+    if ((curr_id <= ANDROID_THIRD_PART_APK_UID) && (curr_id != AID_SHELL)) {
+        return 0;
+    }
+    printk(KERN_EMERG "check_root: Uid %d, Gid %d, try to Privilege Escalate\n",
+            now->uid, now->gid);
 #ifdef CONFIG_CHECKROOT_FORCE_STOP
-	return 1;
+    return 1;
 #else
-	if (flag & CHECKROOT_SETUID_FLAG) {
-		checkroot_ref.setuid++;
-	}
-	if (flag & CHECKROOT_SETGID_FLAG) {
-		checkroot_ref.setgid++;
-	}
-	if (flag & CHECKROOT_SETRESUID_FLAG) {
-		checkroot_ref.setresuid++;
-	}
-	if (flag & CHECKROOT_SETRESGID_FLAG) {
-		checkroot_ref.setresgid++;
-	}
-	return 0;
+    if (flag & CHECKROOT_SETUID_FLAG) {
+        checkroot_ref.setuid++;
+    }
+    if (flag & CHECKROOT_SETGID_FLAG) {
+        checkroot_ref.setgid++;
+    }
+    if (flag & CHECKROOT_SETRESUID_FLAG) {
+        checkroot_ref.setresuid++;
+    }
+    if (flag & CHECKROOT_SETRESGID_FLAG) {
+         checkroot_ref.setresgid++;
+    }
+    return 0;
 #endif
 }
 
 int checkroot_setuid(uid_t uid)
 {
-	return checkroot_risk_id((int)uid, CHECKROOT_SETUID_FLAG);
+    return checkroot_risk_id((int)uid, CHECKROOT_SETUID_FLAG);
 }
 
 int checkroot_setgid(gid_t gid)
 {
-	return checkroot_risk_id((int)gid, CHECKROOT_SETGID_FLAG);
+    return checkroot_risk_id((int)gid, CHECKROOT_SETGID_FLAG);
 }
 
 int checkroot_setresuid(uid_t uid)
 {
-	return checkroot_risk_id((int)uid, CHECKROOT_SETRESUID_FLAG);
+    return checkroot_risk_id((int)uid, CHECKROOT_SETRESUID_FLAG);
 }
 
 int checkroot_setresgid(gid_t gid)
 {
-	return checkroot_risk_id((int)gid, CHECKROOT_SETRESGID_FLAG);
+    return checkroot_risk_id((int)gid, CHECKROOT_SETRESGID_FLAG);
 }
 
 static int checkroot_proc_show(struct seq_file *m, void *v)
 {
-	seq_printf(m, "setuid %d\nsetgid %d\nsetresuid %d\nsetresgid %d\n",
-			checkroot_ref.setuid, checkroot_ref.setgid,
-			checkroot_ref.setresuid, checkroot_ref.setresgid);
+    seq_printf(m, "setuid %d\nsetgid %d\nsetresuid %d\nsetresgid %d\n",
+            checkroot_ref.setuid, checkroot_ref.setgid,
+            checkroot_ref.setresuid, checkroot_ref.setresgid);
 
-	return 0;
+    return 0;
 }
 
 static int checkroot_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, checkroot_proc_show, NULL);
+    return single_open(file, checkroot_proc_show, NULL);
 }
 
 static const struct file_operations checkroot_proc_fops = {
-	.open		= checkroot_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
+    .open        = checkroot_proc_open,
+    .read        = seq_read,
+    .llseek      = seq_lseek,
+    .release     = single_release,
 };
 
 static int __init proc_checkroot_init(void)
 {
-	memset(&checkroot_ref, 0, sizeof(checkroot_ref));
-	proc_create("check_root", 0, NULL, &checkroot_proc_fops);
+    memset(&checkroot_ref, 0, sizeof(checkroot_ref));
+    proc_create("check_root", 0, NULL, &checkroot_proc_fops);
 
-	return 0;
+    return 0;
 }
 module_init(proc_checkroot_init);
-/*DTS2014091203249 yangpanfei 20140915 end >*/

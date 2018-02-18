@@ -70,9 +70,16 @@ static unsigned int str_hash(void *key) {
 static int contain_appid_key(struct packagelist_data *pkgl_dat, void *appid) {
         struct hashtable_entry *hash_cur;
 
+#ifdef CONFIG_64BIT
+        hash_for_each_possible(pkgl_dat->appid_with_rw,	hash_cur, hlist, (unsigned long long)appid)
+                if (appid == hash_cur->key)
+                        return 1;
+#else
         hash_for_each_possible(pkgl_dat->appid_with_rw,	hash_cur, hlist, (unsigned int)appid)
                 if (appid == hash_cur->key)
                         return 1;
+#endif
+
 	return 0;
 }
 
@@ -202,6 +209,15 @@ static int insert_int_to_null(struct packagelist_data *pkgl_dat, void *key, int 
 	struct hashtable_entry *new_entry;
 
 	//printk(KERN_INFO "sdcardfs: %s: %d: %d\n", __func__, (int)key, value);
+#ifdef CONFIG_64BIT
+	hash_for_each_possible(pkgl_dat->appid_with_rw,	hash_cur, hlist,
+					(unsigned long long)key) {
+		if (key == hash_cur->key) {
+			hash_cur->value = value;
+			return 0;
+		}
+	}
+#else
 	hash_for_each_possible(pkgl_dat->appid_with_rw,	hash_cur, hlist,
 					(unsigned int)key) {
 		if (key == hash_cur->key) {
@@ -209,13 +225,19 @@ static int insert_int_to_null(struct packagelist_data *pkgl_dat, void *key, int 
 			return 0;
 		}
 	}
+#endif
 	new_entry = kmem_cache_alloc(hashtable_entry_cachep, GFP_KERNEL);
 	if (!new_entry)
 		return -ENOMEM;
 	new_entry->key = key;
 	new_entry->value = value;
+#ifdef CONFIG_64BIT
+	hash_add(pkgl_dat->appid_with_rw, &new_entry->hlist,
+			(unsigned long long)new_entry->key);
+#else
 	hash_add(pkgl_dat->appid_with_rw, &new_entry->hlist,
 			(unsigned int)new_entry->key);
+#endif
 	return 0;
 }
 
@@ -259,7 +281,11 @@ static int read_package_list(struct packagelist_data *pkgl_dat) {
 
 	while ((read_amount = sys_read(fd, pkgl_dat->read_buf,
 					sizeof(pkgl_dat->read_buf))) > 0) {
-		int appid;
+#ifdef CONFIG_64BIT
+		long long appid;
+#else
+		int  appid;
+#endif
 		char *token;
 		int one_line_len = 0;
 		int additional_read;
@@ -276,9 +302,15 @@ static int read_package_list(struct packagelist_data *pkgl_dat) {
 		if (additional_read > 0)
 			sys_lseek(fd, -additional_read, SEEK_CUR);
 
+#ifdef CONFIG_64BIT
+		if (sscanf(pkgl_dat->read_buf, "%s %lld %*d %*s %*s %s",
+				pkgl_dat->app_name_buf, &appid,
+				pkgl_dat->gids_buf) == 3) {
+#else
 		if (sscanf(pkgl_dat->read_buf, "%s %d %*d %*s %*s %s",
 				pkgl_dat->app_name_buf, &appid,
 				pkgl_dat->gids_buf) == 3) {
+#endif
 			ret = insert_str_to_int(pkgl_dat, pkgl_dat->app_name_buf, appid);
 			if (ret) {
 				sys_close(fd);

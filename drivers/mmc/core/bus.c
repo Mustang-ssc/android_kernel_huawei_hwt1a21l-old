@@ -398,17 +398,6 @@ int mmc_add_card(struct mmc_card *card)
 			mmc_card_ddr_mode(card) ? "DDR " : "",
 			type);
 	} else {
-		/*< DTS2014120109100 yuanxiaofeng 20141201 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-		pr_info("%s: new %s%s%s%s%s%s card at address %04x, manfid:0x%02x, date:%d/%d\n",
-			mmc_hostname(card->host),
-			mmc_card_uhs(card) ? "ultra high speed " :
-			(mmc_card_highspeed(card) ? "high speed " : ""),
-			(mmc_card_hs400(card) ? "HS400 " : ""),
-			(mmc_card_hs200(card) ? "HS200 " : ""),
-			mmc_card_ddr_mode(card) ? "DDR " : "",
-			uhs_bus_speed_mode, type, card->rca, card->cid.manfid, card->cid.year, card->cid.month);
-#else
 		pr_info("%s: new %s%s%s%s%s%s card at address %04x\n",
 			mmc_hostname(card->host),
 			mmc_card_uhs(card) ? "ultra high speed " :
@@ -417,8 +406,6 @@ int mmc_add_card(struct mmc_card *card)
 			(mmc_card_hs200(card) ? "HS200 " : ""),
 			mmc_card_ddr_mode(card) ? "DDR " : "",
 			uhs_bus_speed_mode, type, card->rca);
-#endif
-		/* DTS2014120109100 yuanxiaofeng 20141201 end > */
 	}
 
 #ifdef CONFIG_DEBUG_FS

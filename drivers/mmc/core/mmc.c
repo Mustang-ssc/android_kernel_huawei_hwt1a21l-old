@@ -20,25 +20,13 @@
 #include <linux/pm_runtime.h>
 #include <linux/reboot.h>
 
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HW_MMC_TEST
-#include <linux/export.h>
-#endif
-/* DTS2014042606672 gaoxu 20140424 end > */
-
 #include "core.h"
 #include "bus.h"
 #include "mmc_ops.h"
 #include "sd_ops.h"
-
-/* < DTS2014081108133 duanhuan 20140805 begin */
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
-/* DTS2014111306772 duanhuan 20141110 end > */
 #include <linux/mmc/dsm_emmc.h>
 #endif
-/*DTS2014081108133 duanhuan 20140805 end > */
-
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
@@ -73,19 +61,21 @@ static const unsigned int tacc_mant[] = {
 	})
 
 static const struct mmc_fixup mmc_fixups[] = {
-    /* < DTS2014042303955 renlipeng 20140424 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
+#ifdef CONFIG_HUAWEI_KERNEL 
 	/* Disable HPI function for Hynix EMMC Jedec 4.5*/
 	MMC_FIXUP_EXT_CSD_REV(CID_NAME_ANY, CID_MANFID_HYNIX,
 			      0x014a, add_quirk, MMC_QUIRK_BROKEN_HPI, 6),
-#endif
-	/*DTS2014042303955 renlipeng 20140424 end > */
+#endif			      
 	/*
 	 * Certain Hynix eMMC 4.41 cards might get broken when HPI feature
 	 * is used so disable the HPI feature for such buggy cards.
 	 */
 	MMC_FIXUP_EXT_CSD_REV(CID_NAME_ANY, CID_MANFID_HYNIX,
 			      0x014a, add_quirk, MMC_QUIRK_BROKEN_HPI, 5),
+
+	/* Disable HPI feature for Kingstone card */
+	MMC_FIXUP_EXT_CSD_REV("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY,
+			add_quirk, MMC_QUIRK_BROKEN_HPI, 5),
 
 	/*
 	 * Some Hynix cards exhibit data corruption over reboots if cache is
@@ -96,6 +86,8 @@ static const struct mmc_fixup mmc_fixups[] = {
 		  MMC_QUIRK_CACHE_DISABLE),
 	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_NUMONYX_MICRON, CID_OEMID_ANY,
 		add_quirk_mmc, MMC_QUIRK_CACHE_DISABLE),
+	MMC_FIXUP("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_CACHE_DISABLE),
 
 	END_FIXUP
 };
@@ -319,13 +311,7 @@ static void mmc_select_card_type(struct mmc_card *card)
 /*
  * Decode extended CSD.
  */
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HW_MMC_TEST
-int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
-#else
 static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
-#endif
-/* DTS2014042606672 gaoxu 20140424 end > */
 {
 	int err = 0, idx;
 	unsigned int part_size;
@@ -349,12 +335,21 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
+#ifdef CONFIG_HUAWEI_KERNEL
+	if (card->ext_csd.rev > 8) {
+		pr_err("%s: unrecognised EXT_CSD revision %d\n",
+			mmc_hostname(card->host), card->ext_csd.rev);
+		err = -EINVAL;
+		goto out;
+	}
+#else
 	if (card->ext_csd.rev > 7) {
 		pr_err("%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
 		goto out;
 	}
+#endif
 
 	/* fixup device after ext_csd revision field is updated */
 	mmc_fixup_device(card, mmc_fixups);
@@ -569,6 +564,18 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.rel_param = ext_csd[EXT_CSD_WR_REL_PARAM];
 		card->ext_csd.rst_n_function = ext_csd[EXT_CSD_RST_N_FUNCTION];
 
+                /*
+                 * Some eMMC vendors violate eMMC 5.0 spec and set
+                 * REL_WR_SEC_C register to 0x10 to indicate the
+                 * ability of RPMB throughput improvement thus lead
+                 * to failure when TZ module write data to RPMB
+                 * partition. So check bit[4] of EXT_CSD[166] and
+                 * if it is not set then change value of REL_WR_SEC_C
+                 * to 0x1 directly ignoring value of EXT_CSD[222].
+                 */
+                if (!(card->ext_csd.rel_param & EXT_CSD_WR_REL_PARAM_EN_RPMB))
+                      card->ext_csd.rel_sectors = 0x1;
+
 		/*
 		 * RPMB regions are defined in multiples of 128K.
 		 */
@@ -623,8 +630,6 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	} else {
 		card->ext_csd.data_sector_size = 512;
 	}
-
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	/* eMMC v5.0 or later */
 	if(!strcmp(mmc_hostname(card->host), "mmc0")){
@@ -635,15 +640,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		}
 	}
 #endif
-/* DTS2014111306772 duanhuan 20141110 end > */
 out:
 	return err;
 }
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HW_MMC_TEST
-EXPORT_SYMBOL_GPL(mmc_read_ext_csd);
-#endif
-/* DTS2014042606672 gaoxu 20140424 end > */
 
 static inline void mmc_free_ext_csd(u8 *ext_csd)
 {
@@ -708,28 +707,6 @@ out:
 	mmc_free_ext_csd(bw_ext_csd);
 	return err;
 }
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HUAWEI_KERNEL 
-static ssize_t mmc_samsung_smart(struct device *dev, 
-                                            struct device_attribute *attr, char *buf) 
-{ 
-    struct mmc_card *card = mmc_dev_to_card(dev); 
-    unsigned int size = PAGE_SIZE; 
-    unsigned int wrote; 
-
-    if (card->quirks & MMC_QUIRK_SAMSUNG_SMART) 
-    {
-        return mmc_samsung_smart_handle(card, buf); 
-    }
-    else
-    {
-        wrote = scnprintf(buf, size, "This eMMC is not provided by Samsung, only Samsung eMMC support this feature!\n"); 
-        return wrote;
-    }
-} 
-static DEVICE_ATTR(samsung_smart, S_IRUGO, mmc_samsung_smart, NULL); 
-#endif /* CONFIG_HUAWEI_KERNEL */ 
-/* DTS2014042606672  gaoxu 20140424 end > */
 
 MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
 	card->raw_cid[2], card->raw_cid[3]);
@@ -768,11 +745,6 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_enhanced_area_size.attr,
 	&dev_attr_raw_rpmb_size_mult.attr,
 	&dev_attr_rel_sectors.attr,
-    /* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HUAWEI_KERNEL 
-    &dev_attr_samsung_smart.attr, 
-#endif 
-     /* DTS2014042606672  gaoxu 20140424 end > */
 	NULL,
 };
 
@@ -828,9 +800,7 @@ static int mmc_select_powerclass(struct mmc_card *card,
 				EXT_CSD_PWR_CL_52_195 :
 				EXT_CSD_PWR_CL_DDR_52_195;
 		else if (host->ios.clock <= 200000000)
-			index = (bus_width <= EXT_CSD_BUS_WIDTH_8) ?
-				EXT_CSD_PWR_CL_200_195 :
-				EXT_CSD_PWR_CL_DDR_200_195;
+			index = EXT_CSD_PWR_CL_200_195;
 		break;
 	case MMC_VDD_27_28:
 	case MMC_VDD_28_29:
@@ -848,9 +818,9 @@ static int mmc_select_powerclass(struct mmc_card *card,
 				EXT_CSD_PWR_CL_52_360 :
 				EXT_CSD_PWR_CL_DDR_52_360;
 		else if (host->ios.clock <= 200000000)
-			index = (bus_width <= EXT_CSD_BUS_WIDTH_8) ?
-				EXT_CSD_PWR_CL_200_360 :
-				EXT_CSD_PWR_CL_DDR_200_360;
+			index = (bus_width == EXT_CSD_DDR_BUS_WIDTH_8) ?
+				EXT_CSD_PWR_CL_DDR_200_360 :
+				EXT_CSD_PWR_CL_200_360;
 		break;
 	default:
 		pr_warning("%s: Voltage range not supported "
@@ -1208,12 +1178,7 @@ static int mmc_select_hs400(struct mmc_card *card, u8 *ext_csd)
 	mmc_set_timing(host, MMC_TIMING_LEGACY);
 	mmc_set_clock(host, MMC_HIGH_26_MAX_DTR);
 
-	err = mmc_select_hs(card, ext_csd);
-	if (err)
-		goto out;
-	mmc_card_clr_highspeed(card);
-
-	/* Switch to 8-bit DDR mode */
+	/* Switch to 8-bit HighSpeed DDR mode */
 	err = mmc_select_hsddr(card, ext_csd);
 	if (err)
 		goto out;
@@ -1368,18 +1333,7 @@ static int mmc_reboot_notify(struct notifier_block *notify_block,
 
 	return NOTIFY_OK;
 }
-/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HUAWEI_KERNEL 
-/* < DTS2013091801852 renlipeng 20130918 begin */
-static const struct mmc_fixup mmc_fixups_smart_report[] = { 
-/* DTS2013091801852  renlipeng 20130918 end > */
-    /* Provide access to Samsung's e-MMC Smart Report via sysfs */
-    MMC_FIXUP(CID_NAME_ANY, 0x15, CID_OEMID_ANY, add_quirk_mmc, MMC_QUIRK_SAMSUNG_SMART), 
 
-    END_FIXUP 
-    }; 
-#endif 
- /* DTS2014042606672  gaoxu 20140424 end > */
 /*
  * Activate highest bus speed mode supported by both host and card.
  * On failure activate the next supported highest bus speed mode.
@@ -1406,7 +1360,6 @@ static int mmc_select_bus_speed(struct mmc_card *card, u8 *ext_csd)
 	err = mmc_select_bus_width(card, 0, ext_csd);
 
 out:
-	/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
     /*normally, we think all of current used eMMC should support 8bits, so if any exception, report it*/
 	if(!strcmp(mmc_hostname(card->host), "mmc0")){
@@ -1416,7 +1369,6 @@ out:
 		}
 	}
 #endif
-    /* DTS2014111306772 duanhuan 20141110 end > */
 	return err;
 }
 
@@ -1549,15 +1501,6 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 					mmc_hostname(host), __func__, err);
 			goto free_card;
 		}
-
-		/* < DTS2014042606672 gaoxu 20140424 begin */
-#ifdef CONFIG_HUAWEI_KERNEL 
-		/* Detect on first access quirky cards that need help when 
-		* powered-on 
-		*/
-		mmc_fixup_device(card, mmc_fixups_smart_report);
-#endif
-		/* DTS2014042606672  gaoxu 20140424 end > */
 	}
 
 	/*
@@ -1808,8 +1751,6 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 					card->bkops_info.host_delay_ms;
 		}
 	}
-
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	/* eMMC v5.0 or later */
 	if(!strcmp(mmc_hostname(card->host), "mmc0")){
@@ -1832,7 +1773,6 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		}
 	}
 #endif
-/* DTS2014111306772 duanhuan 20141110 end > */
 	return 0;
 
 free_card:
@@ -1844,13 +1784,11 @@ err:
 	return err;
 }
 
-/* < DTS2014051602685 yuanxiaofeng 20140516 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 int mmc_can_poweroff_notify(const struct mmc_card *card)
 #else
 static int mmc_can_poweroff_notify(const struct mmc_card *card)
 #endif
-/* DTS2014051602685 yuanxiaofeng 20140516 end > */
 {
 	return card &&
 		mmc_card_mmc(card) &&
@@ -1961,14 +1899,11 @@ static void mmc_detect(struct mmc_host *host)
 /*
  * Suspend callback from host.
  */
-
-/* < DTS2014051602685 yuanxiaofeng 20140516 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 int mmc_suspend(struct mmc_host *host)
 #else
 static int mmc_suspend(struct mmc_host *host)
 #endif
-/* DTS2014051602685 yuanxiaofeng 20140516 end > */
 {
 	int err = 0;
 
@@ -2235,11 +2170,8 @@ err:
 	return err;
 }
 
-/* < DTS2014081108133 duanhuan 20140805 begin */
-/* < DTS2014111306772 duanhuan 20141110 begin */
 #ifdef CONFIG_HUAWEI_DSM
 unsigned int emmc_dsm_real_upload_size=0;
-/* DTS2014111306772 duanhuan 20141110 end > */
 static unsigned int g_last_msg_code=0; /*last sent error code*/
 static unsigned int g_last_msg_count=0; /*last sent the code count*/
 #define ERR_MAX_COUNT 10
@@ -2255,21 +2187,26 @@ static int dsm_emmc_process_log(int code, char *err_msg)
 {
 	int ret=0;
 	/*the MAX times of erevy err code*/
-	static int vdet_err_max_count = ERR_MAX_COUNT;
-/* < DTS2014111306772 duanhuan 20141110 begin */
+    static int emmc_pre_eol_max_count = ERR_MAX_COUNT;
+    static int emmc_life_time_err_max_count = ERR_MAX_COUNT;
 #ifdef CONFIG_HUAWEI_EMMC_DSM_DEBUG
-/* DTS2014111306772 duanhuan 20141110 end > */
 	static int system_w_err_max_count = ERR_MAX_COUNT;
 	static int erase_err_max_count = ERR_MAX_COUNT;
 	static int send_cxd_err_max_count = ERR_MAX_COUNT;
 	static int emmc_read_err_max_count = ERR_MAX_COUNT;
 	static int emmc_write_err_max_count = ERR_MAX_COUNT;
-/* < DTS2014111306772 duanhuan 20141110 begin */
     static int emmc_tuning_err_max_count = ERR_MAX_COUNT;
     static int emmc_set_width_err_max_count = ERR_MAX_COUNT;
-    static int emmc_pre_eol_max_count = ERR_MAX_COUNT;
-    static int emmc_life_time_err_max_count = ERR_MAX_COUNT;
-/* DTS2014111306772 duanhuan 20141110 end > */
+	static int vdet_err_max_count = ERR_MAX_COUNT;
+    static int emmc_packed_command_err_max_count = ERR_MAX_COUNT;
+	static char emmc_rsp_err_max_count = ERR_MAX_COUNT;
+	static char emmc_host_timeout_max_count = ERR_MAX_COUNT;
+	static char emmc_host_err_max_count = ERR_MAX_COUNT;
+	static char emmc_urgent_bkops_max_count = ERR_MAX_COUNT;
+	static char emmc_dyncap_needed_max_count = ERR_MAX_COUNT;
+	static char emmc_syspool_exhausted_max_count = ERR_MAX_COUNT;
+	static char emmc_cache_err_max_count = ERR_MAX_COUNT;
+	static char emmc_cache_timeout_max_count = ERR_MAX_COUNT;
 #endif
 
 	/*filter: if it has the same msg code with last, record err code&count*/
@@ -2285,17 +2222,23 @@ static int dsm_emmc_process_log(int code, char *err_msg)
 	/*restrict count of every error, note:deplicated msg donesn't its count*/
 	if(1 == ret){
 		switch (code){
-			case DSM_EMMC_VDET_ERR:
-				if(0 < vdet_err_max_count){
-					vdet_err_max_count--;
+			case DSM_EMMC_LIFE_TIME_EST_ERR:
+				if(0 < emmc_life_time_err_max_count){
+					emmc_life_time_err_max_count--;
 					ret = 1;
 				}else{
 					ret = 0;
 				}
 				break;
-/* < DTS2014111306772 duanhuan 20141110 begin */
+			case DSM_EMMC_PRE_EOL_INFO_ERR:
+				if(0 < emmc_pre_eol_max_count){
+					emmc_pre_eol_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
 #ifdef CONFIG_HUAWEI_EMMC_DSM_DEBUG
-/* DTS2014111306772 duanhuan 20141110 end > */
 			case DSM_SYSTEM_W_ERR:
 				if(0 < system_w_err_max_count){
 					system_w_err_max_count--;
@@ -2336,7 +2279,6 @@ static int dsm_emmc_process_log(int code, char *err_msg)
 					ret = 0;
 				}
 				break;
-/* < DTS2014111306772 duanhuan 20141110 begin */
 			case DSM_EMMC_SET_BUS_WIDTH_ERR:
 				if(0 < emmc_set_width_err_max_count){
 					emmc_set_width_err_max_count--;
@@ -2345,9 +2287,9 @@ static int dsm_emmc_process_log(int code, char *err_msg)
 					ret = 0;
 				}
 				break;
-			case DSM_EMMC_PRE_EOL_INFO_ERR:
-				if(0 < emmc_pre_eol_max_count){
-					emmc_pre_eol_max_count--;
+			case DSM_EMMC_VDET_ERR:
+				if(0 < vdet_err_max_count){
+					vdet_err_max_count--;
 					ret = 1;
 				}else{
 					ret = 0;
@@ -2361,15 +2303,78 @@ static int dsm_emmc_process_log(int code, char *err_msg)
 					ret = 0;
 				}
 				break;
-			case DSM_EMMC_LIFE_TIME_EST_ERR:
-				if(0 < emmc_life_time_err_max_count){
-					emmc_life_time_err_max_count--;
+			case DSM_EMMC_PACKED_FAILURE:
+				if(0 < emmc_packed_command_err_max_count){
+					emmc_packed_command_err_max_count--;
 					ret = 1;
 				}else{
 					ret = 0;
 				}
 				break;
-/* DTS2014111306772 duanhuan 20141110 end > */
+			case DSM_EMMC_RSP_ERR:
+				if(0 < emmc_rsp_err_max_count){
+					emmc_rsp_err_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_HOST_TIMEOUT_ERR:
+				if(0 < emmc_host_timeout_max_count){
+					emmc_host_timeout_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_HOST_ERR:
+				if(0 < emmc_host_err_max_count){
+					emmc_host_err_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_URGENT_BKOPS:
+				if(0 < emmc_urgent_bkops_max_count){
+					emmc_urgent_bkops_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_DYNCAP_NEEDED:
+				if(0 < emmc_dyncap_needed_max_count){
+					emmc_dyncap_needed_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_SYSPOOL_EXHAUSTED:
+				if(0 < emmc_syspool_exhausted_max_count){
+					emmc_syspool_exhausted_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_CACHE_TIMEOUT:
+				if(0 < emmc_cache_timeout_max_count){
+					emmc_cache_timeout_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
+			case DSM_EMMC_CACHE_ERR:
+				if(0 < emmc_cache_err_max_count){
+					emmc_cache_err_max_count--;
+					ret = 1;
+				}else{
+					ret = 0;
+				}
+				break;
 #endif
 			default:
 				ret = 0;
@@ -2394,10 +2399,8 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 	struct mmc_card * card_dev=(struct mmc_card * )card;
 	unsigned int last_msg_code = g_last_msg_code;
 	unsigned int last_msg_count = g_last_msg_count;
-/* < DTS2014111306772 duanhuan 20141110 begin */
 	int i=1;
 	u8 *ext_csd=NULL;
-/* DTS2014111306772 duanhuan 20141110 end > */
 
 	if(dsm_emmc_process_log(code, err_msg)){
 		/*clear global buffer*/
@@ -2416,7 +2419,6 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 		buff_size -= ret;
 		pr_info("Err num: %d, %s\n",code, err_msg);
 
-		/* < DTS2014111306772 duanhuan 20141110 begin */
 		if(NULL != card_dev){
 			/*print card CID info*/
 			if(sizeof(struct mmc_cid) < buff_size){
@@ -2474,7 +2476,6 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 		}
 		/*get size of used buffer*/
 		emmc_dsm_real_upload_size = sizeof(g_emmc_dsm_log.emmc_dsm_log) - buff_size;
-		/* DTS2014111306772 duanhuan 20141110 end > */
 		pr_debug("DSM_DEBUG %s\n",g_emmc_dsm_log.emmc_dsm_log);
 
 		return 1;
@@ -2483,11 +2484,9 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 		if(NULL != card_dev){
 			pr_info("Card's cid:%08x%08x%08x%08x\n\n", card_dev->raw_cid[0], card_dev->raw_cid[1],
 					card_dev->raw_cid[2], card_dev->raw_cid[3]);
-			/* < DTS2014111306772 duanhuan 20141110 begin */
 			pr_info("Card's ios.clock:%uHz, ios.old_rate:%uHz, ios.power_mode:%u, ios.timing:%u, ios.bus_mode:%u, ios.bus_width:%u\n",
 					card_dev->host->ios.clock, card_dev->host->ios.old_rate, card_dev->host->ios.power_mode, card_dev->host->ios.timing,
 					card_dev->host->ios.bus_mode, card_dev->host->ios.bus_width);
-			/* DTS2014111306772 duanhuan 20141110 end > */
 		}
 	}
 
@@ -2495,4 +2494,4 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 }
 EXPORT_SYMBOL(dsm_emmc_get_log);
 #endif
-/*DTS2014081108133 duanhuan 20140805 end > */
+

@@ -5,11 +5,11 @@
     
     @brief: define the global resources for SRecorder
     
-    @version: 2.0 
+    @version: 2.1.1 
     
     @author: Qi Dechun 00216641,    Yan Tongguang 00297150
     
-    @date: 2014-12-05
+    @date: 2015-03-13
     
     @history:
 */
@@ -36,20 +36,6 @@
 #define TITLE_PS_INFO               "==================all ps info==================\n"
 #define TITLE_BACK_TRACE            "===============current ps backtrace============\n"
 #define TITLE_SLAB_INFO             "===================slabinfo====================\n"
-
-#if 0
-/* log title strings */
-static char* s_log_titles[] = 
-{
-    TITLE_REASON_TIME,
-    TITLE_SYS_INFO, 
-    TITLE_STACK,
-    TITLE_PS_INFO,
-    TITLE_BACK_TRACE,
-    TITLE_SLAB_INFO,
-    TITLE_DMESG,
-};
-#endif
 
 /* reset type */
 typedef enum
@@ -93,8 +79,10 @@ typedef struct
 
 typedef struct
 {
-    addr_info_t addr[IDX_COUNT];
-    int reset_flag;
+    unsigned magic_num;
+    unsigned reset_flag;
+    unsigned long addr;
+    unsigned size;
     unsigned crc32;
 } log_header_h_t;
 
@@ -106,6 +94,7 @@ typedef struct
     unsigned log_len;
     unsigned log_buf_len;
     unsigned crc32; /* the checksum of the header, not including log data */
+    unsigned padding; /* alteration of __attribute__((__packed__)) */
 }  log_header_m_t;
 
 typedef struct

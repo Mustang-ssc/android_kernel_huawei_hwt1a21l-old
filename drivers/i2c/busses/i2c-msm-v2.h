@@ -543,16 +543,13 @@ struct i2c_msm_resources {
 	struct pinctrl              *pinctrl;
 	struct pinctrl_state        *gpio_state_active;
 	struct pinctrl_state        *gpio_state_suspend;
-	/* < DTS2014122907951    zhoujian wx221429 20141230 begin */
 	struct pinctrl_state        *gpio_state_defult;
-	/* DTS2014122907951   zhoujian wx221429 20141230 end >*/
 };
 
 #define I2C_MSM_PINCTRL_ACTIVE       "i2c_active"
 #define I2C_MSM_PINCTRL_SUSPEND        "i2c_sleep"
-/* < DTS2014122907951    zhoujian wx221429 20141230 begin */
 #define I2C_MSM_PINCTRL_DEFULT        "i2c_defult"
-#define I2C_MSM_RECOVERY_BUS_TIMES 		10
+#define I2C_MSM_RECOVERY_BUS_TIMES      10
 enum i2c_msm_pinctl_state{
 	I2C_MSM_DFS_ACTIVE,
 	I2C_MSM_DFS_SUSPEND,
@@ -563,7 +560,6 @@ enum {
 	I2C_MSM_DEFULT_DATA,	
 	I2C_MSM_DEFULT_MAX_GPIO,
 };
-/* DTS2014122907951   zhoujian wx221429 20141230 end >*/
 /*
  * i2c_msm_xfer_buf: current xfer position and preprocessed tags
  *
@@ -677,6 +673,10 @@ struct i2c_msm_xfer {
  * @dbgfs    debug-fs root and values that may be set via debug-fs.
  * @rsrcs    resources from platform data including clocks, gpios, irqs, and
  *           memory regions.
+ * @noise_rjct_scl noise rejection value for the scl line (a field of
+ *           I2C_MASTER_CLK_CTL).
+ * @noise_rjct_sda noise rejection value for the sda line (a field of
+ *           I2C_MASTER_CLK_CTL).
  * @pdata    the platform data (values from board-file or from device-tree)
  * @mstr_clk_ctl cached value for programming to mstr_clk_ctl register
  */
@@ -687,12 +687,12 @@ struct i2c_msm_ctrl {
 	struct i2c_msm_xfer        xfer;
 	struct i2c_msm_dbgfs       dbgfs;
 	struct i2c_msm_resources   rsrcs;
+	int                        noise_rjct_scl;
+	int                        noise_rjct_sda;
 	u32                        mstr_clk_ctl;
 	struct i2c_msm_v2_platform_data *pdata;
 	enum msm_i2c_power_state   pwr_state;
-	/* < DTS2014122907951    zhoujian wx221429 20141230 begin */
 	int gpios[I2C_MSM_DEFULT_MAX_GPIO];
-	/* DTS2014122907951   zhoujian wx221429 20141230 end> */
 };
 
 #endif  /* _I2C_MSM_V2_H */

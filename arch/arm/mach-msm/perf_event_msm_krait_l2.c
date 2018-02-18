@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2012 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011,2012,2014,2016 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,13 +18,15 @@
 
 #include <mach/msm-krait-l2-accessors.h>
 
+#define PMU_CODES_SIZE 64
+
 /*
  * The L2 PMU is shared between all CPU's, so protect
  * its bitmap access.
  */
 struct pmu_constraints {
 	u64 pmu_bitmap;
-	u8 codes[64];
+	u8 codes[PMU_CODES_SIZE];
 	raw_spinlock_t lock;
 } l2_pmu_constraints = {
 	.pmu_bitmap = 0,
@@ -427,7 +429,7 @@ static int msm_l2_test_set_ev_constraint(struct perf_event *event)
 	u8 group = evt_type & 0x0000F;
 	u8 code = (evt_type & 0x00FF0) >> 4;
 	unsigned long flags;
-	u32 err = 0;
+	int err = 0;
 	u64 bitmap_t;
 	u32 shift_idx;
 
@@ -443,6 +445,11 @@ static int msm_l2_test_set_ev_constraint(struct perf_event *event)
 	raw_spin_lock_irqsave(&l2_pmu_constraints.lock, flags);
 
 	shift_idx = ((reg * 4) + group);
+
+	if (shift_idx >= PMU_CODES_SIZE) {
+		err =  -EINVAL;
+		goto out;
+	}
 
 	bitmap_t = 1 << shift_idx;
 
@@ -468,6 +475,7 @@ static int msm_l2_test_set_ev_constraint(struct perf_event *event)
 			if (!(event->cpu < 0)) {
 				event->state = PERF_EVENT_STATE_OFF;
 				event->attr.constraint_duplicate = 1;
+                                err = -EPERM;
 			}
 	}
 out:
@@ -484,12 +492,18 @@ static int msm_l2_clear_ev_constraint(struct perf_event *event)
 	unsigned long flags;
 	u64 bitmap_t;
 	u32 shift_idx;
+	int err = 1;
 
 	if (evt_prefix == L2_TRACECTR_PREFIX)
 		return 1;
 	raw_spin_lock_irqsave(&l2_pmu_constraints.lock, flags);
 
 	shift_idx = ((reg * 4) + group);
+
+	if (shift_idx >= PMU_CODES_SIZE) {
+		err = -EINVAL;
+		goto out;
+	}
 
 	bitmap_t = 1 << shift_idx;
 
@@ -499,8 +513,9 @@ static int msm_l2_clear_ev_constraint(struct perf_event *event)
 	/* Clear code. */
 	l2_pmu_constraints.codes[shift_idx] = -1;
 
+out:
 	raw_spin_unlock_irqrestore(&l2_pmu_constraints.lock, flags);
-	return 1;
+	return err;
 }
 
 int get_num_events(void)
@@ -564,6 +579,35 @@ static struct platform_driver krait_l2_pmu_driver = {
 	.probe		= krait_l2_pmu_device_probe,
 };
 
+#ifdef CONFIG_PERF_EVENTS_RESET_PMU_DEBUGFS
+static void l2_reset_pmu(void)
+{
+	int i, irq;
+
+	get_reset_pmovsr();
+	/* Clear counter enables */
+	for (i = 0; i < total_l2_ctrs; i++) {
+		disable_counter(i);
+		disable_intenclr(i);
+	}
+	/* Reset all ctrs */
+	set_l2_indirect_reg(L2PMCR, L2PMCR_RESET_ALL);
+	/* Clear constraint bitmap */
+	l2_pmu_constraints.pmu_bitmap = 0;
+	/* clear used_mask */
+	for (i = 0; i < total_l2_ctrs; i++)
+		test_and_clear_bit(i, krait_l2_pmu_hw_events.used_mask);
+	/* Clear irq */
+	irq = platform_get_irq(krait_l2_pmu.plat_device, 0);
+	if (irq >= 0)
+		free_irq(irq, &krait_l2_pmu_addr);
+}
+#else
+static inline void l2_reset_pmu(void)
+{
+}
+#endif
+
 static int __init register_krait_l2_pmu_driver(void)
 {
 	int i;
@@ -594,6 +638,8 @@ static int __init register_krait_l2_pmu_driver(void)
 	for (i = 0; i < total_l2_ctrs; i++)
 		disable_counter(i);
 
+	msm_perf_register_l2_reset_callback(&l2_reset_pmu);
 	return platform_driver_register(&krait_l2_pmu_driver);
 }
+
 device_initcall(register_krait_l2_pmu_driver);

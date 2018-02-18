@@ -1,4 +1,3 @@
-/* <DTS2014080900552 chenyuanquan 20140825 begin */
 /*
  * max77819.c
  *
@@ -21,10 +20,8 @@
 #include <linux/i2c.h>
 #include <linux/backlight.h>
 #include <linux/mfd/max77819.h>
-/*< DTS2014111007403 tianye/293347 20141115 begin*/
 /* Reduce the voltage gradually when the system is in the process of shutting down*/
 #include <linux/delay.h>
-/*DTS2014111007403 tianye/293347 20141115 end >*/
 #define MAX_BRIGHTNESS     0xFF
 
 /* registers */
@@ -62,12 +59,10 @@ struct max77819_wled {
 };
 
 static struct backlight_device *gMax77819bl = NULL;
-/*< DTS2014111007403 tianye/293347 20141115 begin*/
 /* Reduce the voltage gradually when the system is in the process of shutting down*/
 static int max77819_bl_off(struct backlight_device *bl_dev)
 {
     struct max77819_wled *me = bl_get_data(bl_dev);
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
 	struct regmap *regmap = NULL;
 	int ret;
@@ -77,7 +72,6 @@ static int max77819_bl_off(struct backlight_device *bl_dev)
 		 return 0;
 		}
 	regmap = me->io->regmap;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
 	/*get current backlight current setting*/
 	ret = regmap_read(regmap, MAX77819_IWLED, &curr_val);
 	/*gradually adjust the current to 0*/
@@ -95,11 +89,9 @@ static int max77819_bl_off(struct backlight_device *bl_dev)
 		
 	return ret;
 }
-/*DTS2014111007403 tianye/293347 20141115 end >*/
 static int max77819_bl_update_status(struct backlight_device *bl_dev)
 {
     struct max77819_wled *me = bl_get_data(bl_dev);
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
 	struct regmap *regmap = NULL;
 	int brightness = bl_dev->props.brightness;
@@ -110,7 +102,6 @@ static int max77819_bl_update_status(struct backlight_device *bl_dev)
 		return 0;
 	}
 	regmap = me->io->regmap;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
 	printk("max77819 update brightness\n");
 	if (brightness == 0)
 		ret = max77819_bl_off(bl_dev);
@@ -127,24 +118,20 @@ static int max77819_bl_update_status(struct backlight_device *bl_dev)
 		
 		if((value&(MAX77819_WLED1EN|MAX77819_WLED2EN)) != 0xc0){
 			/*Clear status register before enable the device*/
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
 		ret = regmap_read(regmap, MAX77819_WLED_INT, &value);
 		if (IS_ERR_VALUE(ret)){
 			dev_err(&bl_dev->dev, "can't read WLED_INT : %d\n", ret);
 		}
-/*DTS2015012007445 tianye/293347 20150120 end >*/
 			ret = regmap_write(regmap, MAX77819_IWLED, 0);
 			if (IS_ERR_VALUE(ret))
 			{
 				dev_err(&bl_dev->dev, "can't write IWLED : %d\n", ret);
 				return ret;
 			}
-/*< DTS2014091701123 huangli 20140917 begin */
 			//change 0x98 = 0xF8: 28v 1.47MHZ the same wiht lk.
 			ret = regmap_update_bits(regmap, MAX77819_WLEDBSTCNTL, MAX77819_WLEDOVP | MAX77819_WLEDFOSC | MAX77819_WLED_EN,
 					0x00 | 0x08 | MAX77819_WLED_EN);
-/* DTS2014091701123 huangli 20140917 end > */
 			if (IS_ERR_VALUE(ret))
 				dev_err(&bl_dev->dev, "can't write WLEDBSTCNTL : %d\n", ret);
 		}
@@ -159,39 +146,31 @@ static int max77819_bl_update_status(struct backlight_device *bl_dev)
 
 	return ret;
 }
-/*< DTS2014111007403 tianye/293347 20141115 begin*/
 /* Reduce the voltage gradually when the system is in the process of shutting down*/
 void max77819_update_brightness(int brightness)
 {
 	if (gMax77819bl){
 	  if(gMax77819bl->props.brightness != brightness)
-/*< DTS2014122508475 tianye/293347 20141225 begin*/
 /* optimize platform code,remove the superfluous log information */
 	  {
 		gMax77819bl->props.brightness = brightness;		
 		backlight_update_status(gMax77819bl);
 	  }
-/*DTS2014122508475 tianye/293347 20141225 end >*/
 	}
 }
-/*DTS2014111007403 tianye/293347 20141115 end >*/
 static int max77819_bl_get_brightness(struct backlight_device *bl_dev)
 {
     struct max77819_wled *me = bl_get_data(bl_dev);
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
 	struct regmap *regmap = NULL;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
 	unsigned int value;
 	int ret;
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
 	if(!(me&&me->io&&me->io->regmap)){
 		pr_err("existence of null pointer from in max77819_bl_get_brightness\n");
 		return 0;
    }
 	regmap = me->io->regmap;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
 	ret = regmap_read(regmap, MAX77819_WLEDBSTCNTL, &value);
 	if (IS_ERR_VALUE(ret))
 	{
@@ -220,10 +199,8 @@ static int max77819_bl_probe(struct platform_device *pdev)
 {
     struct device *dev = &pdev->dev;
     struct max77819_dev *chip = dev_get_drvdata(dev->parent);
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
     struct max77819_wled *me = NULL;
-/*DTS2015012007445 tianye/293347 20150120 end >*/
     struct backlight_properties bl_props;
     int rc;
 
@@ -238,13 +215,11 @@ static int max77819_bl_probe(struct platform_device *pdev)
 
 	me->io	 = max77819_get_io(chip);
 	me->dev  = dev;
-/*< DTS2015012007445  tianye/293347 20150120 begin*/
 /* coverity scans camera-LCD code modify  */
     if(!(me->io&&me->io->regmap)){
 		pr_err("get me->io->regmap addr fail\n ");
 		return -ENOMEM;
 	}
-/*DTS2015012007445 tianye/293347 20150120 end >*/
 	/*Mask all interrupts*/
 	regmap_write(me->io->regmap, MAX77819_WLED_INT_MASK, 0xff);
 	
@@ -273,7 +248,6 @@ abort:
 	dev_set_drvdata(dev, NULL);
 	return rc;
 }
-/*< DTS2014111801969 tianye/293347 20141118 begin*/
 /* The pointer type of function returned is inconsistent.*/
 static int max77819_bl_remove(struct platform_device *pdev)
 {
@@ -286,15 +260,12 @@ static int max77819_bl_remove(struct platform_device *pdev)
        }
 	return 0;
 }
-/*DTS2014111801969 tianye/293347 20141118 end >*/
-/*< DTS2014111007403 tianye/293347 20141115 begin*/
 /* Reduce the voltage gradually when the system is in the process of shutting down*/
 static void max77819_bl_shutdown(struct platform_device *pdev)
 {
 	max77819_update_brightness(0);
 	printk("exit %s \n",__func__);
 }
-/*DTS2014111007403 tianye/293347 20141115 end >*/
 #ifdef CONFIG_OF
 static struct of_device_id max77819_bl_of_ids[] = {
     { .compatible = "maxim,"MAX77819_WLED_NAME },
@@ -302,7 +273,6 @@ static struct of_device_id max77819_bl_of_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, max77819_bl_of_ids);
 #endif /* CONFIG_OF */
-/*< DTS2014111007403 tianye/293347 20141115 begin*/
 /* Reduce the voltage gradually when the system is in the process of shutting down*/
 static struct platform_driver max77819_bl_driver = {
 	.driver	= {
@@ -316,7 +286,6 @@ static struct platform_driver max77819_bl_driver = {
 	.remove = max77819_bl_remove,
 	.shutdown = max77819_bl_shutdown,
 };
-/*DTS2014111007403 tianye/293347 20141115 end >*/
 static int __init max77819_bl_init(void)
 {
 	return platform_driver_register(&max77819_bl_driver);
@@ -334,4 +303,3 @@ MODULE_AUTHOR("Gyungoh Yoo <jack.yoo@maximintegrated.com>");
 MODULE_DESCRIPTION("MAX77819 backlight");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION("1.0");
-/* DTS2014080900552 chenyuanquan 20140825 end> */

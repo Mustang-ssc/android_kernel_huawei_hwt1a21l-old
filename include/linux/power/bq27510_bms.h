@@ -1,7 +1,6 @@
 /*
  * Copyright 2010 HUAWEI Tech. Co., Ltd.
  */
-/*<DTS2014061605512 liyuping 20140617 begin */
 #define I2C_ADDR_BQ27510        (0x55)
 
 #define DRIVER_VERSION          "1.0.0"
@@ -11,17 +10,14 @@
 #define BQ27510_REG_FLAGS   (0x0a)
 /*Time to Empty*/
 #define BQ27510_REG_TTE     (0x16)
-/* < DTS2015012603531 zhaoxiaoli 20150126 begin */
+/*Time to Full*/
+#define BQ27510_REG_TTF     (0x18)
 /*Cycle Count*/
 #define BQ27510_REG_CYC     (0x1e)
-/* DTS2015012603531 zhaoxiaoli 20150126 end > */
 /* State-of-Charge */
 //register has been changed in new fw version
-/* <DTS2014071803033 liyuping 20140724 begin */
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
-#define BQ27510_REG_SOC     (0x20)
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
-/* DTS2014071803033 liyuping 20140724 end> */
+#define BQ27510_REG_SOC_FILTER     (0x20)
+#define BQ27510_REG_SOC     (0x2c)
 /*Average Current*/
 #define BQ27510_REG_AI      (0x14)
 /*Remainning Capacity*/
@@ -29,31 +25,28 @@
 /*Full Charge Capacity*/
 #define BQ27510_REG_FCC     (0x12)
 /*Standby Current*/
-/* < DTS2015012603531 zhaoxiaoli 20150126 begin */
 #define BQ27510_REG_SI      (0x18)
-/* DTS2015012603531 zhaoxiaoli 20150126 end > */
 /*DesignCapacity*/
-/* <DTS2014062100152 jiangfei 20140623 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #define BQ27510_DESIGN_CAPACITY		(0x2e)
 #endif
-/* DTS2014062100152 jiangfei 20140623 end> */
 /*Control*/
 #define BQ27510_REG_CTRL    (0x00)
 /*Control Status*/
 #define BQ27510_REG_CTRS    (0x0000)
 /*Data Flash Class*/
 #define BQ27510_REG_DFCLS      (0x3e)
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
-/* < DTS2015012603531 zhaoxiaoli 20150126 begin */
 #define BQ27510_REG_CLASS_ID     (82)
-/* DTS2015012603531 zhaoxiaoli 20150126 end > */
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
 #define BQ27510_REG_QMAX       (0x42)
 #define BQ27510_REG_QMAX1      (0x43)
 #define BQ27510_REG_FLASH             (0x40)
 #define BQ27510_REG_FIRMWARE_ID      (0x0008)
 #define BQ27510_REG_FIRMWARE_VERSION (0x0039)
+#define BQ27510_REG_UFRM          (0x6c)
+#define BQ27510_REG_FRM           (0x6e)
+#define BQ27510_REG_UFFCC         (0x70)
+#define BQ27510_REG_FFCC          (0x72)
+#define BQ27510_REG_UFSOC         (0x74)
 
 /* both words and bytes are LSB*/
 /* Full-charged bit */
@@ -92,26 +85,20 @@
 #define START_CAPACITY_CACL 	0
 #define REACH_EMPTY_RESAMPLE_THRESHOLD  (10)
 #define REACH_EMPTY_SAMPLE_INTERVAL     (5)
-/* <DTS2014070706002 chenyuanquan 20140722 begin */
 #define BOOT_MONITOR_TIME	2
-/* DTS2014070706002 chenyuanquan 20140722 end> */
 #define CHARGER_ONLINE 			1
 #define CAPACITY_FULL 			100
-/* < DTS2014080603531 yuanzhen 20140806 begin */
 #define CAPACITY_CLEAR_FULL 	98
-/* DTS2014080603531 yuanzhen 20140806 end > */
 #define CAPACITY_NEAR_FULL 	96
 #define CAPACITY_JUMP_THRESHOLD 	5
 #define CAPACITY_DEBOUNCE_MAX	4
 #define CUTOFF_LEVEL	2
 #define FAKE_CUTOFF_LEVEL	3
-/* <DTS2014122601446 zhaoxiaoli 20141227 begin */
 /* Remove 3450mV cutoff voltage */
-#define ZERO_LEVEL	0
-#define ZERO_LEVEL_COUNT	10
+#define ZERO_LEVEL    0
+#define ZERO_LEVEL_COUNT    10
 #define MAX_SOC_CHANGE	1
-#define ZERO_LEVEL_VOLTAGE		3350
-/* DTS2014122601446 zhaoxiaoli 20141227 end> */
+#define ZERO_LEVEL_VOLTAGE        3350
 
 struct bq27510_device_info
 {
@@ -133,17 +120,14 @@ struct bq27510_device_info
     int charge_full_count;
     int monitoring_interval;
     int last_soc_unbound;
-    /* <DTS2014062100152 jiangfei 20140623 begin */
 #ifdef CONFIG_HUAWEI_DSM
     int saved_soc;
 #endif
-    /* DTS2014062100152 jiangfei 20140623 end> */
     u8 soc_reg;
 };
 
-/* < DTS2014072101379  yuanzhen 20140728 begin */
 extern struct bq27510_device_info* g_battery_measure_by_bq27510_device;
 extern int is_bq27510_battery_full(struct bq27510_device_info *di);
 extern int is_usb_chg_exist(void);
-/* DTS2014072101379  yuanzhen 20140728 end > */
-/* DTS2014061605512 liyuping 20140617 end> */
+extern int bq27510_battery_capacity(struct bq27510_device_info *di);
+extern short bq27510_battery_current(struct bq27510_device_info *di);

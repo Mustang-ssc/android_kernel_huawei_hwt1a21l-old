@@ -94,6 +94,17 @@ config BT_HCIUART_3WIRE
 
 	  Say Y here to compile support for Three-wire UART protocol.
 
+config BT_HCIUART_IBS
+	bool "HCI_IBS protocol support"
+	depends on BT_HCIUART
+	default n
+	help
+	  HCI_IBS (HCI In-Band Sleep) is a serial protocol for communication
+	  between Bluetooth device and host. This protocol is required for
+	  UART clock control for some Qualcomm Bluetooth devices.
+
+	  Say Y here to compile support for HCI_IBS protocol.
+
 config BT_HCIBCM203X
 	tristate "HCI BCM203x USB driver"
 	depends on USB
@@ -251,11 +262,4 @@ config MSM_BT_POWER
 	  Provides a parameter to switch on/off power from PMIC
 	  to Bluetooth device.
 
-#/* < DTS2014041604760 shaopengxiang 20140417 begin */
-config HUAWEI_FM
-	tristate "FM searching params shell debug driver"
-	depends on HUAWEI_KERNEL
-	help
-	  use huawei feature
-#/* DTS2014041604760 shaopengxiang 20140417 end > */
 endmenu

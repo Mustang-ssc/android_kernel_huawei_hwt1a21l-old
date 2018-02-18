@@ -43,6 +43,8 @@
 #include <asm/cacheflush.h>
 #include "lpm-levels.h"
 #include "lpm-workarounds.h"
+#include <trace/events/power.h>
+#include "lpm-workarounds.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/trace_msm_low_power.h>
@@ -82,6 +84,7 @@ static struct hrtimer lpm_hrtimer;
 static struct lpm_debug *lpm_debug;
 static phys_addr_t lpm_debug_phys;
 static const int num_dbg_elements = 0x100;
+
 static int lpm_cpu_callback(struct notifier_block *cpu_nb,
 				unsigned long action, void *hcpu);
 
@@ -189,29 +192,27 @@ int set_l2_mode(struct low_power_ops *ops, int mode, bool notify_rpm)
 {
 	int lpm = mode;
 	int rc = 0;
-	static bool coresight_saved;
 
-	ops->tz_flag = MSM_SCM_L2_ON;
+	if (ops->tz_flag == MSM_SCM_L2_OFF ||
+			ops->tz_flag == MSM_SCM_L2_GDHS)
+		coresight_cti_ctx_restore();
+
 
 	switch (mode) {
 	case MSM_SPM_MODE_POWER_COLLAPSE:
 		ops->tz_flag = MSM_SCM_L2_OFF;
 		coresight_cti_ctx_save();
-		coresight_saved = true;
 		break;
 	case MSM_SPM_MODE_GDHS:
 		ops->tz_flag = MSM_SCM_L2_GDHS;
 		coresight_cti_ctx_save();
-		coresight_saved = true;
 		break;
 	case MSM_SPM_MODE_RETENTION:
 	case MSM_SPM_MODE_DISABLED:
-		if (coresight_saved) {
-			coresight_cti_ctx_restore();
-			coresight_saved = false;
-		}
+		ops->tz_flag = MSM_SCM_L2_ON;
 		break;
 	default:
+		ops->tz_flag = MSM_SCM_L2_ON;
 		lpm = MSM_SPM_MODE_DISABLED;
 		break;
 	}
@@ -391,6 +392,17 @@ static int cluster_select(struct lpm_cluster *cluster, bool from_idle)
 		latency_us = pm_qos_request_for_cpumask(PM_QOS_CPU_DMA_LATENCY,
 							&mask);
 
+	/*
+	 * If atleast one of the core in the cluster is online, the cluster
+	 * low power modes should be determined by the idle characteristics
+	 * even if the last core enters the low power mode as a part of
+	 * hotplug.
+	 */
+
+	if (!from_idle && num_online_cpus() > 1 &&
+		cpumask_intersects(&cluster->child_cpus, cpu_online_mask))
+		from_idle = true;
+
 	for (i = 0; i < cluster->nlevels; i++) {
 		struct lpm_cluster_level *level = &cluster->levels[i];
 		struct power_params *pwr_params = &level->pwr;
@@ -417,7 +429,7 @@ static int cluster_select(struct lpm_cluster *cluster, bool from_idle)
 
 		if (level->notify_rpm && msm_rpm_waiting_for_ack())
 			continue;
-	       
+
 		if ((sleep_us >> 10) > pwr_params->time_overhead_us) {
 			pwr = pwr_params->ss_power;
 		} else {
@@ -584,13 +596,6 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 	level = &cluster->levels[cluster->last_level];
 	if (level->notify_rpm) {
 		msm_rpm_exit_sleep();
-
-		/* If RPM bumps up CX to turbo, unvote CX turbo vote
-		 * during exit of rpm assisted power collapse to
-		 * reduce the power impact
-		 */
-
-		lpm_wa_cx_unvote_send();
 		msm_mpm_exit_sleep(from_idle);
 	}
 
@@ -664,6 +669,13 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 		return -EPERM;
 	}
 
+	trace_cpu_idle_rcuidle(idx, dev->cpu);
+
+	if (need_resched()) {
+		dev->last_residency = 0;
+		goto exit;
+	}
+
 	pwr_params = &cluster->cpu->levels[idx].pwr;
 	sched_set_cpu_cstate(smp_processor_id(), idx + 1,
 		pwr_params->energy_overhead, pwr_params->latency_us);
@@ -685,7 +697,9 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 	do_div(time, 1000);
 	dev->last_residency = (int)time;
 
+exit:
 	local_irq_enable();
+	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
 	return idx;
 }
 
@@ -1000,9 +1014,14 @@ enum msm_pm_l2_scm_flag lpm_cpu_pre_pc_cb(unsigned int cpu)
 
 	/*
 	 * No need to acquire the lock if probe isn't completed yet
+	 * In the event of the hotplug happening before lpm probe, we want to
+	 * flush the cache to make sure that L2 is flushed. In particular, this
+	 * could cause incoherencies for a cluster architecture. This wouldn't
+	 * affect the idle case as the idle driver wouldn't be registered
+	 * before the probe function
 	 */
 	if (!cluster)
-		return retflag;
+		return MSM_SCM_L2_OFF;
 
 	/*
 	 * Assumes L2 only. What/How parameters gets passed into TZ will

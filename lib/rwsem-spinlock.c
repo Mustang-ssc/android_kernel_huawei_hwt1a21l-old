@@ -215,13 +215,6 @@ void __sched __down_write_nested(struct rw_semaphore *sem, int subclass)
 	}
 	/* got the lock */
 	sem->activity = -1;
-	
-	/*<DTS2015010300107 zhanglei 20150103 begin */
-	/*<DTS2015031002248 zhanglei 20150311 begin */
-	//sem->owner = current;
-	/*DTS2015031002248 zhanglei 20150311 end>*/
-	/*DTS2015010300107 zhanglei 20150103 end>*/
-	
 	list_del(&waiter.list);
 
 	raw_spin_unlock_irqrestore(&sem->wait_lock, flags);
@@ -278,11 +271,6 @@ void __up_write(struct rw_semaphore *sem)
 	raw_spin_lock_irqsave(&sem->wait_lock, flags);
 
 	sem->activity = 0;
-	/*<DTS2015010300107 zhanglei 20150103 begin*/
-	/*<DTS2015031002248 zhanglei 20150311 begin */
-	//sem->owner = NULL;
-    /*DTS2015031002248 zhanglei 20150311 end>*/	
-	/*DTS2015010300107 zhanglei 20150103 end>*/
 	if (!list_empty(&sem->wait_list))
 		sem = __rwsem_do_wake(sem, 1);
 

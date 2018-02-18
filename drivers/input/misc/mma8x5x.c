@@ -394,8 +394,13 @@ static int mma8x5x_delay2odr(u32 delay_ms)
 
 static int mma8x5x_device_set_odr(struct i2c_client *client, u32 delay_ms)
 {
+	struct mma8x5x_data *pdata = i2c_get_clientdata(client);
 	int result;
 	u8 val;
+
+	/* set ODR is only required for interrupt mode */
+	if (!pdata->use_int)
+		return 0;
 
 	result = mma8x5x_delay2odr(delay_ms);
 	if (result < 0)
@@ -943,7 +948,7 @@ static int mma8x5x_probe(struct i2c_client *client,
 	pdata->cdev.delay_msec = pdata->poll_delay;
 	pdata->cdev.sensors_enable = mma8x5x_enable_set;
 	pdata->cdev.sensors_poll_delay = mma8x5x_poll_delay_set;
-	result = sensors_classdev_register(&client->dev, &pdata->cdev);
+	result = sensors_classdev_register(&idev->dev, &pdata->cdev);
 	if (result) {
 		dev_err(&client->dev, "create class device file failed!\n");
 		result = -EINVAL;

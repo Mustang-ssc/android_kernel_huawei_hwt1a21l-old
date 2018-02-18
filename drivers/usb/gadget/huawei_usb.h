@@ -1,4 +1,3 @@
-/* < DTS2014050804174 wanghui 20140523 begin */
 
 #ifndef __HUAWEI_USB_H__
 #define __HUAWEI_USB_H__
@@ -12,8 +11,7 @@
 #define VENDOR_CC          "consumercellular"
 #define VENDOR_SOFTBANK    "softbank"
 
-
-#define USB_DEFAULT_SN     "0123456789AB"
+#define USB_DEFAULT_SN     "0123456789ABCDEF"
 #define USB_SERIAL_LEN     32
 #define VENDOR_NAME_LEN    32
 #define COUNTRY_NAME_LEN   32
@@ -47,17 +45,19 @@ typedef struct _usbsdms_read_toc_cmd_type
    u8  allocation_length_lsb;
    u8  control;
 } usbsdms_read_toc_cmd_type;
-
 typedef struct
 {   
    unsigned char usb_serial[USB_SERIAL_LEN];
    unsigned char vender_name[VENDOR_NAME_LEN];
    unsigned char country_name[COUNTRY_NAME_LEN];
+   unsigned int hw_custom_features;
 } usb_param;
 
+#define HW_CUSTOM_FEATURES_LENTH    32
+/*if bit2 is set in hw_custom_features, disable rndis */
+#define HW_CUSTOM_FEATURES_USB_TETHER_DISABLED   BIT(2)
 #endif  /* __HUAWEI_USB_H__ */
 
 extern void usb_port_switch_request(int usb_pid_index);
 extern usb_param usb_parameter;
 
-/* DTS2014050804174 wanghui 20140523 end > */

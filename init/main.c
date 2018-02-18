@@ -87,24 +87,13 @@
 #include <asm/smp.h>
 #endif
 
-/* < DTS2014060408745 roopesh 20140604 begin */
+#ifdef CONFIG_LOG_JANK
+#include <linux/log_jank.h>
+#endif
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
 #include <linux/huawei_boot_log.h>
 #include <linux/kallsyms.h>
 #endif
-/* DTS2014060408745 roopesh 20140604 end > */
-/*< DTS2014061200428 Wuzhen/w00213434 20140612 begin */
-#include <linux/log_jank.h>
-/*DTS2014061200428 Wuzhen/w00213434 20140612 end > */
-
-#ifdef CONFIG_SRECORDER
-#include <linux/srecorder.h>
-#endif
-
-/* < DTS2014080102623 roopesh 20140801 begin */
-void *boot_log_virt = NULL;
-/* DTS2014080102623 roopesh 20140801 end > */
-
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -490,7 +479,6 @@ static void __init mm_init(void)
 	vmalloc_init();
 }
 
-/* < DTS2014060408745 roopesh 20140604 begin */
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
 
 struct boot_log_struct *boot_log = NULL;
@@ -524,44 +512,39 @@ huawei_nff_calculate_checksum(unsigned char *addr, int len)
 
 void  huawei_save_nff_kernel_init(void)
 {
-	/* < DTS2014080102623 roopesh 20140801 begin */
-	uint32_t *checksum = NULL;
-	uint32_t *magic = NULL;
+	/* get the previous saved phys address  and convert to cirt address*/
+	void * boot_log_virt =  ioremap_nocache(HUAWEI_BOOT_LOG_ADDR,HUAWEI_BOOT_LOG_SIZE);
+	uint32_t *checksum = (uint32_t *)((uint64_t)boot_log_virt + (uint64_t)MAGIC_NUMBER_SIZE);
+        uint32_t * magic    = (uint32_t*)(boot_log_virt);
 
-	boot_log_virt =  ioremap_nocache(HUAWEI_BOOT_LOG_ADDR,HUAWEI_BOOT_LOG_SIZE);
-	checksum = (uint32_t *)((unsigned int)boot_log_virt + MAGIC_NUMBER_SIZE);
-	magic    = (uint32_t*)(boot_log_virt);
-	/* DTS2014080102623 roopesh 20140801 end > */
-
-	/* If by any chance (version upgreade) the addresses are changed,
-	 * We might crash. Lets avoid that difficult to debug scenrio.
-	 * We trading it off with the non-availability of NFF logs*/
-	if (*magic != HUAWEI_BOOT_MAGIC_NUMBER) {
+        /* If by any chance (version upgreade) the addresses are changed,
+         * We might crash. Lets avoid that difficult to debug scenrio.
+         * We trading it off with the non-availability of NFF logs*/
+        if (*magic != HUAWEI_BOOT_MAGIC_NUMBER) {
 		pr_notice("NFF: Invalid magic number %x %x. Disabled NFF\n", 
 				*magic, HUAWEI_BOOT_LOG_ADDR);
-		return;
+                return;
 	}
 
 
-	boot_log = (struct boot_log_struct *)((unsigned int)boot_log_virt + MAGIC_NUMBER_SIZE + CHECKSUM_SIZE);
-	pr_notice("NFF: boot_log=%x\n", (int)boot_log);
+	boot_log = (struct boot_log_struct *)((uint64_t)boot_log_virt + (uint64_t)MAGIC_NUMBER_SIZE + (uint64_t)CHECKSUM_SIZE);
+	pr_notice("NFF: boot_log=%llx\n", (uint64_t)boot_log);
 
 
 	if(NULL != boot_log) {
 		/* save log address and size */
+            pr_notice("NFF: %lx\n", kallsyms_lookup_name("__log_buf"));
 #ifdef CONFIG_KALLSYMS
 		boot_log->kernel_addr = virt_to_phys((void *)kallsyms_lookup_name("__log_buf"));
 #else
 		boot_log->kernel_addr = 0;
 #endif
 #ifdef CONFIG_LOG_BUF_SHIFT
-		/* < DTS2014120805052 wangyuantao 20141208 begin */
-		boot_log->kernel_log_size = (1 << (CONFIG_LOG_BUF_SHIFT+1));
-		/* DTS2014120805052 wangyuantao 20141208 end > */
+		boot_log->kernel_log_size = (1 << CONFIG_LOG_BUF_SHIFT);
 #else
 		boot_log->kernel_log_size = 0;
 #endif
-		pr_notice("NFF: Checksum initial :%x, at %p, %x\n", *checksum, checksum, virt_to_phys((void*)checksum));
+		pr_notice("NFF: Checksum initial :%x, at %p, %llx\n", *checksum, checksum, virt_to_phys((void*)checksum));
 		memset(checksum, 0, CHECKSUM_SIZE);
 		*checksum = (uint32_t )huawei_nff_calculate_checksum((unsigned char*)boot_log, sizeof(*boot_log));
 		pr_notice("NFF: Checksum:%x, at %p\n", *checksum, checksum);
@@ -575,11 +558,7 @@ void  huawei_save_nff_kernel_init(void)
 		pr_notice("NFF: checksum phys=%x\n", HUAWEI_BOOT_LOG_ADDR + MAGIC_NUMBER_SIZE);
 
 
-		/* < DTS2014080102623 roopesh 20140801 begin */
-		/* iounap removed since the address would be used in reboot time.
-		 * We can not do ioremap during reboot since there is a possibility
-		 * that reboot can be in the panic in the interrupt context.*/
-		/* DTS2014080102623 roopesh 20140801 end > */
+		iounmap((void*)boot_log_virt);
 	}
 	else {
 		pr_notice("NFF: Error getting bootlog\n");
@@ -589,8 +568,6 @@ void  huawei_save_nff_kernel_init(void)
 	return;
 }
 #endif
-/* < DTS2014060408745 roopesh 20140604 begin */
-
 asmlinkage void __init start_kernel(void)
 {
 	char * command_line;
@@ -617,11 +594,6 @@ asmlinkage void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
-
-#ifdef CONFIG_SRECORDER
-    srecorder_reserve_special_mem();
-#endif
-
 	/*
 	 * Set up the the initial canary ASAP:
 	 */
@@ -654,11 +626,9 @@ asmlinkage void __init start_kernel(void)
 	sort_main_extable();
 	trap_init();
 	mm_init();
-/* < DTS2014060408745 roopesh 20140604 begin */
 #ifdef CONFIG_HUAWEI_FEATURE_NFF
 	huawei_save_nff_kernel_init();
 #endif
-/* DTS2014060408745 roopesh 20140604 end > */
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
 	 * timer interrupt). Full topology setup happens at smp_init()
@@ -768,10 +738,6 @@ asmlinkage void __init start_kernel(void)
 	}
 
 	ftrace_init();
-
-#ifdef CONFIG_SRECORDER
-    srecorder_move_previous_log();
-#endif
 
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
@@ -987,10 +953,6 @@ static int __ref kernel_init(void *unused)
 
 static noinline void __init kernel_init_freeable(void)
 {
-    /*< DTS2014061200428 Wuzhen/w00213434 20140612 begin */
-    unsigned long long t;
-    int this_cpu;
-    /*DTS2014061200428 Wuzhen/w00213434 20140612 end > */
 	/*
 	 * Wait until kthreadd is all set-up.
 	 */
@@ -1019,12 +981,9 @@ static noinline void __init kernel_init_freeable(void)
 	sched_init_smp();
 
 	do_basic_setup();
-    /*< DTS2014061200428 Wuzhen/w00213434 20140612 begin */
-    this_cpu = smp_processor_id();
-    t = cpu_clock(this_cpu);
-    do_div(t,1000000);
-    LOG_JANK_V(JL_BOOT_PROGRESS_KERNEL_END,"JL_BOOT_PROGRESS_KERNEL_END#T:%5lu \n",(unsigned long) t);
-    /*DTS2014061200428 Wuzhen/w00213434 20140612 end > */
+#ifdef CONFIG_LOG_JANK
+    LOG_JANK_V(JLID_BOOT_PROGRESS_KERNEL_END,"JL_BOOT_PROGRESS_KERNEL_END");
+#endif
 	/* Open the /dev/console on the rootfs, this should never fail */
 	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)
 		pr_err("Warning: unable to open an initial console.\n");

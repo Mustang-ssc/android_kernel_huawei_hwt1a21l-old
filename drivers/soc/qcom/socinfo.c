@@ -1,4 +1,5 @@
-/* Copyright (c) 2009-2014, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2009-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -31,11 +32,9 @@
 #include <soc/qcom/socinfo.h>
 #include <soc/qcom/smem.h>
 #include <soc/qcom/boot_stats.h>
-/* < DTS2014081805982 yangxiaomei 20140829 begin */
-#ifdef CONFIG_HUAWEI_SENSOR_SELF_ADAPT
-#include <linux/hw_sensor_info.h>
+#ifdef CONFIG_HUAWEI_SENSOR_INFO
+#include <huawei_platform/sensor/hw_sensor_info.h>
 #endif
-/* DTS2014081805982 yangxiaomei 20140829 end > */
 #define BUILD_ID_LENGTH 32
 #define SMEM_IMAGE_VERSION_BLOCKS_COUNT 32
 #define SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE 128
@@ -47,11 +46,7 @@
 #define SMEM_IMAGE_VERSION_OEM_OFFSET 96
 #define SMEM_IMAGE_VERSION_PARTITION_APPS 10
 
-/* < DTS2014050602054 renlipeng 20140506 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
 #define HW_BOARDID_BEGIN_NUM 8000
-#endif
-/*  DTS2014050602054 renlipeng 20140506 end >*/
 enum {
 	HW_PLATFORM_UNKNOWN = 0,
 	HW_PLATFORM_SURF    = 1,
@@ -59,6 +54,7 @@ enum {
 	HW_PLATFORM_FLUID   = 3,
 	HW_PLATFORM_SVLTE_FFA	= 4,
 	HW_PLATFORM_SVLTE_SURF	= 5,
+	HW_PLATFORM_MTP_MDM = 7,
 	HW_PLATFORM_MTP  = 8,
 	HW_PLATFORM_LIQUID  = 9,
 	/* Dragonboard platform id is assigned as 10 in CDT */
@@ -78,6 +74,7 @@ const char *hw_platform[] = {
 	[HW_PLATFORM_FLUID] = "Fluid",
 	[HW_PLATFORM_SVLTE_FFA] = "SVLTE_FFA",
 	[HW_PLATFORM_SVLTE_SURF] = "SLVTE_SURF",
+	[HW_PLATFORM_MTP_MDM] = "MDM_MTP_NO_DISPLAY",
 	[HW_PLATFORM_MTP] = "MTP",
 	[HW_PLATFORM_LIQUID] = "Liquid",
 	[HW_PLATFORM_DRAGON] = "Dragon",
@@ -405,9 +402,6 @@ static struct msm_soc_info cpu_of_id[] = {
 	[223] = {MSM_CPU_8226, "MSM8628"},
 	[224] = {MSM_CPU_8226, "MSM8928"},
 
-	/* 8092 IDs */
-	[146] = {MSM_CPU_8092, "MPQ8092"},
-
 	/* 8610 IDs */
 	[147] = {MSM_CPU_8610, "MSM8610"},
 	[161] = {MSM_CPU_8610, "MSM8110"},
@@ -473,12 +467,40 @@ static struct msm_soc_info cpu_of_id[] = {
 	[241] = {MSM_CPU_8939, "APQ8039"},
 	[263] = {MSM_CPU_8939, "MSM8239"},
 
+	/* 8909 IDs */
+	[245] = {MSM_CPU_8909, "MSM8909"},
+	[260] = {MSM_CPU_8909, "MDMFERRUM"},
+	[261] = {MSM_CPU_8909, "MDMFERRUM"},
+	[262] = {MSM_CPU_8909, "MDMFERRUM"},
+
 	/* ZIRC IDs */
 	[234] = {MSM_CPU_ZIRC, "MSMZIRC"},
 	[235] = {MSM_CPU_ZIRC, "MSMZIRC"},
 	[236] = {MSM_CPU_ZIRC, "MSMZIRC"},
 	[237] = {MSM_CPU_ZIRC, "MSMZIRC"},
 	[238] = {MSM_CPU_ZIRC, "MSMZIRC"},
+
+	/* 8994 ID */
+	[207] = {MSM_CPU_8994, "MSM8994"},
+	[253] = {MSM_CPU_8994, "APQ8094"},
+
+	/* 8992 ID */
+	[251] = {MSM_CPU_8992, "MSM8992"},
+
+	/* FSM9010 ID */
+	[254] = {FSM_CPU_9010, "FSM9010"},
+	[255] = {FSM_CPU_9010, "FSM9010"},
+	[256] = {FSM_CPU_9010, "FSM9010"},
+	[257] = {FSM_CPU_9010, "FSM9010"},
+
+	/* Tellurium ID */
+	[264] = {MSM_CPU_TELLURIUM, "MSMTELLURIUM"},
+
+	/* 8929 IDs */
+	[268] = {MSM_CPU_8929, "MSM8929"},
+	[269] = {MSM_CPU_8929, "MSM8629"},
+	[270] = {MSM_CPU_8929, "MSM8229"},
+	[271] = {MSM_CPU_8929, "APQ8029"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -660,8 +682,6 @@ msm_get_hw_platform(struct device *dev,
 	uint32_t hw_type;
 	hw_type = socinfo_get_platform_type();
 
-    /* < DTS2014050602054 renlipeng 20140506 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
     if(hw_type >= HW_BOARDID_BEGIN_NUM)
 	{
          hw_type = HW_PLATFORM_QRD;
@@ -669,13 +689,10 @@ msm_get_hw_platform(struct device *dev,
     {
          hw_type = HW_PLATFORM_UNKNOWN;
 	}
-#endif
-    /*  DTS2014050602054 renlipeng 20140506 end >*/
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n",
 			hw_platform[hw_type]);
 }
-/* < DTS2014081805982 yangxiaomei 20140829 begin */
-#ifdef CONFIG_HUAWEI_SENSOR_SELF_ADAPT
+#ifdef CONFIG_HUAWEI_SENSOR_INFO
 static ssize_t
 msm_get_huawei_product(struct device *dev,
 				struct device_attribute *attr,
@@ -688,7 +705,6 @@ msm_get_huawei_product(struct device *dev,
 			product_ver);
 }
 #endif
-/* DTS2014081805982 yangxiaomei 20140829 end > */
 static ssize_t
 msm_get_platform_version(struct device *dev,
 				struct device_attribute *attr,
@@ -722,6 +738,11 @@ msm_get_platform_subtype(struct device *dev,
 		}
 		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
 					qrd_hw_platform_subtype[hw_subtype]);
+	}
+	if (hw_subtype >= PLATFORM_SUBTYPE_INVALID) {
+		pr_err("%s: Invalid hardware platform sub type for found\n",
+			__func__);
+		hw_subtype = PLATFORM_SUBTYPE_UNKNOWN;
 	}
 
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n",
@@ -928,13 +949,10 @@ static struct device_attribute msm_soc_attr_build_id =
 
 static struct device_attribute msm_soc_attr_hw_platform =
 	__ATTR(hw_platform, S_IRUGO, msm_get_hw_platform, NULL);
-/* < DTS2014081805982 yangxiaomei 20140829 begin */
-#ifdef CONFIG_HUAWEI_SENSOR_SELF_ADAPT
+#ifdef CONFIG_HUAWEI_SENSOR_INFO
 static struct device_attribute msm_soc_attr_huawei_product =
 	__ATTR(huawei_product, S_IRUSR|S_IRGRP, msm_get_huawei_product, NULL);
 #endif
-/* DTS2014081805982 yangxiaomei 20140829 end > */
-
 static struct device_attribute msm_soc_attr_platform_version =
 	__ATTR(platform_version, S_IRUGO,
 			msm_get_platform_version, NULL);
@@ -984,11 +1002,7 @@ static struct device_attribute select_image =
 
 static void * __init setup_dummy_socinfo(void)
 {
-	if (early_machine_is_mpq8092()) {
-		dummy_socinfo.id = 146;
-		strlcpy(dummy_socinfo.build_id, "mpq8092 - ",
-		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_apq8084()) {
+	if (early_machine_is_apq8084()) {
 		dummy_socinfo.id = 178;
 		strlcpy(dummy_socinfo.build_id, "apq8084 - ",
 			sizeof(dummy_socinfo.build_id));
@@ -996,9 +1010,9 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 187;
 		strlcpy(dummy_socinfo.build_id, "mdm9630 - ",
 			sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_msmsamarium()) {
-		dummy_socinfo.id = 195;
-		strlcpy(dummy_socinfo.build_id, "msmsamarium - ",
+	} else if (early_machine_is_msm8909()) {
+		dummy_socinfo.id = 245;
+		strlcpy(dummy_socinfo.build_id, "msm8909 - ",
 			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_msm8916()) {
 		dummy_socinfo.id = 206;
@@ -1015,6 +1029,22 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_msmzirc()) {
 		dummy_socinfo.id = 238;
 		strlcpy(dummy_socinfo.build_id, "msmzirc - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msm8994()) {
+		dummy_socinfo.id = 207;
+		strlcpy(dummy_socinfo.build_id, "msm8994 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msm8992()) {
+		dummy_socinfo.id = 251;
+		strlcpy(dummy_socinfo.build_id, "msm8992 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msmtellurium()) {
+		dummy_socinfo.id = 264;
+		strlcpy(dummy_socinfo.build_id, "msmtellurium - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msm8929()) {
+		dummy_socinfo.id = 268;
+		strlcpy(dummy_socinfo.build_id, "msm8929 - ",
 			sizeof(dummy_socinfo.build_id));
 	}
 
@@ -1057,12 +1087,10 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	case 3:
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_hw_platform);
-		/* < DTS2014081805982 yangxiaomei 20140829 begin */
-		#ifdef CONFIG_HUAWEI_SENSOR_SELF_ADAPT
+		#ifdef CONFIG_HUAWEI_SENSOR_INFO
 		device_create_file(msm_soc_device,
 				&msm_soc_attr_huawei_product);
 		#endif
-		/* DTS2014081805982 yangxiaomei 20140829 end > */
 	case 2:
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_raw_id);

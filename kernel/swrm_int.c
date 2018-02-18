@@ -1,4 +1,4 @@
-/* < DTS2014062704895 zhaoyingchun 20140628 begin */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */
 /*
  *  swrm_int.c
  *
@@ -118,5 +118,4 @@ exit:
 }
 
 EXPORT_SYMBOL(mmc_blk_dispatch_swrm);
-/* DTS2014062704895 zhaoyingchun 20140628 end > */
-
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */

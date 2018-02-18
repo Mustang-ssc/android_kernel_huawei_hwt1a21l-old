@@ -774,6 +774,8 @@ do {									       \
 	if (EXT4_FITS_IN_INODE(raw_inode, einode, xtime))		       \
 		(einode)->xtime.tv_sec = 				       \
 			(signed)le32_to_cpu((raw_inode)->xtime);	       \
+	else								       \
+		(einode)->xtime.tv_sec = 0;				       \
 	if (EXT4_FITS_IN_INODE(raw_inode, einode, xtime ## _extra))	       \
 		ext4_decode_extra_time(&(einode)->xtime,		       \
 				       raw_inode->xtime ## _extra);	       \
@@ -2141,26 +2143,24 @@ extern int ext4_orphan_add(handle_t *, struct inode *);
 extern int ext4_orphan_del(handle_t *, struct inode *);
 extern int ext4_htree_fill_tree(struct file *dir_file, __u32 start_hash,
 				__u32 start_minor_hash, __u32 *next_hash);
-/* < DTS2014071404370 shiguojun 20140714 begin */
 #ifdef CONFIG_SDCARD_FS_CI_SEARCH
 extern int search_dir(struct buffer_head *bh,
-        char *search_buf,
-        int buf_size,
-        struct inode *dir,
-        const struct qstr *d_name,
-        unsigned int offset,
-        struct ext4_dir_entry_2 ** res_dir,
-        char *ci_name_buf);
+		      char *search_buf,
+		      int buf_size,
+		      struct inode *dir,
+		      const struct qstr *d_name,
+		      unsigned int offset,
+		      struct ext4_dir_entry_2 **res_dir,
+              char *ci_name_buf);
 #else
 extern int search_dir(struct buffer_head *bh,
-        char *search_buf,
-        int buf_size,
-        struct inode *dir,
-        const struct qstr *d_name,
-        unsigned int offset,
-        struct ext4_dir_entry_2 **res_dir);
+		      char *search_buf,
+		      int buf_size,
+		      struct inode *dir,
+		      const struct qstr *d_name,
+		      unsigned int offset,
+		      struct ext4_dir_entry_2 **res_dir);
 #endif
-/* DTS2014071404370 shiguojun 20140714 end > */
 extern int ext4_generic_delete_entry(handle_t *handle,
 				     struct inode *dir,
 				     struct ext4_dir_entry_2 *de_del,
@@ -2545,20 +2545,18 @@ extern int htree_inlinedir_to_tree(struct file *dir_file,
 				   struct dx_hash_info *hinfo,
 				   __u32 start_hash, __u32 start_minor_hash,
 				   int *has_inline_data);
-/* < DTS2014071404370 shiguojun 20140714 begin */
 #ifdef CONFIG_SDCARD_FS_CI_SEARCH
 extern struct buffer_head *ext4_find_inline_entry(struct inode *dir,
-        const struct qstr *d_name,
-        struct ext4_dir_entry_2 **res_dir,
-        int *has_inline_data,
-        char* ci_name_buf);
+					const struct qstr *d_name,
+					struct ext4_dir_entry_2 **res_dir,
+					int *has_inline_data,
+                    char* ci_name_buf);
 #else
 extern struct buffer_head *ext4_find_inline_entry(struct inode *dir,
-        const struct qstr *d_name,
-        struct ext4_dir_entry_2 **res_dir,
-        int *has_inline_data);
+					const struct qstr *d_name,
+					struct ext4_dir_entry_2 **res_dir,
+					int *has_inline_data);
 #endif
-/* DTS2014071404370 shiguojun 20140714 end > */
 extern int ext4_delete_inline_entry(handle_t *handle,
 				    struct inode *dir,
 				    struct ext4_dir_entry_2 *de_del,

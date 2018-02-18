@@ -161,7 +161,7 @@ static inline void pm_qos_set_value(struct pm_qos_constraints *c, s32 value)
 }
 
 static inline void pm_qos_set_value_for_cpus(struct pm_qos_constraints *c,
-         struct cpumask *cpus)
+		struct cpumask *cpus)
 {
 	struct pm_qos_request *req = NULL;
 	int cpu;

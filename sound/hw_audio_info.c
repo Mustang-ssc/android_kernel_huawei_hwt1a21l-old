@@ -1,5 +1,3 @@
-/* < DTS2014072210537 duhongyan 20140723 begin */
-/* < DTS2014041201607 yangxiaocong 20140412 begin */
 /*
  * Copyright (C) huawei company
  *
@@ -18,12 +16,12 @@
 #include <linux/kobject.h>
 #include <linux/string.h>
 #include <linux/of.h>
-
-/* < DTS2014071005378 yubin 20140711 begin */
+#include <linux/delay.h>
+#include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <sound/hw_audio_info.h>
-#include <sound/hw_audio_log.h>
-/* < DTS2015012005833 wangzefan/wwx224779 20150120 begin */
 #ifdef CONFIG_HUAWEI_DSM
+
 static struct dsm_dev audio_dsm_info = 
 {
     .name = DSM_AUDIO_MOD_NAME,
@@ -33,16 +31,11 @@ static struct dsm_dev audio_dsm_info =
 
 static struct dsm_client *audio_dclient = NULL;
 #endif
-/* DTS2015012005833 wangzefan/wwx224779 20150120 end > */
-/* DTS2014071005378 yubin 20140711 end > */
 
-/* < DTS2013081000415 duhongyan 20130810 begin */
 /* Audio property is an unsigned 32-bit integer stored in the variable of audio_property.
    The meaning of audio_property is defined as following MACROs in groups of 4 bits */
 
-/* < DTS2013091308936 duhongyan 20130924 begin */
 /* Delete ambiguous builtin mic type */
-/* DTS2013091308936 duhongyan 20130924 end > */
 /* Bit4 ~ bit7:
    Actually existing mics on the phone, it's NOT relevant to fluence. Using one bit to denote 
    the existence of one kind of mic, possible mics are:
@@ -58,7 +51,6 @@ static struct dsm_client *audio_dclient = NULL;
 #define AUDIO_PROP_SECONDARY_MIC_EXIST_MASK 0x00000020
 #define AUDIO_PROP_ERROR_MIC_EXIST_MASK     0x00000040
 
-/* < DTS2013091308936 duhongyan 20130924 begin */
 /* Bit12 ~ bit15:
    Denote which mic would be used in hand held mode, please add as needed */
 #define AUDIO_PROP_HANDHELD_MASTER_MIC_NODE "hand_held_master_mic_strategy"
@@ -67,34 +59,30 @@ static struct dsm_client *audio_dclient = NULL;
 #define AUDIO_PROP_HANDHELD_MASTER_MIC 0x00001000
 #define AUDIO_PROP_HANDHELD_DUAL_MIC 0x00002000
 #define AUDIO_PROP_HANDHELD_AANC_MIC 0x00004000
-/* DTS2013091308936 duhongyan 20130924 end > */
-/* DTS2013081000415 duhongyan 20130810 end > */
 
-/* < DTS2013072506627 sujunfeng 20130725 begin */
 #define PRODUCT_IDENTIFIER_NODE             "product-identifier"
 #define PRODUCT_IDENTIFIER_BUFF_SIZE        64
-/* < DTS2013090207238 yangjingwen 20130902 begin */
 #define AUD_PARAM_VER_NODE             "aud_param_ver"
 #define AUD_PARAM_VER_BUFF_SIZE        32
-/* DTS2013090207238 yangjingwen 20130902 end > */
-/* DTS2013072506627 sujunfeng 20130725 end > */
 
-/* < DTS2015012801451 jiangchenghu 20150128 begin */
 #define SPEAKER_PA_NODE             "speaker-pa"
 #define SPEAKER_PA_BUFF_SIZE        32
-/* DTS2015012801451 jiangchenghu 20150128 end > */
 
-/* < DTS2013080804880 lishubin 20130808 begin */
-/*add nrec function source from DTS2013032009189*/
+#define PA_i2C_NODE             "pa-i2c"
+#define PA_i2C_BUFF_SIZE        32
+
+#define SPEAKER_BOX_NODE             "speaker-box"
+#define SPEAKER_BOX_BUFF_SIZE        32
+#define PIN_VOLTAGE_LOW   0
+#define PIN_VOLTAGE_HIGH  1
+#define PIN_VOLTAGE_FLOAT 2
+
 #define AUDIO_PROP_BTSCO_NREC_ADAPT_MASK 0xf0000000
 #define AUDIO_PROP_BTSCO_NREC_ADAPT_OFF  0x10000000
 #define AUDIO_PROP_BTSCO_NREC_ADAPT_ON   0x20000000
 
 #define PRODUCT_NERC_ADAPT_CONFIG    "product-btsco-nrec-adapt"
-/* DTS2013080804880 lishubin 20130808 end > */
 
-/* < DTS2013090508109 lishubin 20130905 begin */
-/* < DTS2013091308936 duhongyan 20130924 begin */
 /* Bit16 ~ bit19:
    Denote which mic would be used in loud speaker mode, please add as needed */
 #define AUDIO_PROP_LOUDSPEAKER_MASTER_MIC_NODE "loud_speaker_master_mic_strategy"
@@ -103,32 +91,27 @@ static struct dsm_client *audio_dclient = NULL;
 #define AUDIO_PROP_LOUDSPEAKER_MASTER_MIC 0x00010000
 #define AUDIO_PROP_LOUDSPEAKER_SECOND_MIC 0x00020000
 #define AUDIO_PROP_LOUDSPEAKER_ERROR_MIC 0x00040000
-/* DTS2013091308936 duhongyan 20130924 end > */
-/* DTS2013090508109 lishubin 20130905 end > */
-/* < DTS2013091308936 duhongyan 20130924 begin */
 /* Delete unused codes related to string_to_value function */
-/* DTS2013091308936 duhongyan 20130924 end > */
 
 /**
 * audio_property - Product specified audio properties
 */
 static unsigned int audio_property = 0;
 
-/* < DTS2013072506627 sujunfeng 20130725 begin */
 /**
 * product_identifier - Product identifier, used for audio parameter auto-adapt
 */
 static char product_identifier[PRODUCT_IDENTIFIER_BUFF_SIZE] = "default";
-/* DTS2013072506627 sujunfeng 20130725 end > */
 
-/* < DTS2015012801451 jiangchenghu 20150128 begin */
 static char speaker_pa[SPEAKER_PA_BUFF_SIZE] = "none";
 static bool tfa9895_flag = false;
-/* DTS2015012801451 jiangchenghu 20150128 end > */
 
-/* < DTS2013090207238 yangjingwen 20130902 begin */
+static char pa_i2c[PA_i2C_BUFF_SIZE] = "none";
+
+static char speaker_box_id[SPEAKER_BOX_BUFF_SIZE] = "none";
+static int speaker_box = -1;
+
 static char aud_param_ver[AUD_PARAM_VER_BUFF_SIZE] = "default";
-/* DTS2013090207238 yangjingwen 20130902 end > */
 
 static ssize_t audio_property_show(struct device_driver *driver, char *buf)
 {
@@ -137,16 +120,14 @@ static ssize_t audio_property_show(struct device_driver *driver, char *buf)
         /* The size of buf should be one page(PAGE_SIZE), which will be surely 
            enough to hold the string converted from a 32 bit unsigned integer. 
            So omit unnecessary overflow check */
-        /* < DTS2014052707383 caiying/00214377 20140527 begin */
         return snprintf(buf, PAGE_SIZE, "%08X\n", audio_property);
-        /* DTS2014052707383 caiying/00214377 20140527 end > */
     }
 
     return 0;
 }
+
 DRIVER_ATTR(audio_property, 0444, audio_property_show, NULL);
 
-/* < DTS2013072506627 sujunfeng 20130725 begin */
 static ssize_t product_identifier_show(struct device_driver *driver, char *buf)
 {
     if(NULL != buf)
@@ -158,9 +139,9 @@ static ssize_t product_identifier_show(struct device_driver *driver, char *buf)
 
     return 0;
 }
+
 DRIVER_ATTR(product_identifier, 0444, product_identifier_show, NULL);
 
-/* < DTS2015012801451 jiangchenghu 20150128 begin */
 static ssize_t speaker_pa_show(struct device_driver *driver, char *buf)
 {
     if(NULL != buf)
@@ -173,9 +154,32 @@ static ssize_t speaker_pa_show(struct device_driver *driver, char *buf)
     return 0;
 }
 DRIVER_ATTR(speaker_pa, 0444, speaker_pa_show, NULL);
-/* DTS2015012801451 jiangchenghu 20150128 end > */
 
-/* < DTS2013090207238 yangjingwen 20130902 begin */
+static ssize_t box_id_show(struct device_driver *driver, char *buf)
+{
+    if(NULL != buf)
+    {
+        snprintf(buf, PAGE_SIZE, "%s", speaker_box_id);
+        return strlen(buf);
+    }
+
+    return 0;
+}
+DRIVER_ATTR(speaker_box_id, 0444, box_id_show, NULL);
+
+static ssize_t pa_i2c_show(struct device_driver *driver, char *buf)
+{
+    if(NULL != buf)
+    {
+        /* Newline is not appended on purpose, for convenience of reader programs */
+        snprintf(buf, PAGE_SIZE, "%s", pa_i2c);
+        return strlen(buf);
+    }
+
+    return 0;
+}
+DRIVER_ATTR(pa_i2c, 0444, pa_i2c_show, NULL);
+
 /**
 * audiopara_version_show - used for cat the value of node aud_param_ver
 */
@@ -187,138 +191,20 @@ static ssize_t audiopara_version_show(struct device_driver *driver, char *buf)
     }
     return 0;
 }
+
 DRIVER_ATTR(aud_param_ver, 0444, audiopara_version_show, NULL);
 
-/* Default audio log level */
-int audio_log_level = AUDIO_LOG_LEVEL_INFO;
 
-/**
-* audio_property - Product specified audio properties
-*/
-static ssize_t audio_log_level_show(struct device_driver *driver, char *buf)
-{
-    char level_char = ' ';
-
-    if(NULL == buf)
-    {
-        ad_loge("%s get NULL argument\n", __func__);
-        return 0;
-    }
-
-    switch(audio_log_level)
-    {
-        case AUDIO_LOG_LEVEL_VERBOSE:
-            level_char = 'V';
-            break;
-        case AUDIO_LOG_LEVEL_DEBUG:
-            level_char = 'D';
-            break;
-        case AUDIO_LOG_LEVEL_INFO:
-            level_char = 'I';
-            break;
-        case AUDIO_LOG_LEVEL_NOTICE:
-            level_char = 'N';
-            break;
-        case AUDIO_LOG_LEVEL_WARNING:
-            level_char = 'W';
-            break;
-        case AUDIO_LOG_LEVEL_ERROR:
-            level_char = 'E';
-            break;
-        case AUDIO_LOG_LEVEL_NONE:
-            level_char = '0';
-            break;
-        default:
-            level_char = ' ';
-            ad_loge("Unkown audio log level\n");
-            break;
-    }
-
-    ad_logi("Current log level is %d:%c\n", audio_log_level, level_char);
-    
-    /* Those logs are for log level confirm and test */
-    ad_logv("This is verbose log\n");
-    ad_logd("This is debug log\n");
-    ad_logi("This is info log\n");
-    ad_logn("This is notice log\n");
-    ad_logw("This is warning log\n");
-    ad_loge("This is error log\n");
-    return snprintf(buf, PAGE_SIZE, "%d:%c", audio_log_level, level_char);
-}
-
-/**
-* audio_property - Product specified audio properties
-*/
-static ssize_t audio_log_level_store(struct device_driver *driver, const char *buf, size_t count)
-{
-    char level_char;
-    int new_log_level = audio_log_level;
-    
-    if((NULL == buf) || (count < 1))
-    {
-        ad_loge("%s get illegal arguments\n", __func__);
-        return -EINVAL;
-    }
-    
-    level_char = buf[0];
-    ad_logi("Get audio log level char %c\n", level_char);
-
-    switch(level_char)
-    {
-        case 'V':
-            new_log_level = AUDIO_LOG_LEVEL_VERBOSE;
-            break;
-        case 'D':
-            new_log_level = AUDIO_LOG_LEVEL_DEBUG;
-            break;
-        case 'I':
-            new_log_level = AUDIO_LOG_LEVEL_INFO;
-            break;
-        case 'N':
-            new_log_level = AUDIO_LOG_LEVEL_NOTICE;
-            break;
-        case 'W':
-            new_log_level = AUDIO_LOG_LEVEL_WARNING;
-            break;
-        case 'E':
-            new_log_level = AUDIO_LOG_LEVEL_ERROR;
-            break;
-        case '0':
-            new_log_level = AUDIO_LOG_LEVEL_NONE;
-            break;
-        default:
-            ad_loge("Unkown audio log level character: %c\n", level_char);
-            new_log_level = audio_log_level;
-            break;
-    }
-    
-    if(audio_log_level != new_log_level)
-    {
-        ad_logi("Change audio log level from %d to %d\n", audio_log_level, new_log_level);
-        audio_log_level = new_log_level;
-    }
-    else
-    {
-        ad_logi("Audio log level remains %d\n", audio_log_level);
-    }
-    return count;
-}
-DRIVER_ATTR(audio_log_level, 0644, audio_log_level_show, audio_log_level_store);
-
-/* < DTS2015012801451 jiangchenghu 20150128 begin */
 static struct attribute *audio_attrs[] = {
     &driver_attr_audio_property.attr,
     &driver_attr_product_identifier.attr,
     &driver_attr_aud_param_ver.attr,
-    &driver_attr_audio_log_level.attr,
     &driver_attr_speaker_pa.attr,
+    &driver_attr_speaker_box_id.attr,
+    &driver_attr_pa_i2c.attr,
     NULL,
 };
-/* DTS2015012801451 jiangchenghu 20150128 end > */
-/* DTS2013090207238 yangjingwen 20130902 end > */
-/* DTS2013072506627 sujunfeng 20130725 end > */
 
-/* < DTS2014071005378 yubin 20140711 begin */
 #ifdef CONFIG_HUAWEI_DSM
 int audio_dsm_register(void)
 {
@@ -330,31 +216,30 @@ int audio_dsm_register(void)
     audio_dclient = dsm_register_client(&audio_dsm_info);
     if(NULL == audio_dclient)
     {
-        ad_loge("audio_dclient register failed!\n");
+        printk("audio_dclient register failed!\n");
     }
 
     return 0;
 }
 
-/* < DTS2014121000765 wangzefan/wx224779 20141209 begin */
 int audio_dsm_report_num(int error_no, unsigned int mesg_no)
 {
     int err = 0;
     
     if(NULL == audio_dclient)
     {
-        ad_loge("%s: audio_dclient did not register!\n", __func__);
+        printk("%s: audio_dclient did not register!\n", __func__);
         return -1;
     }
     
     err = dsm_client_ocuppy(audio_dclient);
     if(0 != err)
     {
-        ad_loge("%s: user buffer is busy!\n", __func__);
+        printk("%s: user buffer is busy!\n", __func__);
         return -1;
     }
 
-    ad_loge("%s: after dsm_client_ocuppy, error_no=0x%x, mesg_no=0x%x!\n",
+    printk("%s: after dsm_client_ocuppy, error_no=0x%x, mesg_no=0x%x!\n",
         __func__, error_no, mesg_no);
     
     err = dsm_client_record(audio_dclient, "Message code = 0x%x.\n", mesg_no);
@@ -363,9 +248,7 @@ int audio_dsm_report_num(int error_no, unsigned int mesg_no)
     
     return 0;
 }
-/* DTS2014121000765 wangzefan/wx224779 20141209 end > */
 
-/* < DTS2014121000765 wangzefan/wx224779 20141209 begin */
 int audio_dsm_report_info(int error_no, char *fmt, ...)
 {
     int err = 0;
@@ -375,13 +258,13 @@ int audio_dsm_report_info(int error_no, char *fmt, ...)
     
     if(NULL == audio_dclient)
     {
-        ad_loge("%s: audio_dclient did not register!\n", __func__);
+        printk("%s: audio_dclient did not register!\n", __func__);
         return -1;
     }
 
     if(error_no < DSM_AUDIO_ERROR_NUM)
     {
-        ad_loge("%s: input error_no err!\n", __func__);
+        printk("%s: input error_no err!\n", __func__);
         return -1;
     }
 
@@ -392,11 +275,11 @@ int audio_dsm_report_info(int error_no, char *fmt, ...)
     err = dsm_client_ocuppy(audio_dclient);
     if(0 != err)
     {
-        ad_loge("%s: user buffer is busy!\n", __func__);
+        printk("%s: user buffer is busy!\n", __func__);
         return -1;
     }
 
-    ad_loge("%s: after dsm_client_ocuppy, dsm_error_no = %d, %s\n", 
+    printk("%s: after dsm_client_ocuppy, dsm_error_no = %d, %s\n",
             __func__, error_no, dsm_report_buffer);
 
     dsm_client_record(audio_dclient, "%s\n", dsm_report_buffer);
@@ -406,30 +289,22 @@ int audio_dsm_report_info(int error_no, char *fmt, ...)
     return 0;
     
 }
-/* DTS2014121000765 wangzefan/wx224779 20141209 end > */
 
 #else
-int inline audio_dsm_register()
+int inline audio_dsm_register(void)
 {
     return 0;
 }
-
-/* < DTS2015012005833 wangzefan/wwx224779 20150120 begin */
 int inline audio_dsm_report_num(int error_no, unsigned int mesg_no)
 {
     return 0;
 }
-/* DTS2015012005833 wangzefan/wwx224779 20150120 end > */
-
-/* < DTS2014121000765 wangzefan/wx224779 20141209 begin */
 int audio_dsm_report_info(int error_no, char *fmt, ...)
 {
     return 0;
 }
-/* DTS2014121000765 wangzefan/wx224779 20141209 end > */
 
 #endif
-/* DTS2014071005378 yubin 20140711 end > */
 
 static struct attribute_group audio_group = {
     .name ="hw_audio_info",
@@ -446,7 +321,6 @@ static struct of_device_id audio_info_match_table[] = {
     { },
 };
 
-/* < DTS2015012801451 jiangchenghu 20150128 begin */
 bool get_tfa9895_flag(void)
 {
    if(tfa9895_flag)
@@ -454,42 +328,103 @@ bool get_tfa9895_flag(void)
    return false;   
 }
 EXPORT_SYMBOL_GPL(get_tfa9895_flag);
-/* DTS2015012801451 jiangchenghu 20150128 end > */
+
+int get_pa_box_id(struct platform_device *pdev, struct pinctrl *pinctrl)
+{
+    struct pinctrl_state *pin_default;
+	struct pinctrl_state *pin_sleep;
+	int gpio_box_id;
+	int ret;
+	int box_value_pull_up = -1;
+	int box_value_pull_down = -1;
+
+	gpio_box_id = of_get_named_gpio(pdev->dev.of_node, "qcom,box-id", 0);
+    if (gpio_box_id < 0) 
+    {
+        pr_err("%s: failed to get gpio_box_id\n", __func__);
+        return -1;
+    }
+    ret = gpio_request(gpio_box_id, "gpio_box_id");
+    if (ret) 
+    {
+        pr_err("%s: unable to request gpio_box_id\n", __func__);
+        return -1;
+    }
+    
+    pin_default = pinctrl_lookup_state(pinctrl, "box_default");
+	if (IS_ERR(pin_default)) 
+	{
+        pr_err("%s: Unable to get pinctrl box_default state handle\n", __func__);
+        return -1;
+	}
+
+	pin_sleep = pinctrl_lookup_state(pinctrl, "box_sleep");
+    if (IS_ERR(pin_sleep)) 
+    {
+	    pr_err("%s: Unable to get pinctrl box_sleep state handle\n", __func__);
+	    return -1;
+    }
+		
+    pinctrl_select_state(pinctrl, pin_default);
+    udelay(10);
+    gpio_direction_input(gpio_box_id);
+    box_value_pull_up = gpio_get_value(gpio_box_id);
+    pr_err("%s: box_value up = %d, ret = %d\n", __func__, box_value_pull_up, ret);
+
+    pinctrl_select_state(pinctrl, pin_sleep);
+    udelay(10);
+    gpio_direction_input(gpio_box_id);
+    box_value_pull_down = gpio_get_value(gpio_box_id);
+    pr_err("%s: box_value down = %d, ret = %d\n", __func__, box_value_pull_down, ret);
+    gpio_free(gpio_box_id);
+
+    if(box_value_pull_up == box_value_pull_down) // pin is high or low
+    {
+        if(PIN_VOLTAGE_HIGH == box_value_pull_down)
+        {
+            pinctrl_select_state(pinctrl, pin_default); // set pull up when pin is high
+            return PIN_VOLTAGE_HIGH;
+        }
+        else
+        {
+            pinctrl_select_state(pinctrl, pin_sleep); // set pull down when pin is low
+            return PIN_VOLTAGE_LOW;
+        }
+    }
+    else // pin is float
+    {
+        return PIN_VOLTAGE_FLOAT;
+    }
+}
 
 static int audio_info_probe(struct platform_device *pdev)
 {
     int ret;
     const char *string;
+    struct pinctrl *pinctrl;
     
     if(NULL == pdev)
     {
-        ad_loge("huawei_audio: audio_info_probe failed, pdev is NULL\n");
+        printk(KERN_ERR "huawei_audio: audio_info_probe failed, pdev is NULL\n");
         return 0;
     }
     
     if(NULL == pdev->dev.of_node)
     {
-        ad_loge("huawei_audio: audio_info_probe failed, of_node is NULL\n");
+        printk(KERN_ERR "huawei_audio: audio_info_probe failed, of_node is NULL\n");
         return 0;
     }
 
-    /* < DTS2013091308936 duhongyan 20130924 begin */
     /* Delete ambiguous builtin mic type */
-    /* DTS2013091308936 duhongyan 20130924 end > */
 
-    /* < DTS2013081000415 duhongyan 20130810 begin */
     if(of_property_read_bool(pdev->dev.of_node, AUDIO_PROP_MASTER_MIC_EXIST_NODE))
     {
         audio_property |= AUDIO_PROP_MASTER_MIC_EXIST_MASK;
     }
     else
     {
-        ad_loge("huawei_audio: check mic config, no master mic found\n");
-        /* < DTS2014122601745 wangzefan/wx224779 20141224 begin */
-        /* < DTS2014121000765 wangzefan/wx224779 20141209 begin */
+        printk(KERN_ERR "huawei_audio: check mic config, no master mic found\n");
         audio_dsm_report_info(DSM_AUDIO_CARD_LOAD_FAIL_ERROR_NO, "master mic not found!");
-        /* DTS2014121000765 wangzefan/wx224779 20141209 end > */
-        /* DTS2014122601745 wangzefan/wx224779 20141224 end > */
     }
     
     if(of_property_read_bool(pdev->dev.of_node, AUDIO_PROP_SECONDARY_MIC_EXIST_NODE))
@@ -502,7 +437,6 @@ static int audio_info_probe(struct platform_device *pdev)
         audio_property |= AUDIO_PROP_ERROR_MIC_EXIST_MASK;
     }
     
-    /* < DTS2013091308936 duhongyan 20130924 begin */
     if(of_property_read_bool(pdev->dev.of_node, AUDIO_PROP_HANDHELD_MASTER_MIC_NODE))
     {
         audio_property |= AUDIO_PROP_HANDHELD_MASTER_MIC;
@@ -532,29 +466,24 @@ static int audio_info_probe(struct platform_device *pdev)
     {
         audio_property |= AUDIO_PROP_LOUDSPEAKER_ERROR_MIC;
     }
-    /* DTS2013091308936 duhongyan 20130924 end > */
-    /* DTS2013081000415 duhongyan 20130810 end > */
     
-    /* < DTS2013072506627 sujunfeng 20130725 begin */
     string = NULL;
     ret = of_property_read_string(pdev->dev.of_node, PRODUCT_IDENTIFIER_NODE, &string);
     if(ret || (NULL == string))
     {
-        ad_loge("huawei_audio: of_property_read_string product-identifier failed %d\n", ret);
+        printk(KERN_ERR "huawei_audio: of_property_read_string product-identifier failed %d\n", ret);
     }
     else
     {
         memset(product_identifier, 0, sizeof(product_identifier));
         strncpy(product_identifier, string, sizeof(product_identifier) - 1);
     }
-    /* DTS2013072506627 sujunfeng 20130725 end > */
 
-/* < DTS2015012801451 jiangchenghu 20150128 begin */
     string = NULL;
     ret = of_property_read_string(pdev->dev.of_node, SPEAKER_PA_NODE, &string);
     if(ret || (NULL == string))
     {
-        ad_loge("huawei_audio: of_property_read_string speaker-pa failed %d\n", ret);
+        printk("huawei_audio: of_property_read_string speaker-pa failed %d\n", ret);
     }
     else
     {
@@ -563,46 +492,82 @@ static int audio_info_probe(struct platform_device *pdev)
     }
     if(strcmp(speaker_pa, "tfa9895"))
     {
-        ad_loge("tfa9895_flag = false\n");
+        printk("tfa9895_flag = false\n");
         tfa9895_flag = false;
     }
     else
     {
-        ad_loge("tfa9895_flag = true\n");
+        printk("tfa9895_flag = true\n");
         tfa9895_flag = true;
     }
-/* DTS2015012801451 jiangchenghu 20150128 end > */
 
+    string = NULL;
+    ret = of_property_read_string(pdev->dev.of_node, SPEAKER_BOX_NODE, &string);
+    if(ret || (NULL == string))
+    {
+        printk("huawei_audio: of_property_read_string speaker-box failed %d\n", ret);
+    }
+    else
+    {
+        pinctrl = devm_pinctrl_get(&pdev->dev);
+        if (IS_ERR(pinctrl)) 
+        {
+			printk(KERN_ERR "Unable to get pinctrl handle\n");
+		}
+        speaker_box = get_pa_box_id(pdev, pinctrl);
+        printk(KERN_ERR "speaker_box = %d\n", speaker_box);
+        memset(speaker_box_id, 0, sizeof(speaker_box_id));
+        if(PIN_VOLTAGE_LOW == speaker_box)
+        {
+            strncpy(speaker_box_id, "Goer", sizeof(speaker_pa) - 1);
+        }
+        else if(PIN_VOLTAGE_HIGH == speaker_box)
+        {
+            strncpy(speaker_box_id, "AAC", sizeof(speaker_pa) - 1);
+        }
+        else if(PIN_VOLTAGE_FLOAT == speaker_box)
+        {
+            strncpy(speaker_box_id, "Invalid", sizeof(speaker_pa) - 1);
+        }
+        else
+        {
+            strncpy(speaker_box_id, "None", sizeof(speaker_pa) - 1);
+        }
+    }
 
-    /* < DTS2013080804880 lishubin 20130808 begin */
-    /* add nrec function source from DTS2013032009189 */
     if(false == of_property_read_bool(pdev->dev.of_node, PRODUCT_NERC_ADAPT_CONFIG))
     {
-        ad_loge("huawei_audio: of_property_read_bool PRODUCT_NERC_ADAPT_CONFIG failed %d\n", ret);
+        printk(KERN_ERR "huawei_audio: of_property_read_bool PRODUCT_NERC_ADAPT_CONFIG failed %d\n", ret);
         audio_property |= (AUDIO_PROP_BTSCO_NREC_ADAPT_OFF & AUDIO_PROP_BTSCO_NREC_ADAPT_MASK);
     }
     else       
     {        
         audio_property |= ( AUDIO_PROP_BTSCO_NREC_ADAPT_ON & AUDIO_PROP_BTSCO_NREC_ADAPT_MASK);
     }
-    /* DTS2013080804880 lishubin 20130808 end > */
+
+    string = NULL;
+    ret = of_property_read_string(pdev->dev.of_node, PA_i2C_NODE, &string);
+    if(ret || (NULL == string))
+    {
+        printk(KERN_ERR "huawei_audio: of_property_read_string pa-i2c failed %d\n", ret);
+    }
+    else
+    {
+        memset(pa_i2c, 0, sizeof(pa_i2c));
+        strncpy(pa_i2c, string, sizeof(pa_i2c) - 1);
+    }
     
-    /* < DTS2013090207238 yangjingwen 20130902 begin */
     string = NULL;
     ret = of_property_read_string(pdev->dev.of_node, AUD_PARAM_VER_NODE, &string);
     if(ret || (NULL == string))
     {
-        ad_loge("huawei_audio: of_property_read_string aud_param_ver failed %d\n", ret);
+        printk(KERN_ERR "huawei_audio: of_property_read_string aud_param_ver failed %d\n", ret);
     }
     else
     {
         memset(aud_param_ver, 0, sizeof(aud_param_ver));
         strncpy(aud_param_ver, string, sizeof(aud_param_ver) - 1);
     }
-    /* DTS2013090207238 yangjingwen 20130902 end > */
-    /* < DTS2013091308936 duhongyan 20130924 begin */
-    /* Delete DTS2013090508109 to use unified audio property style */
-    /* DTS2013091308936 duhongyan 20130924 end > */
 
     return 0;
 }
@@ -634,6 +599,3 @@ module_exit(audio_info_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Huawei audio info");
 MODULE_AUTHOR("duhongyan<hongyan.du@huawei.com>");
-/* DTS2014041201607 yangxiaocong 20140412 end > */
-/* DTS2014072210537 duhongyan 20140723 end > */
-

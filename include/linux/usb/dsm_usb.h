@@ -1,4 +1,3 @@
-/* < DTS2014112103275 wenshuai 20141121 begin */
 #ifdef CONFIG_HUAWEI_USB_DSM
 #ifndef LINUX_USB_DSM_USB_H
 #define LINUX_USB_DSM_USB_H
@@ -62,5 +61,3 @@ extern int dsm_usb_get_log(int sub_sys_type, void *p_sub, int err_num, char *err
 
 #endif /* LINUX_USB_DSM_USB_H */
 #endif /* CONFIG_HUAWEI_USB_DSM */
-/* DTS2014112103275 wenshuai 20141121 end > */
-

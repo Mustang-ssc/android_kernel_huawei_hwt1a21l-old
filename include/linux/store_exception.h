@@ -1,4 +1,3 @@
-/* < DTS2014082110037 shenchen 20140821 begin */
 #ifndef __LINUX_STOREEXCEPTION_H
 #define __LINUX_STOREEXCEPTION_H
 
@@ -12,4 +11,3 @@ int store_exception(char* name, char* msg);
 
 
 #endif
-/* DTS2014082110037 shenchen 20140821 end> */

@@ -106,10 +106,9 @@ struct fan53555_device_info {
 
 	bool disable_suspend;
 };
-/* <DTS2015010907149 chengkai/wx209700 20150109 begin */
-/* reduce the probe time of dcdc ic */
-static int delay_array[] = {10, 20, 30, 30};
- /* DTS2015010907149 chengkai/wx209700 20150109 end> */
+
+static int delay_array[] = {10, 20, 30, 40, 50};
+
 static int fan53555_read(struct fan53555_device_info *di, unsigned int reg,
 						unsigned int *val)
 {

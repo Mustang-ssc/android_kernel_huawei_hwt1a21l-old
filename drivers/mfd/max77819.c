@@ -1,4 +1,3 @@
-/* <DTS2014080900552 chenyuanquan 20140825 begin */
 /*
  * Maxim MAX77819 MFD Core
  *
@@ -39,6 +38,10 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/max77819.h>
 
+#include <linux/regulator/driver.h>
+#include <linux/regulator/of_regulator.h>
+#include <linux/regulator/machine.h>
+
 #define DRIVER_DESC    "MAX77819 MFD Driver"
 #define DRIVER_NAME    MAX77819_NAME
 #define DRIVER_VERSION MAX77819_DRIVER_VERSION".1-rc"
@@ -58,6 +61,12 @@ struct max77819_core {
     struct max77819_dev *dev[MAX77819_DEV_NUM_OF_DEVICES];
 };
 
+struct max77819_otg_regulator
+{
+    struct regulator_desc    rdesc;
+    struct regulator_dev    *rdev;
+};
+
 struct max77819_dev {
     struct max77819_core        *core;
     int                          dev_id;
@@ -70,6 +79,7 @@ struct max77819_dev {
     int                          chip_irq;
     int                          irq_gpio;
     struct regmap_irq_chip_data *irq_data;
+    struct max77819_otg_regulator    otg_vreg;
 };
 
 #define __lock(_me)    mutex_lock(&(_me)->lock)
@@ -140,7 +150,7 @@ static void *max77819_pmic_get_platdata (struct max77819_dev *pmic)
     pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
     if (unlikely(!pdata)) {
         log_err("<%s> out of memory (%uB requested)\n", client->name,
-            sizeof(*pdata));
+            (unsigned int)sizeof(*pdata));
         pdata = ERR_PTR(-ENOMEM);
         goto out;
     }
@@ -374,6 +384,78 @@ static const struct i2c_device_id max77819_i2c_ids[] = {
 };
 MODULE_DEVICE_TABLE(i2c, max77819_i2c_ids);
 
+static int max77819_otg_regulator_enable(struct regulator_dev *rdev)
+{
+    /* To do. */
+    notify_max77819_to_control_otg(true);
+    return 0;
+}
+
+static int max77819_otg_regulator_disable(struct regulator_dev *rdev)
+{
+    /* To do. */
+    notify_max77819_to_control_otg(false);
+    return 0;
+}
+
+static int max77819_otg_regulator_is_enable(struct regulator_dev *rdev)
+{
+    /* To do. */
+    return is_ma77819_otg_enabled();
+}
+
+struct regulator_ops max77819_otg_reg_ops =
+{
+    .enable = max77819_otg_regulator_enable,
+    .disable = max77819_otg_regulator_disable,
+    .is_enabled = max77819_otg_regulator_is_enable,
+};
+
+static int max77819_regulator_init(struct max77819_dev *me)
+{
+    int rc = 0;
+    struct regulator_init_data *init_data;
+    struct regulator_config cfg = {};
+
+    init_data = of_get_regulator_init_data(me->dev, me->dev->of_node);
+    if (!init_data)
+    {
+        dev_err(me->dev, "max77819_regulator Unable to allocate memory\n");
+        return -ENOMEM;
+    }
+    
+    if (init_data->constraints.name)
+    {
+        me->otg_vreg.rdesc.owner = THIS_MODULE;
+        me->otg_vreg.rdesc.type = REGULATOR_VOLTAGE;
+        me->otg_vreg.rdesc.ops = &max77819_otg_reg_ops;
+        me->otg_vreg.rdesc.name = init_data->constraints.name;
+
+        cfg.dev = me->dev;
+        cfg.init_data = init_data;
+        cfg.driver_data = me;
+        cfg.of_node = me->dev->of_node;
+
+        init_data->constraints.valid_ops_mask
+        |= REGULATOR_CHANGE_STATUS;
+
+        me->otg_vreg.rdev = regulator_register(&me->otg_vreg.rdesc, &cfg);
+        if (IS_ERR(me->otg_vreg.rdev))
+        {
+            rc = PTR_ERR(me->otg_vreg.rdev);
+            me->otg_vreg.rdev = NULL;
+            if (rc != -EPROBE_DEFER)
+                dev_err(me->dev," OTG reg failed, rc=%d\n", rc);
+        }
+    }
+    else
+    {
+        log_err("ERROR max77819_regulator name is NULL \n");
+    }
+
+    return rc;
+}
+
 static int max77819_i2c_probe (struct i2c_client *client,
     const struct i2c_device_id *id)
 {
@@ -386,7 +468,7 @@ static int max77819_i2c_probe (struct i2c_client *client,
     me = devm_kzalloc(&client->dev, sizeof(*me), GFP_KERNEL);
     if (unlikely(!me)) {
         log_err("<%s> out of memory (%uB requested)\n", client->name,
-            sizeof(*me));
+            (unsigned int)sizeof(*me));
         return -ENOMEM;
     }
 
@@ -428,6 +510,11 @@ static int max77819_i2c_probe (struct i2c_client *client,
 
     /* all done successfully */
     core->dev[me->dev_id] = me;
+    rc=max77819_regulator_init(me);
+    if (rc)
+    {
+        pr_err("Couldn't initialize max77819 regulator rc=%d\n", rc);
+    }
     return 0;
 
 abort:
@@ -441,7 +528,7 @@ static int max77819_i2c_remove (struct i2c_client *client)
     struct max77819_dev *me = i2c_get_clientdata(client);
 
     me->core->dev[me->dev_id] = NULL;
-
+    regulator_unregister(me->otg_vreg.rdev);
     i2c_set_clientdata(client, NULL);
     max77819_destroy(me);
 
@@ -532,4 +619,3 @@ int max77819_map_irq(struct max77819_dev *chip, int irq)
 
     return regmap_irq_get_virq(chip->irq_data, irq);
 }
-/* DTS2014080900552 chenyuanquan 20140825 end> */

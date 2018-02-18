@@ -30,6 +30,10 @@
 #include <linux/tick.h>
 #include <trace/events/power.h>
 
+#ifdef CONFIG_HUAWEI_MSG_POLICY
+#include <power/msgnotify.h>
+#endif
+
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
  * level driver of CPUFreq support, and its spinlock. This lock
@@ -42,34 +46,29 @@ static DEFINE_RWLOCK(cpufreq_driver_lock);
 static DEFINE_MUTEX(cpufreq_governor_lock);
 static LIST_HEAD(cpufreq_policy_list);
 
-/* <DTS2014071502649 tanyanying 20140714 begin */
-/* <DTS2014111600686 chendeng 20141117 begin */
 #ifdef CONFIG_HUAWEI_THERMAL
 #define HUAWEI_THERMAL_POLICY_MAX  800000
 static bool FTM_flag = false;
 static bool recovery_flag = false;
 static int __init early_parse_ftm_flag(char* p)
 {
-	if(p && !strcmp(p,"true"))
-	{
-		FTM_flag = true;
-	}
-	return 0;
+      if(p && !strcmp(p,"true"))
+       {
+              FTM_flag = true;
+       }
+       return 0;
 }
 early_param("huawei_ftm",early_parse_ftm_flag);
 
 static int __init early_parse_recovery_flag(char* p)
 {
-	if(p && !strcmp(p,"recovery"))
-	{
-		recovery_flag = true;
-	}
-	return 0;
+      if(p && !strcmp(p,"recovery")) {
+            recovery_flag = true;
+      }
+      return 0;
 }
 early_param("androidboot.huawei_bootmode",early_parse_recovery_flag);
 #endif
-/* DTS2014111600686 chendeng 20141117 end> */
-/* DTS2014071502649 tanyanying 20140714 end> */
 
 #ifdef CONFIG_HOTPLUG_CPU
 /*
@@ -109,6 +108,7 @@ static void handle_update(struct work_struct *work);
  */
 static BLOCKING_NOTIFIER_HEAD(cpufreq_policy_notifier_list);
 static struct srcu_notifier_head cpufreq_transition_notifier_list;
+struct atomic_notifier_head cpufreq_govinfo_notifier_list;
 
 static bool init_cpufreq_transition_notifier_list_called;
 static int __init init_cpufreq_transition_notifier_list(void)
@@ -118,6 +118,15 @@ static int __init init_cpufreq_transition_notifier_list(void)
 	return 0;
 }
 pure_initcall(init_cpufreq_transition_notifier_list);
+
+static bool init_cpufreq_govinfo_notifier_list_called;
+static int __init init_cpufreq_govinfo_notifier_list(void)
+{
+	ATOMIC_INIT_NOTIFIER_HEAD(&cpufreq_govinfo_notifier_list);
+	init_cpufreq_govinfo_notifier_list_called = true;
+	return 0;
+}
+pure_initcall(init_cpufreq_govinfo_notifier_list);
 
 static int off __read_mostly;
 static int cpufreq_disabled(void)
@@ -639,6 +648,29 @@ static ssize_t show_scaling_setspeed(struct cpufreq_policy *policy, char *buf)
 	return policy->governor->show_setspeed(policy, buf);
 }
 
+#ifdef CONFIG_HUAWEI_MSG_POLICY
+static ssize_t store_msg_policy(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	unsigned int value = 0;
+	unsigned int ret;
+
+	ret = sscanf(buf, "%u", &value);
+	if (ret != 1)
+		return -EINVAL;
+
+	set_msg_threshold(value);
+
+	return count;
+}
+
+static ssize_t show_msg_policy(struct cpufreq_policy *policy, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "threshold:%u,max_msg_percent:%u\n", 
+		get_msg_threshold(), get_max_msg_percent());
+}
+#endif
+
 /**
  * show_bios_limit - show the current cpufreq HW/BIOS limitation
  */
@@ -668,6 +700,9 @@ cpufreq_freq_attr_rw(scaling_min_freq);
 cpufreq_freq_attr_rw(scaling_max_freq);
 cpufreq_freq_attr_rw(scaling_governor);
 cpufreq_freq_attr_rw(scaling_setspeed);
+#ifdef CONFIG_HUAWEI_MSG_POLICY
+cpufreq_freq_attr_rw(msg_policy);
+#endif
 
 static struct attribute *default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -681,6 +716,9 @@ static struct attribute *default_attrs[] = {
 	&scaling_driver.attr,
 	&scaling_available_governors.attr,
 	&scaling_setspeed.attr,
+#ifdef CONFIG_HUAWEI_MSG_POLICY
+	&msg_policy.attr,
+#endif
 	NULL
 };
 
@@ -1492,6 +1530,9 @@ static unsigned int __cpufreq_get(unsigned int cpu)
 
 	ret_freq = cpufreq_driver->get(cpu);
 
+	if (!policy)
+		return ret_freq;
+
 	if (ret_freq && policy->cur &&
 		!(cpufreq_driver->flags & CPUFREQ_CONST_LOOPS)) {
 		/* verify no discrepancy between actual and
@@ -1664,7 +1705,8 @@ int cpufreq_register_notifier(struct notifier_block *nb, unsigned int list)
 	if (cpufreq_disabled())
 		return -EINVAL;
 
-	WARN_ON(!init_cpufreq_transition_notifier_list_called);
+	WARN_ON(!init_cpufreq_transition_notifier_list_called ||
+		!init_cpufreq_govinfo_notifier_list_called);
 
 	switch (list) {
 	case CPUFREQ_TRANSITION_NOTIFIER:
@@ -1674,6 +1716,10 @@ int cpufreq_register_notifier(struct notifier_block *nb, unsigned int list)
 	case CPUFREQ_POLICY_NOTIFIER:
 		ret = blocking_notifier_chain_register(
 				&cpufreq_policy_notifier_list, nb);
+		break;
+	case CPUFREQ_GOVINFO_NOTIFIER:
+		ret = atomic_notifier_chain_register(
+				&cpufreq_govinfo_notifier_list, nb);
 		break;
 	default:
 		ret = -EINVAL;
@@ -1709,6 +1755,10 @@ int cpufreq_unregister_notifier(struct notifier_block *nb, unsigned int list)
 		ret = blocking_notifier_chain_unregister(
 				&cpufreq_policy_notifier_list, nb);
 		break;
+	case CPUFREQ_GOVINFO_NOTIFIER:
+		ret = atomic_notifier_chain_unregister(
+				&cpufreq_govinfo_notifier_list, nb);
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -1740,15 +1790,6 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 
 	pr_debug("target for CPU %u: %u kHz, relation %u, requested %u kHz\n",
 			policy->cpu, target_freq, relation, old_target_freq);
-
-	/*
-	 * This might look like a redundant call as we are checking it again
-	 * after finding index. But it is left intentionally for cases where
-	 * exactly same freq is called again and so we can save on few function
-	 * calls.
-	 */
-	if (target_freq == policy->cur)
-		return 0;
 
 	if (cpufreq_driver->target)
 		retval = cpufreq_driver->target(policy, target_freq, relation);
@@ -2042,16 +2083,12 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	policy->max = new_policy->max;
 
 
-/* <DTS2014071502649 tanyanying 20140714 begin */
-/* <DTS2014111600686 chendeng 20141117 begin */
 #ifdef CONFIG_HUAWEI_THERMAL
-	if(FTM_flag && recovery_flag)
-	{
-		policy->max = HUAWEI_THERMAL_POLICY_MAX;
-	}
+    if(FTM_flag && recovery_flag)
+    {
+        policy->max = HUAWEI_THERMAL_POLICY_MAX;
+    }
 #endif
-/* DTS2014111600686 chendeng 20141117 end> */
-/* DTS2014071502649 tanyanying 20140714 end> */
 	pr_debug("new min and max freqs are %u - %u kHz\n",
 					policy->min, policy->max);
 
@@ -2178,6 +2215,9 @@ static int cpufreq_cpu_callback(struct notifier_block *nfb,
 		switch (action & ~CPU_TASKS_FROZEN) {
 		case CPU_ONLINE:
 			__cpufreq_add_dev(dev, NULL, frozen);
+#ifdef CONFIG_HUAWEI_KERNEL
+			kobject_uevent(&dev->kobj, KOBJ_ADD);
+#endif
 			cpufreq_update_policy(cpu);
 			break;
 
@@ -2241,7 +2281,11 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	cpufreq_driver = driver_data;
 	write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
+	register_hotcpu_notifier(&cpufreq_cpu_notifier);
+
+	get_online_cpus();
 	ret = subsys_interface_register(&cpufreq_interface);
+	put_online_cpus();
 	if (ret)
 		goto err_null_driver;
 
@@ -2264,13 +2308,13 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 		}
 	}
 
-	register_hotcpu_notifier(&cpufreq_cpu_notifier);
 	pr_debug("driver %s up and running\n", driver_data->name);
 
 	return 0;
 err_if_unreg:
 	subsys_interface_unregister(&cpufreq_interface);
 err_null_driver:
+	unregister_hotcpu_notifier(&cpufreq_cpu_notifier);
 	write_lock_irqsave(&cpufreq_driver_lock, flags);
 	cpufreq_driver = NULL;
 	write_unlock_irqrestore(&cpufreq_driver_lock, flags);

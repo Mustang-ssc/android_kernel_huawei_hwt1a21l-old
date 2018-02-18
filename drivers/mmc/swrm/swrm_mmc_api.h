@@ -1,4 +1,4 @@
-/* < DTS2014062704895 zhaoyingchun 20140628 begin */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */
 /*
  *
  *  swrm_mmc_api.h
@@ -52,5 +52,5 @@ int swrm_mmc_write(struct mmc_card *card, u8 *src, unsigned long lba,
 
 #endif /* _SWRM_MMC_API_H_ */
 
-/* DTS2014062704895 zhaoyingchun 20140628 end > */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update end */
 

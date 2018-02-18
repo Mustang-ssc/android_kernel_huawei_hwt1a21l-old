@@ -64,11 +64,9 @@
 #include <uapi/linux/module.h>
 #include "module-internal.h"
 
-/* < DTS2014112702834 chenjikun 20141127 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #include <linux/wcnss_wlan.h>
 #endif
-/* DTS2014112702834 chenjikun 20141127 end > */
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/module.h>
@@ -1204,14 +1202,12 @@ static int check_version(Elf_Shdr *sechdrs,
 bad_version:
 	printk("%s: disagrees about version of symbol %s\n",
 	       mod->name, symname);
-/* < DTS2014112702834 chenjikun 20141127 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	if(NULL != strstr(mod->name,"wlan"))
 	{
 	    wifi_dsm_report_num(DSM_WIFI_ROOT_NOT_RIGHT_ERR,"root is not right",0);
 	}
 #endif
-/* DTS2014112702834 chenjikun 20141127 end > */
 	return 0;
 }
 
@@ -2435,7 +2431,13 @@ static void *module_alloc_update_bounds(unsigned long size)
 	return ret;
 }
 
-#ifdef CONFIG_DEBUG_KMEMLEAK
+#if defined(CONFIG_DEBUG_KMEMLEAK) && defined(CONFIG_DEBUG_MODULE_SCAN_OFF)
+static void kmemleak_load_module(const struct module *mod,
+				 const struct load_info *info)
+{
+	kmemleak_no_scan(mod->module_core);
+}
+#elif defined(CONFIG_DEBUG_KMEMLEAK)
 static void kmemleak_load_module(const struct module *mod,
 				 const struct load_info *info)
 {
@@ -3292,6 +3294,9 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	}
 
 	dynamic_debug_setup(info->debug, info->num_debug);
+
+	/* Ftrace init must be called in the MODULE_STATE_UNFORMED state */
+	ftrace_module_init(mod);
 
 	/* Finally it's fully formed, ready to start executing. */
 	err = complete_formation(mod, info);

@@ -27,42 +27,27 @@
 #include <linux/dma-mapping.h>
 #include <linux/of_gpio.h>
 #include <linux/clk/msm-clk.h>
-
-
-/* < DTS2014070813095  renlipeng 20140708 begin */
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/sched.h>
+#endif
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/uaccess.h>
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
 #endif
-/* DTS2014070813095  renlipeng 20140708 end > */
 
-/* DTS2014071608045 renlipeng 20140716 end > */
-#ifdef CONFIG_HUAWEI_KERNEL
-#include <linux/sched.h>
-#endif
-/* DTS2014071608045 renlipeng 20140716 end > */
- 
-/* < DTS2014082110037 chenqihang 20140821 begin */
-#ifdef CONFIG_HUAWEI_KERNEL
-#include<linux/store_exception.h>
-#define MODEM_EXCEPTION_FILENAME  "modem_exception"
-#endif
-/* DTS2014082110037 chenqihang 20140821 end> */
-
-/* < DTS2014092509834 renlipeng 20140927 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/slab.h>
 #endif
-/* DTS2014092509834 renlipeng 20140927 end> */
+
+#include<linux/store_exception.h>
+#define MODEM_EXCEPTION_FILENAME  "modem_exception"
 
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/ramdump.h>
 #include <soc/qcom/smem.h>
 #include <soc/qcom/smsm.h>
-/* < DTS2014120102447 wangzefan/wx224779 20141202 begin */
 #include <sound/hw_audio_info.h>
-/* DTS2014120102447 wangzefan/wx224779 20141202 end > */
 #include "peripheral-loader.h"
 #include "pil-q6v5.h"
 #include "pil-msa.h"
@@ -72,15 +57,12 @@
 #define MAX_SSR_REASON_LEN	81U
 #define STOP_ACK_TIMEOUT_MS	1000
 
-/* < DTS2014092509834 renlipeng 20140927 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define SSR_REASON_LEN	MAX_SSR_REASON_LEN
 #endif
-/* DTS2014092509834 renlipeng 20140927 end> */
 
 #define subsys_to_drv(d) container_of(d, struct modem_data, subsys_desc)
 
-/* < DTS2014092509834 renlipeng 20140927 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 
 /* define work data sturct*/
@@ -88,25 +70,11 @@ struct work_data{
        struct work_struct log_modem_reset_work; //WORK
        char reset_reason[SSR_REASON_LEN];
 };
+
+static struct work_data *g_work_data = NULL;
+
 //struct work_struct log_modem_work; //used to fill the temp work
 struct workqueue_struct *log_modem_reset_work_queue = NULL; //WORK QUEUE
-
-/*creat the queue that log the modem reset reason*/
-int log_modem_queue_create(void)
-{
-    int error = 0;
-
-    log_modem_reset_work_queue = create_singlethread_workqueue("log_modem_reset");
-
-    if (NULL == log_modem_reset_work_queue) {
-        error = -ENOMEM;
-        pr_err("[log_modem_reset]log modem reset queue created failed !!!!\n");
-        return error;
-    }
-
-    pr_info("[log_modem_reset]log modem reset queue created success \n");
-    return error;
-}
 
 /*the queue work handle, store the modem reason to the exception file*/
 static void log_modem_reset_work_func(struct work_struct *work)
@@ -120,47 +88,67 @@ static void log_modem_reset_work_func(struct work_struct *work)
 	}
     store_exception(MODEM_EXCEPTION_FILENAME, work_data_self->reset_reason);
     pr_info("[log_modem_reset]log_modem_reset_work after write exception inode work_data_self->reset_reason=%s \n",work_data_self->reset_reason);
-    kfree(work_data_self);
 }
+
+
+/*creat the queue that log the modem reset reason*/
+int log_modem_queue_create(void)
+{
+	int error = 0;
+
+	/*create work*/
+	g_work_data = kzalloc(sizeof(struct work_data),GFP_KERNEL);
+	if(NULL == g_work_data)
+	{
+		pr_err("[log_modem_reset]work_data_temp is NULL, Don't log this !!!!!!!\n");
+		error = -ENOMEM;
+		return error;
+	}
+
+	INIT_WORK(&(g_work_data->log_modem_reset_work),log_modem_reset_work_func);
+
+	log_modem_reset_work_queue = create_singlethread_workqueue("log_modem_reset");
+
+	if (NULL == log_modem_reset_work_queue) {
+		error = -ENOMEM;
+		pr_err("[log_modem_reset]log modem reset queue created failed !!!!\n");
+		return error;
+	}
+
+	pr_info("[log_modem_reset]log modem reset queue created success \n");
+	return error;
+}
+
 
 //parameters name---log_modem_reset======sign related the quue log_modem_reset_work_queue
 //parameters function-----log_modem_reset_work========the work will be handle by work_queue
 //static DECLARE_WORK(log_modem_reset,log_modem_reset_work);
 int log_modem_reset_queue(char *reason)
 {
-    int error = 0;
+	int error = 0;
 
-    struct work_data *work_data_temp = kzalloc(sizeof(struct work_data),GFP_KERNEL);
-    if(NULL == work_data_temp)
-    {
-         pr_err("[log_modem_reset]work_data_temp is NULL, Don't log this !!!!!!!\n");
-         error = -ENOMEM;
-         return error;
-    }
-
+	if(work_pending(&g_work_data->log_modem_reset_work)){
+		pr_err("modem reset work is pending\n");
+		return -1;
+	}
+	
 	//fill the reason
-    strncpy(work_data_temp->reset_reason,reason,SSR_REASON_LEN-1);
-    //work_data_temp->reset_reason[SSR_REASON_LEN-1]='\0';
+	strncpy(g_work_data->reset_reason,reason,SSR_REASON_LEN-1);
 
-    //fill the work
-    //work_data_temp->log_modem_reset_work = log_modem_work;
-
-   //insert the work to the queue
-   if(NULL != log_modem_reset_work_queue)
-   {
-       INIT_WORK(&(work_data_temp->log_modem_reset_work),log_modem_reset_work_func);
-       queue_work(log_modem_reset_work_queue,&(work_data_temp->log_modem_reset_work));
-       pr_info("[log_modem_reset]modem reset reason inserted the log_modem_reset_queue \n");
-   }else{
-       error = -ENOMEM;
-       pr_err("[log_modem_reset]log_modem_reset_work_queue is NULL, return !!!!!!!\n");
-   }
-   return error;
+	//insert the work to the queue
+	if(NULL != log_modem_reset_work_queue)
+	{
+		queue_work(log_modem_reset_work_queue,&(g_work_data->log_modem_reset_work));
+		pr_info("[log_modem_reset]modem reset reason inserted the log_modem_reset_queue \n");
+	}else{
+		error = -ENOMEM;
+		pr_err("[log_modem_reset]log_modem_reset_work_queue is NULL, return !!!!!!!\n");
+	}
+	return error;
 }
 
-
 #endif
-/* DTS2014092509834 renlipeng 20140927 end> */
+
 static void log_modem_sfr(void)
 {
 	u32 size;
@@ -178,28 +166,21 @@ static void log_modem_sfr(void)
 	}
 
 	strlcpy(reason, smem_reason, min(size, MAX_SSR_REASON_LEN));
-
 	pr_err("modem subsystem failure reason: %s.\n", reason);
-	/* < DTS2014120102447 wangzefan/wx224779 20141202 begin */
-	audio_dsm_report_num(DSM_AUDIO_ADSP_SETUP_FAIL_ERROR_NO, DSM_AUDIO_MESG_MODEM_SSR_FAIL);
-	/* DTS2014120102447 wangzefan/wx224779 20141202 end > */
-
-/* < DTS2014080709771 renlipeng 20140809 begin*/
+	//move to the backward
 #ifdef CONFIG_HUAWEI_KERNEL
-	if(strstr(reason,"request modem by huawei"))
+	if(strstr(reason,"request modem by huawei")||strstr(reason,"cm_hw_request_modem_reset"))
 	{
 		pr_err("reset modem subsystem by huawei\n");
 		subsystem_restart_requested = 1;
 	}else
 	{
-		/* < DTS2014092509834 renlipeng 20140927 begin */
+		audio_dsm_report_info(DSM_AUDIO_ADSP_SETUP_FAIL_ERROR_NO, "%s modem subsystem failure reason:%s", __func__, reason);
 		pr_info("[log_modem_reset]put the reset modem reason insert into the queue \n");
 		log_modem_reset_queue(reason);
 		pr_info("[log_modem_reset]put done \n");
-		/* DTS2014092509834 renlipeng 20140927 end> */
 	}
 #endif
-/* DTS2014080709771 renlipeng 20140809 end>*/
 	smem_reason[0] = '\0';
 	wmb();
 }
@@ -214,19 +195,13 @@ static void restart_modem(struct modem_data *drv)
 static irqreturn_t modem_err_fatal_intr_handler(int irq, void *dev_id)
 {
 	struct modem_data *drv = subsys_to_drv(dev_id);
-	/* < DTS2014122601745 wangzefan/wx224779 20141224 begin */
-	/* move this point to follow position*/
-	/* < DTS2014120102447 wangzefan/wx224779 20141202 begin */
-	/* DTS2014120102447 wangzefan/wx224779 20141202 end > */
-	/* DTS2014122601745 wangzefan/wx224779 20141224 end > */
+
 	/* Ignore if we're the one that set the force stop GPIO */
 	if (drv->crash_shutdown)
 		return IRQ_HANDLED;
 
 	pr_err("Fatal error on the modem.\n");
-	/* < DTS2014122601745 wangzefan/wx224779 20141224 begin */
-	audio_dsm_report_num(DSM_AUDIO_ADSP_SETUP_FAIL_ERROR_NO, DSM_AUDIO_MESG_MODEM_FATAL);
-	/* DTS2014122601745 wangzefan/wx224779 20141224 end > */
+	//remove because it will report in log_modem_sfr
 	subsys_set_crash_status(drv->subsys, true);
 	restart_modem(drv);
 	return IRQ_HANDLED;
@@ -248,7 +223,8 @@ static int modem_shutdown(const struct subsys_desc *subsys, bool force_stop)
 	if (subsys->is_not_loadable)
 		return 0;
 
-	if (!subsys_get_crash_status(drv->subsys) && force_stop) {
+	if (!subsys_get_crash_status(drv->subsys) && force_stop &&
+	    subsys->force_stop_gpio) {
 		gpio_set_value(subsys->force_stop_gpio, 1);
 		ret = wait_for_completion_timeout(&drv->stop_ack,
 				msecs_to_jiffies(STOP_ACK_TIMEOUT_MS));
@@ -268,7 +244,6 @@ static int modem_shutdown(const struct subsys_desc *subsys, bool force_stop)
 
 	return 0;
 }
-/* < DTS2014071608045 renlipeng 20140716 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define OEM_QMI	"libqmi_oem_main"
 
@@ -286,15 +261,12 @@ static void restart_oem_qmi(void)
 	}
 }
 #endif
-/* DTS2014071608045 renlipeng 20140716 end > */
 static int modem_powerup(const struct subsys_desc *subsys)
 {
 	struct modem_data *drv = subsys_to_drv(subsys);
-/* < DTS2014071608045 renlipeng 20140716 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
     int ret = 0;
 #endif
-/* DTS2014071608045 renlipeng 20140716 end > */
 	if (subsys->is_not_loadable)
 		return 0;
 	/*
@@ -305,7 +277,6 @@ static int modem_powerup(const struct subsys_desc *subsys)
 	INIT_COMPLETION(drv->stop_ack);
 	drv->subsys_desc.ramdump_disable = 0;
 	drv->ignore_errors = false;
-/* < DTS2014071608045 renlipeng 20140716 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	ret = pil_boot(&drv->q6->desc);
 	/* after modem restart, restart oem qmi */
@@ -314,14 +285,14 @@ static int modem_powerup(const struct subsys_desc *subsys)
 #else
 	return pil_boot(&drv->q6->desc);
 #endif
-/* DTS2014071608045 renlipeng 20140716 end > */
 }
 
 static void modem_crash_shutdown(const struct subsys_desc *subsys)
 {
 	struct modem_data *drv = subsys_to_drv(subsys);
 	drv->crash_shutdown = true;
-	if (!subsys_get_crash_status(drv->subsys)) {
+	if (!subsys_get_crash_status(drv->subsys) &&
+		subsys->force_stop_gpio) {
 		gpio_set_value(subsys->force_stop_gpio, 1);
 		mdelay(STOP_ACK_TIMEOUT_MS);
 	}
@@ -342,16 +313,15 @@ static int modem_ramdump(int enable, const struct subsys_desc *subsys)
 	ret = pil_mss_reset_load_mba(&drv->q6->desc);
 	if (ret)
 		return ret;
-
+	pr_err("%s:%d:pil do ramdump\n",__FILE__ ,__LINE__);
 	ret = pil_do_ramdump(&drv->q6->desc, drv->ramdump_dev);
 	if (ret < 0)
 		pr_err("Unable to dump modem fw memory (rc = %d).\n", ret);
 
-	if (drv->q6->mba_virt)
-		dma_free_coherent(&drv->mba_mem_dev, drv->q6->mba_size,
-				drv->q6->mba_virt, drv->q6->mba_phys);
+	ret = pil_mss_deinit_image(&drv->q6->desc);
+	if (ret < 0)
+		pr_err("Unable to free up resources (rc = %d).\n", ret);
 
-	pil_mss_shutdown(&drv->q6->desc);
 	pil_mss_remove_proxy_votes(&drv->q6->desc);
 	return ret;
 }
@@ -389,11 +359,9 @@ static int pil_subsys_init(struct modem_data *drv,
 		goto err_subsys;
 	}
 
-	/* < DTS2014092509834 renlipeng 20140927 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	log_modem_queue_create();
 #endif
-	/* DTS2014092509834 chenqihang 20140927 end> */
 
 	drv->ramdump_dev = create_ramdump_device("modem", &pdev->dev);
 	if (!drv->ramdump_dev) {
@@ -502,6 +470,11 @@ static int pil_mss_loadable_init(struct modem_data *drv,
 	if (IS_ERR(q6->rom_clk))
 		return PTR_ERR(q6->rom_clk);
 
+	/* Optional. */
+	if (of_property_match_string(pdev->dev.of_node,
+			"qcom,active-clock-names", "gpll0_mss_clk") >= 0)
+		q6->gpll0_mss_clk = devm_clk_get(&pdev->dev, "gpll0_mss_clk");
+
 	ret = pil_desc_init(q6_desc);
 
 	return ret;
@@ -534,6 +507,13 @@ static int pil_mss_driver_probe(struct platform_device *pdev)
 static int pil_mss_driver_exit(struct platform_device *pdev)
 {
 	struct modem_data *drv = platform_get_drvdata(pdev);
+
+#ifdef CONFIG_HUAWEI_KERNEL
+	if(g_work_data)
+	{
+		kfree(g_work_data);
+	}
+#endif
 
 	subsys_unregister(drv->subsys);
 	destroy_ramdump_device(drv->ramdump_dev);
@@ -570,16 +550,15 @@ static void __exit pil_mss_exit(void)
 }
 module_exit(pil_mss_exit);
 
-/* < DTS2014070813095  renlipeng 20140708 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 static ssize_t pil_mss_ctl_read(struct file *fp, char __user *buf,
-			size_t count, loff_t *pos)
+				size_t count, loff_t *pos)
 {
 	return 0;
 }
 
 static ssize_t pil_mss_ctl_write(struct file *fp, const char __user *buf,
-			size_t count, loff_t *pos)
+				 size_t count, loff_t *pos)
 {
 	unsigned char cmd[64];
 	int len = -1;
@@ -645,6 +624,6 @@ static void __exit pil_mss_ctl_exit(void)
 }
 module_exit(pil_mss_ctl_exit);
 #endif
-/* DTS2014070813095  renlipeng 20140708 end > */
+
 MODULE_DESCRIPTION("Support for booting modem subsystems with QDSP6v5 Hexagon processors");
 MODULE_LICENSE("GPL v2");

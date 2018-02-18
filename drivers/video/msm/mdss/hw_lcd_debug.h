@@ -1,4 +1,3 @@
-/*< DTS2014042905347 zhaoyuxia 20140429 begin */
 
 /* kernel\drivers\video\msm\lcd_hw_debug.h
  * this file is used by the driver team to change the 
@@ -28,19 +27,16 @@
 
 #define HW_LCD_INIT_TEST_PARAM "/data/hw_lcd_init_param.txt"
 #define HW_LCD_CONFIG_TABLE_MAX_NUM 2*PAGE_SIZE
-
+int mdss_dsi_check_panel_status_n(struct mdss_panel_data *pdata);
 int hw_parse_dsi_cmds(struct dsi_panel_cmds *pcmds);
 bool hw_free_dsi_cmds(struct dsi_panel_cmds *pcmds);
-/* < DTS2014111001776 zhaoyuxia 20141114 begin */
 #ifdef CONFIG_DEBUG_FS
 void lcd_dbg_set_dsi_ctrl_pdata(struct mdss_dsi_ctrl_pdata *ctrl);
 struct mdss_dsi_ctrl_pdata *lcd_dbg_get_dsi_ctrl_pdata(void);
 int lcd_dbg_mipi_prcess_ic_reg(int op_type,int reg, int cmd_type, int param_num, char *param_buf,int *read_value, int delay_ms);
 int lcd_debugfs_init(void);
 #endif
-/* DTS2014111001776 zhaoyuxia 20141114 end > */
 
 #endif 
 
-/* DTS2014042905347 zhaoyuxia 20140429 end >*/
 

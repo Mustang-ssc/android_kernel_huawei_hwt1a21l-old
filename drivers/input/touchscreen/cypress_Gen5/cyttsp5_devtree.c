@@ -548,6 +548,7 @@ static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 		rc = -EIO;
 		goto fail;
 	}
+	pr_info("+++++spp irq_gpio=%d\n",pdata->irq_gpio);
 
 	pdata->rst_gpio = of_get_named_gpio(core_node, "cy,rst_gpio", 0);
 	if (!gpio_is_valid(pdata->rst_gpio)) {
@@ -556,6 +557,7 @@ static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 		goto fail;
 	}
 
+	pr_info("+++++spp rst_gpio=%d\n",pdata->rst_gpio);
 	rc = of_property_read_u32(core_node, "cy,level_irq_udelay", &value);
 	if (!rc)
 		pdata->level_irq_udelay = value;

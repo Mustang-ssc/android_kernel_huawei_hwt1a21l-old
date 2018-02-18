@@ -490,6 +490,6 @@ static inline int cyttsp5_request_tthe_print(struct cyttsp5_device *ttsp,
 #endif
 
 /*add for mmi test items need implementation in tp driver*/
-#define CONFIG_TOUCHSCREEN_MMI_EQUIP
+//#define CONFIG_TOUCHSCREEN_MMI_EQUIP
 
 #endif /* _LINUX_CYTTSP5_BUS_H */

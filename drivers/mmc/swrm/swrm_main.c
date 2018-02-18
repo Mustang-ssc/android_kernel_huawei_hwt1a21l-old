@@ -1,4 +1,4 @@
-/* < DTS2014062704895 zhaoyingchun 20140628 begin */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update begin */
 
 /*
  *  swrm_main.c
@@ -179,4 +179,4 @@ MODULE_DESCRIPTION("Multimedia Card (MMC) host SWRM");
 MODULE_AUTHOR("Avi Shchislowski");
 MODULE_LICENSE("GPL");
 
-/* DTS2014062704895 zhaoyingchun 20140628 end > */
+/* zhaoyingchun add for sandisk emmc 4.5 firmware update end */

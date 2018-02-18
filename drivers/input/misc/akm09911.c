@@ -1,4 +1,3 @@
-/* < DTS2014051405499 yangxiaomei 20140514 begin */
 /*upload the qulacom patch to realize compass MMI test*/
 /* drivers/misc/akm09911.c - akm09911 compass driver
  *
@@ -36,28 +35,18 @@
 #include <linux/regulator/consumer.h>
 #include <linux/of_gpio.h>
 #include <linux/sensors.h>
-/* < DTS2014041705903 zhangmin 20140418 begin */
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <linux/hw_dev_dec.h>
 #endif
-/* DTS2014041705903 zhangmin 20140418 end > */
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
-/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 #include 	<linux/dsm_pub.h>
 #endif
-/* DTS2014112604473 yangzhonghua 20141126 end> */
-/* DTS2014072201656 yangzhonghua 20140722 end > */
-/* < DTS2014052903087 wanghang 201400604 begin */
 #include <misc/app_info.h>
-/* DTS2014052903087 wanghang 201400604 end > */
-/* <DTS2014071003025 hufeng 20140710 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 #define AKM_DEBUG_IF			1
 #else
 #define AKM_DEBUG_IF			0
 #endif
-/* DTS2014071003025 hufeng 20140710 end> */
 #define AKM_HAS_RESET			1
 #define AKM_INPUT_DEVICE_NAME	"compass"
 #define AKM_DRDY_TIMEOUT_MS		100
@@ -71,7 +60,7 @@
 #define AKM09911_VIO_MIN_UV	1750000
 #define AKM09911_VIO_MAX_UV	1950000
 
-#define STATUS_ERROR(st)		(((st)&0x09) != 0x01)
+#define STATUS_ERROR(st)		(((st)&0x08) != 0x0)
 
 /* Save last device state for power down */
 struct akm_sensor_state {
@@ -89,13 +78,9 @@ struct akm_compass_data {
 	struct pinctrl_state	*pin_sleep;
 	struct sensors_classdev	cdev;
 	struct delayed_work	dwork;
-	/* <DTS2014080404019 hufeng 20140804 begin */
 	struct workqueue_struct	*work_queue;
-	/* DTS2014080404019 hufeng 20140804 end> */
 	struct mutex		op_mutex;
-	/* < DTS2014091200316 wanghang 20140923 begin */
 	struct mutex		self_test_mutex;
-	/* DTS2014091200316 wanghang 20140923 end > */
 
 	wait_queue_head_t	drdy_wq;
 	wait_queue_head_t	open_wq;
@@ -110,11 +95,6 @@ struct akm_compass_data {
 	struct mutex accel_mutex;
 	int16_t accel_data[3];
 
-	/* Positive value means the device is working.
-	   0 or negative value means the device is not woking,
-	   i.e. in power-down mode. */
-	int8_t	is_busy;
-
 	struct mutex	val_mutex;
 	uint32_t		enable_flag;
 	int64_t			delay[AKM_NUM_SENSORS];
@@ -127,12 +107,22 @@ struct akm_compass_data {
 	int	gpio_rstn;
 	int	power_enabled;
 	int	auto_report;
+	int	use_hrtimer;
+
+	/* The input event last time */
+	int	last_x;
+	int	last_y;
+	int	last_z;
+
+	/* dummy value to avoid sensor event get eaten */
+	int	rep_cnt;
+
 	struct regulator	*vdd;
 	struct regulator	*vio;
 	struct akm_sensor_state state;
-	/* < DTS2014082103954  yangzhonghua 20140821 begin */
+	struct hrtimer	poll_timer;
 	bool device_exist;
-	/* DTS2014082103954  yangzhonghua 20140821 end > */
+
 };
 
 static struct sensors_classdev sensors_cdev = {
@@ -156,18 +146,13 @@ static struct sensors_classdev sensors_cdev = {
 static struct akm_compass_data *s_akm;
 
 static int akm_compass_power_set(struct akm_compass_data *data, bool on);
-/* <DTS2014071003025 hufeng 20140710 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
-/* < DTS2014073005921 yangxiaomei 20140730 begin */
 #define	SENSOR_I2C_SCL	 909
 #define	SENSOR_I2C_SDA	908
-/* DTS2014073005921 yangxiaomei 20140730 end > */
 #define I2C_RETRY_COUNT 3
-/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 static void akm_gpios_show(struct akm_compass_data *akm);
 static void akm_regulators_show(struct akm_compass_data *akm);
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
 static void akm_regs_show(struct device *dev, char *buf);
 static int akm_i2c_rxdata(struct i2c_client *i2c,uint8_t *rxData,int length);
 static ssize_t akm_buf_print(char *buf, uint8_t *data, size_t num);
@@ -278,12 +263,6 @@ static void akm_read_data_regs(struct akm_compass_data *akm)
 	int err;
 	uint8_t buffer[AKM_SENSOR_DATA_SIZE];
 
-	/* if the device is busy, means the data has been readed and stored in akm09911_excep->reg_buf
-	*	in AKECS_GetData_Poll(); so no need to read again.
-	*/
-	if (akm->is_busy > 0)
-		return ;
-
 	/* Read rest data */
 	buffer[0] = AKM_REG_STATUS;
 	err = akm_i2c_rxdata(akm->i2c, buffer, AKM_SENSOR_DATA_SIZE);
@@ -384,13 +363,11 @@ static ssize_t ms_report_dsm_err(int type, const char* extern_info)
 			break;
 	}
 
-	/* < DTS2014082103954  yangzhonghua 20140821 begin */
 	/*if device is not probe successfully or client is null, don't notify dsm work func*/
 	if(s_akm->device_exist != true || akm09911_ms_dclient == NULL){
 			pr_err("[akm_err]device is not exist!\n");
 			return -ENODEV;
 	}
-	/* DTS2014082103954  yangzhonghua 20140821 end > */
 	dsm_client_notify(akm09911_ms_dclient, type);
 
 	return used_size;
@@ -444,7 +421,6 @@ static void ms_dsm_check_val_same_times(int x, int y, int z)
 
 }
 #endif
-/* DTS2014112604473 yangzhonghua 20141126 end> */
 static int akm_i2c_rxdata(
 	struct i2c_client *i2c,
 	uint8_t *rxData,
@@ -492,11 +468,9 @@ static int akm_i2c_rxdata(
 
 i2c_err:
 
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	akm_report_i2c_err(ret);
 #endif
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 	return ret;
 
 }
@@ -542,15 +516,12 @@ static int akm_i2c_txdata(
 
 i2c_err:
 
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	akm_report_i2c_err(ret);
 #endif
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 	return ret;
 }
 #else
-/* DTS2014072201656 yangzhonghua 20140722 end > */
 
 /***** I2C I/O function ***********************************************/
 static int akm_i2c_rxdata(
@@ -596,6 +567,7 @@ static int akm_i2c_txdata(
 	int length)
 {
 	int ret;
+
 	struct i2c_msg msg[] = {
 		{
 			.addr = i2c->addr,
@@ -604,6 +576,7 @@ static int akm_i2c_txdata(
 			.buf = txData,
 		},
 	};
+
 	ret = i2c_transfer(i2c->adapter, msg, ARRAY_SIZE(msg));
 	if (ret < 0) {
 		dev_err(&i2c->dev, "%s: transfer failed.", __func__);
@@ -632,28 +605,19 @@ static int AKECS_Set_CNTL(
 
 	/***** lock *****/
 	mutex_lock(&akm->sensor_mutex);
-	/* Busy check */
-	if (akm->is_busy > 0) {
+	/* Set measure mode */
+	buffer[0] = AKM_REG_MODE;
+	buffer[1] = mode;
+	err = akm_i2c_txdata(akm->i2c, buffer, 2);
+	if (err < 0) {
 		dev_err(&akm->i2c->dev,
-				"%s: device is busy.", __func__);
-		err = -EBUSY;
+				"%s: Can not set CNTL.", __func__);
 	} else {
-		/* Set measure mode */
-		buffer[0] = AKM_REG_MODE;
-		buffer[1] = mode;
-		err = akm_i2c_txdata(akm->i2c, buffer, 2);
-		if (err < 0) {
-			dev_err(&akm->i2c->dev,
-					"%s: Can not set CNTL.", __func__);
-		} else {
-			dev_vdbg(&akm->i2c->dev,
-					"Mode is set to (%d).", mode);
-			/* Set flag */
-			akm->is_busy = 1;
-			atomic_set(&akm->drdy, 0);
-			/* wait at least 100us after changing mode */
-			udelay(100);
-		}
+		dev_vdbg(&akm->i2c->dev,
+				"Mode is set to (%d).", mode);
+		atomic_set(&akm->drdy, 0);
+		/* wait at least 100us after changing mode */
+		udelay(100);
 	}
 
 	mutex_unlock(&akm->sensor_mutex);
@@ -683,8 +647,6 @@ static int AKECS_Set_PowerDown(
 		/* wait at least 100us after changing mode */
 		udelay(100);
 	}
-	/* Clear status */
-	akm->is_busy = 0;
 	atomic_set(&akm->drdy, 0);
 
 	mutex_unlock(&akm->sensor_mutex);
@@ -724,8 +686,6 @@ static int AKECS_Reset(
 	}
 	/* Device will be accessible 100 us after */
 	udelay(100);
-	/* Clear status */
-	akm->is_busy = 0;
 	atomic_set(&akm->drdy, 0);
 	mutex_unlock(&akm->sensor_mutex);
 	/***** unlock *****/
@@ -747,6 +707,10 @@ static int AKECS_SetMode(
 	case AKM_MODE_SNG_MEASURE:
 	case AKM_MODE_SELF_TEST:
 	case AKM_MODE_FUSE_ACCESS:
+	case AKM_MODE_CONTINUOUS_10HZ:
+	case AKM_MODE_CONTINUOUS_20HZ:
+	case AKM_MODE_CONTINUOUS_50HZ:
+	case AKM_MODE_CONTINUOUS_100HZ:
 		err = AKECS_Set_CNTL(akm, mode);
 		break;
 	case AKM_MODE_POWERDOWN:
@@ -854,11 +818,11 @@ static int AKECS_GetData(
 
 	return 0;
 }
-
 static int AKECS_GetData_Poll(
 	struct akm_compass_data *akm,
 	uint8_t *rbuf,
-	int size)
+	int size,
+	bool is_self_test)
 {
 	uint8_t buffer[AKM_SENSOR_DATA_SIZE];
 	int err;
@@ -867,13 +831,22 @@ static int AKECS_GetData_Poll(
 	buffer[0] = AKM_REG_STATUS;
 	err = akm_i2c_rxdata(akm->i2c, buffer, 1);
 	if (err < 0) {
-		dev_err(&akm->i2c->dev, "%s failed.", __func__);
+		dev_err(&akm->i2c->dev, "%s read status failed.", __func__);
 		return err;
 	}
-
 	/* Check ST bit */
 	if (!(AKM_DRDY_IS_HIGH(buffer[0])))
-		return -EAGAIN;
+	{
+		/*if compass is in self test mode, poll again; in other mode, get data to report*/
+		if(is_self_test)
+		{
+			return -EAGAIN;
+		}
+	}
+
+	/* Data is over run is */
+	if (AKM_DOR_IS_HIGH(buffer[0]))
+		dev_dbg(&akm->i2c->dev, "Data over run!\n");
 
 	/* Read rest data */
 	buffer[1] = AKM_REG_STATUS + 1;
@@ -883,22 +856,12 @@ static int AKECS_GetData_Poll(
 		return err;
 	}
 
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
-	/* < DTS2014072201656 yangzhonghua 20140722 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	akm_dsm_copy_reg_buf(buffer);
 #endif
-	/* DTS2014072201656 yangzhonghua 20140722 end > */
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 	memcpy(rbuf, buffer, size);
 	atomic_set(&akm->drdy, 0);
-
-	/***** lock *****/
-	mutex_lock(&akm->sensor_mutex);
-	akm->is_busy = 0;
-	mutex_unlock(&akm->sensor_mutex);
-	/***** unlock *****/
 
 	return 0;
 }
@@ -1001,9 +964,8 @@ AKECS_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		}
 		ret = akm_i2c_rxdata(akm->i2c, &i2c_buf[1], i2c_buf[0]);
-		if (ret < 0) {
+		if (ret < 0)
 			return ret;
-		}
 		break;
 	case ECS_IOCTL_WRITE:
 		dev_vdbg(&akm->i2c->dev, "IOCTL_WRITE called.");
@@ -1012,9 +974,8 @@ AKECS_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		}
 		ret = akm_i2c_txdata(akm->i2c, &i2c_buf[1], i2c_buf[0]);
-		if (ret < 0) {
+		if (ret < 0)
 			return ret;
-		}
 		break;
 	case ECS_IOCTL_RESET:
 		dev_vdbg(&akm->i2c->dev, "IOCTL_RESET called.");
@@ -1038,7 +999,7 @@ AKECS_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			ret = AKECS_GetData(akm, dat_buf, AKM_SENSOR_DATA_SIZE);
 		else
 			ret = AKECS_GetData_Poll(
-					akm, dat_buf, AKM_SENSOR_DATA_SIZE);
+					akm, dat_buf, AKM_SENSOR_DATA_SIZE, false);
 
 		if (ret < 0)
 			return ret;
@@ -1280,16 +1241,26 @@ static void akm_compass_sysfs_update_status(
 		en, atomic_read(&akm->active));
 }
 
+static inline uint8_t akm_select_frequency(int64_t delay_ns)
+{
+	if (delay_ns >= 100000000LL)
+		return AKM_MODE_CONTINUOUS_10HZ;
+	else if (delay_ns >= 50000000LL)
+		return AKM_MODE_CONTINUOUS_20HZ;
+	else if (delay_ns >= 20000000LL)
+		return AKM_MODE_CONTINUOUS_50HZ;
+	else
+		return AKM_MODE_CONTINUOUS_100HZ;
+}
+
 static int akm_enable_set(struct sensors_classdev *sensors_cdev,
 		unsigned int enable)
 {
 	int ret = 0;
 	struct akm_compass_data *akm = container_of(sensors_cdev,
 			struct akm_compass_data, cdev);
-
-	/* < DTS2014061000435 wanghang 20140623 begin */
+	uint8_t mode;
 	dev_err(&akm->i2c->dev,"start akm_enable_set!\n");
-	/* DTS2014061000435 wanghang 20140623 end > */
 
 	mutex_lock(&akm->val_mutex);
 	akm->enable_flag &= ~(1<<MAG_DATA_FLAG);
@@ -1307,30 +1278,31 @@ static int akm_enable_set(struct sensors_classdev *sensors_cdev,
 		}
 
 		if (akm->auto_report) {
-			/* < DTS2014100909130 wanghang 20141009 begin */
+			mode = akm_select_frequency(akm->delay[MAG_DATA_FLAG]);
 			mutex_lock(&akm->self_test_mutex);
-			/* DTS2014100909130 wanghang 20141009 end >*/
-			AKECS_SetMode(akm, AKM_MODE_SNG_MEASURE);
-			/* < DTS2014100909130 wanghang 20141009 begin */
+			AKECS_SetMode(akm, mode);
 			mutex_unlock(&akm->self_test_mutex);
-			/* DTS2014100909130 wanghang 20141009 end >*/
-			schedule_delayed_work(&akm->dwork,
-				(unsigned long)nsecs_to_jiffies64(
-					akm->delay[MAG_DATA_FLAG]));
+			if (akm->use_hrtimer)
+				hrtimer_start(&akm->poll_timer,
+					ns_to_ktime(akm->delay[MAG_DATA_FLAG]),
+					HRTIMER_MODE_REL);
+			else
+				queue_delayed_work(akm->work_queue, &akm->dwork,
+					(unsigned long)nsecs_to_jiffies64(
+						akm->delay[MAG_DATA_FLAG]));
 		}
-		/* < DTS2014061000435 wanghang 20140623 begin */
 		dev_err(&akm->i2c->dev,"power on the device!\n");
-		/* DTS2014061000435 wanghang 20140623 end > */
 	} else {
 		if (akm->auto_report) {
-			cancel_delayed_work_sync(&akm->dwork);
-			/* < DTS2014100909130 wanghang 20141009 begin */
+			if (akm->use_hrtimer) {
+				hrtimer_cancel(&akm->poll_timer);
+				cancel_work_sync(&akm->dwork.work);
+			} else {
+				cancel_delayed_work_sync(&akm->dwork);
+			}
 			mutex_lock(&akm->self_test_mutex);
-			/* DTS2014100909130 wanghang 20141009 end >*/
 			AKECS_SetMode(akm, AKM_MODE_POWERDOWN);
-			/* < DTS2014100909130 wanghang 20141009 begin */
 			mutex_unlock(&akm->self_test_mutex);
-			/* DTS2014100909130 wanghang 20141009 end >*/
 		}
 		ret = akm_compass_power_set(akm, false);
 		if (ret) {
@@ -1338,9 +1310,7 @@ static int akm_enable_set(struct sensors_classdev *sensors_cdev,
 				"Fail to power off the device!\n");
 			goto exit;
 		}
-		/* < DTS2014061000435 wanghang 20140623 begin */
 		dev_err(&akm->i2c->dev,"power off the device!\n");
-		/* DTS2014061000435 wanghang 20140623 end > */
 	}
 
 exit:
@@ -1448,12 +1418,27 @@ static int akm_poll_delay_set(struct sensors_classdev *sensors_cdev,
 {
 	struct akm_compass_data *akm = container_of(sensors_cdev,
 			struct akm_compass_data, cdev);
-
+	uint8_t mode;
+	int ret;
+	dev_warn(&akm->i2c->dev, "akm_poll_delay_set:%dms\n", delay_msec);
 	mutex_lock(&akm->val_mutex);
+	mutex_lock(&akm->self_test_mutex);
 	akm->delay[MAG_DATA_FLAG] = delay_msec * 1000000;
+	mode = akm_select_frequency(akm->delay[MAG_DATA_FLAG]);
+	/*before change compass mode, set to power down mode first*/
+	ret = AKECS_SetMode(akm, AKM_MODE_POWERDOWN);
+	if(ret < 0)
+	{
+		dev_err(&akm->i2c->dev, "Failed to set to power down mode\n");
+	}
+	ret = AKECS_SetMode(akm, mode);
+	if (ret < 0)
+	{
+		dev_err(&akm->i2c->dev, "Failed to set to mode(%x)\n", mode);
+	}
+	mutex_unlock(&akm->self_test_mutex);
 	mutex_unlock(&akm->val_mutex);
-
-	return 0;
+	return ret;
 }
 
 static ssize_t akm_compass_sysfs_delay_show(
@@ -1644,9 +1629,8 @@ static ssize_t akm_sysfs_asa_show(
 
 	asa[0] = AKM_FUSE_1ST_ADDR;
 	err = akm_i2c_rxdata(akm->i2c, asa, 3);
-	if (err < 0) {
+	if (err < 0)
 		return err;
-	}
 
 	err = AKECS_SetMode(akm, AKM_MODE_POWERDOWN);
 	if (err < 0)
@@ -1672,8 +1656,6 @@ static ssize_t akm_sysfs_regs_show(
 	return akm_buf_print(buf, regs, AKM_REGS_SIZE);
 }
 #endif
-/* <DTS2014112604473 yangzhonghua 20141126 begin */
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
 #ifdef CONFIG_HUAWEI_DSM
 static ssize_t akm_show_test_dsm(
 	struct device *dev, struct device_attribute *attr, char *buf)
@@ -1719,8 +1701,6 @@ static ssize_t akm_sysfs_test_dsm(
 	return ret;
 }
 #endif
-/* DTS2014072201656 yangzhonghua 20140722 end > */
-/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 static struct device_attribute akm_compass_attributes[] = {
 	__ATTR(enable_acc, 0660, akm_enable_acc_show, akm_enable_acc_store),
@@ -1731,13 +1711,9 @@ static struct device_attribute akm_compass_attributes[] = {
 	__ATTR(delay_mag,  0660, akm_delay_mag_show,  akm_delay_mag_store),
 	__ATTR(delay_fusion, 0660, akm_delay_fusion_show,
 			akm_delay_fusion_store),
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
-	/* < DTS2014072201656 yangzhonghua 20140722 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	__ATTR(dsm_excep,0660, akm_show_test_dsm, akm_sysfs_test_dsm),
 #endif
-	/* DTS2014072201656 yangzhonghua 20140722 end > */
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 #if AKM_DEBUG_IF
 	__ATTR(mode,  0220, NULL, akm_sysfs_mode_store),
@@ -1909,6 +1885,10 @@ static int akm_compass_input_init(
 	input_set_abs_params(*input, ABS_VOLUME,
 			-16384, 16384, 0, 0);
 
+	/* Report the dummy value */
+	input_set_abs_params(*input, ABS_MISC,
+			INT_MIN, INT_MAX, 0, 0);
+
 	/* Set name */
 	(*input)->name = AKM_INPUT_DEVICE_NAME;
 
@@ -1939,7 +1919,6 @@ static irqreturn_t akm_compass_irq(int irq, void *handle)
 	err = akm_i2c_rxdata(akm->i2c, buffer, AKM_SENSOR_DATA_SIZE);
 	if (err < 0) {
 		dev_err(&akm->i2c->dev, "IRQ I2C error.");
-		akm->is_busy = 0;
 		mutex_unlock(&akm->sensor_mutex);
 		/***** unlock *****/
 
@@ -1950,7 +1929,6 @@ static irqreturn_t akm_compass_irq(int irq, void *handle)
 		goto work_func_none;
 
 	memcpy(akm->sense_data, buffer, AKM_SENSOR_DATA_SIZE);
-	akm->is_busy = 0;
 
 	mutex_unlock(&akm->sensor_mutex);
 	/***** unlock *****/
@@ -1974,8 +1952,16 @@ static int akm_compass_suspend(struct device *dev)
 	struct akm_compass_data *akm = dev_get_drvdata(dev);
 	int ret = 0;
 
-	if (AKM_IS_MAG_DATA_ENABLED() && akm->auto_report)
-		cancel_delayed_work_sync(&akm->dwork);
+	if (AKM_IS_MAG_DATA_ENABLED() && akm->auto_report) {
+		if (akm->use_hrtimer)
+			hrtimer_cancel(&akm->poll_timer);
+		else
+			cancel_delayed_work_sync(&akm->dwork);
+	}
+
+	ret = AKECS_SetMode(akm, AKM_MODE_POWERDOWN);
+	if (ret)
+		dev_warn(&akm->i2c->dev, "Failed to set to POWERDOWN mode.\n");
 
 	akm->state.power_on = akm->power_enabled;
 	if (akm->state.power_on)
@@ -1994,6 +1980,7 @@ static int akm_compass_resume(struct device *dev)
 {
 	struct akm_compass_data *akm = dev_get_drvdata(dev);
 	int ret = 0;
+	uint8_t mode;
 
 	ret = pinctrl_select_state(akm->pinctrl, akm->pin_default);
 	if (ret)
@@ -2006,16 +1993,23 @@ static int akm_compass_resume(struct device *dev)
 			goto exit;
 		}
 
-		ret = AKECS_SetMode(akm, akm->state.mode);
-		if (ret) {
-			dev_err(dev, "Sensor state resume fail!\n");
-			goto exit;
+		if (AKM_IS_MAG_DATA_ENABLED() && akm->auto_report) {
+			mode = akm_select_frequency(akm->delay[MAG_DATA_FLAG]);
+			ret = AKECS_SetMode(akm, mode);
+			if (ret < 0) {
+				dev_err(&akm->i2c->dev, "Failed to set to mode(%d)\n",
+						mode);
+				goto exit;
+			}
+			if (akm->use_hrtimer)
+				hrtimer_start(&akm->poll_timer,
+					ns_to_ktime(akm->delay[MAG_DATA_FLAG]),
+					HRTIMER_MODE_REL);
+			else
+				queue_delayed_work(akm->work_queue, &akm->dwork,
+					(unsigned long)nsecs_to_jiffies64(
+						akm->delay[MAG_DATA_FLAG]));
 		}
-
-		if (AKM_IS_MAG_DATA_ENABLED() && akm->auto_report)
-			schedule_delayed_work(&akm->dwork,
-				(unsigned long)nsecs_to_jiffies64(
-				akm->delay[MAG_DATA_FLAG]));
 	}
 
 	dev_dbg(&akm->i2c->dev, "resumed\n");
@@ -2033,33 +2027,26 @@ static int akm09911_i2c_check_device(
 
 	akm->sense_info[0] = AK09911_REG_WIA1;
 	err = akm_i2c_rxdata(client, akm->sense_info, AKM_SENSOR_INFO_SIZE);
-	/* < DTS2014061000435 wanghang 20140623 begin */
 	if (err < 0){
 		dev_err(&client->dev, "%s: akm_i2c_rxdata failed to read REG_WIA1.err:%d\n", __func__,err);
 		return err;
 	}
-	/* DTS2014061000435 wanghang 20140623 end > */
 
 	/* Set FUSE access mode */
 	err = AKECS_SetMode(akm, AK09911_MODE_FUSE_ACCESS);
-	/* < DTS2014061000435 wanghang 20140623 begin */
 	if (err < 0){
 		dev_err(&client->dev, "%s: failed to set access mode.err:%d\n", __func__,err);
 		return err;
 	}
-	/* DTS2014061000435 wanghang 20140623 end > */
 
 	akm->sense_conf[0] = AK09911_FUSE_ASAX;
 	err = akm_i2c_rxdata(client, akm->sense_conf, AKM_SENSOR_CONF_SIZE);
-	/* < DTS2014061000435 wanghang 20140623 begin */
 	if (err < 0){
 		dev_err(&client->dev, "%s: akm_i2c_rxdata failed to read FUSE_ASAX.err:%d\n", __func__,err);
 		return err;
 	}
-	/* DTS2014061000435 wanghang 20140623 end > */
 
 	err = AKECS_SetMode(akm, AK09911_MODE_POWERDOWN);
-	/* < DTS2014061000435 wanghang 20140623 begin */
 	if (err < 0){
 		dev_err(&client->dev, "%s: failed to set POWERDOWN mode.err:%d\n", __func__,err);
 		return err;
@@ -2207,7 +2194,7 @@ reg_vdd_put:
 
 #ifdef CONFIG_OF
 static int akm_compass_parse_dt(struct device *dev,
-				struct akm_compass_data *pdata)
+				struct akm_compass_data *akm)
 {
 	struct device_node *np = dev->of_node;
 	u32 temp_val;
@@ -2218,71 +2205,63 @@ static int akm_compass_parse_dt(struct device *dev,
 		dev_err(dev, "Unable to read akm,layout\n");
 		return rc;
 	} else {
-		s_akm->layout = temp_val;
+		akm->layout = temp_val;
 	}
 
-	if (of_property_read_bool(np, "akm,auto-report"))
-		s_akm->auto_report = 1;
-	else
-		s_akm->auto_report = 0;
-
-	s_akm->gpio_rstn = of_get_named_gpio_flags(dev->of_node,
+	akm->auto_report = of_property_read_bool(np, "akm,auto-report");
+	akm->use_hrtimer = of_property_read_bool(np, "akm,use-hrtimer");
+	akm->gpio_rstn = of_get_named_gpio_flags(dev->of_node,
 			"akm,gpio_rstn", 0, NULL);
 
-	if (!gpio_is_valid(s_akm->gpio_rstn)) {
+	if (!gpio_is_valid(akm->gpio_rstn)) {
 		dev_err(dev, "gpio reset pin %d is invalid.\n",
-			s_akm->gpio_rstn);
+			akm->gpio_rstn);
 		return -EINVAL;
 	}
-    /* < DTS2014062309034 wanghang 20140623 begin */
 	rc = gpio_request(s_akm->gpio_rstn, "akm09911_reset");
 	if (rc < 0) {
 		gpio_free(s_akm->gpio_rstn);
 		rc = gpio_request(s_akm->gpio_rstn, "akm09911_reset");
 	}
 	gpio_direction_output(s_akm->gpio_rstn, 1);
-    /* DTS2014062309034 wanghang 20140623 end > */
 
 	return 0;
 }
 #else
 static int akm_compass_parse_dt(struct device *dev,
-				struct akm_compass_data *pdata)
+				struct akm_compass_data *akm)
 {
 	return -EINVAL;
 }
 #endif /* !CONFIG_OF */
 
-static int akm_pinctrl_init(struct akm_compass_data *s_akm)
+static int akm_pinctrl_init(struct akm_compass_data *akm)
 {
-	struct i2c_client *client = s_akm->i2c;
+	struct i2c_client *client = akm->i2c;
 
-	s_akm->pinctrl = devm_pinctrl_get(&client->dev);
-	if (IS_ERR_OR_NULL(s_akm->pinctrl)) {
+	akm->pinctrl = devm_pinctrl_get(&client->dev);
+	if (IS_ERR_OR_NULL(akm->pinctrl)) {
 		dev_err(&client->dev, "Failed to get pinctrl\n");
-		return PTR_ERR(s_akm->pinctrl);
+		return PTR_ERR(akm->pinctrl);
 	}
 
-	s_akm->pin_default = pinctrl_lookup_state(s_akm->pinctrl, "default");
-	if (IS_ERR_OR_NULL(s_akm->pin_default)) {
+	akm->pin_default = pinctrl_lookup_state(akm->pinctrl, "default");
+	if (IS_ERR_OR_NULL(akm->pin_default)) {
 		dev_err(&client->dev, "Failed to look up default state\n");
-		return PTR_ERR(s_akm->pin_default);
+		return PTR_ERR(akm->pin_default);
 	}
 
-	s_akm->pin_sleep = pinctrl_lookup_state(s_akm->pinctrl, "sleep");
-	if (IS_ERR_OR_NULL(s_akm->pin_sleep)) {
+	akm->pin_sleep = pinctrl_lookup_state(akm->pinctrl, "sleep");
+	if (IS_ERR_OR_NULL(akm->pin_sleep)) {
 		dev_err(&client->dev, "Failed to look up sleep state\n");
-		return PTR_ERR(s_akm->pin_sleep);
+		return PTR_ERR(akm->pin_sleep);
 	}
 
 	return 0;
 }
 
-/* <DTS2014112604473 yangzhonghua 20141126 begin */
-/* <DTS2014071003025 hufeng 20140710 begin */
 #ifdef CONFIG_HUAWEI_DSM
 /* Show akm magnetic sensor registers. */
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
 static void akm_regs_show(struct device *dev, char *buf)
 {
 	dev_warn(dev, "Show registers:\n");
@@ -2290,7 +2269,6 @@ static void akm_regs_show(struct device *dev, char *buf)
 
 	return;
 }
-/* DTS2014072201656 yangzhonghua 20140722 end > */
 
 
 /* Show akm magnetic sensor regulators. */
@@ -2303,7 +2281,6 @@ static void akm_regulators_show(struct akm_compass_data *akm)
 	if (akm->vio == NULL) {
 		return;
 	}
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
 	akm09911_excep->vdd_status 	= regulator_is_enabled(akm->vdd);
 	akm09911_excep->vdd_mv 		= regulator_get_voltage(akm->vdd)/1000;
 	akm09911_excep->vio_status 	= regulator_is_enabled(akm->vio);
@@ -2315,7 +2292,6 @@ static void akm_regulators_show(struct akm_compass_data *akm)
 
 	dev_warn(&akm->i2c->dev, "vio enable=%d\n",akm09911_excep->vio_status);
 	dev_warn(&akm->i2c->dev, "vio voltage=%d(mV)\n",akm09911_excep->vio_mv);
-/* DTS2014072201656 yangzhonghua 20140722 end > */
 
 
 	return;
@@ -2324,7 +2300,6 @@ static void akm_regulators_show(struct akm_compass_data *akm)
 /* Show akm magnetic sensor gpios. */
 static void akm_gpios_show(struct akm_compass_data *akm)
 {
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
 	akm09911_excep->rst_val = gpio_get_value(akm->gpio_rstn);
 	akm09911_excep->scl_val = gpio_get_value(SENSOR_I2C_SCL);
 	akm09911_excep->sda_val = gpio_get_value(SENSOR_I2C_SDA);
@@ -2332,13 +2307,10 @@ static void akm_gpios_show(struct akm_compass_data *akm)
 	dev_warn(&akm->i2c->dev, "gpio(reset): number=%d, value=%d\n",akm->gpio_rstn,akm09911_excep->rst_val);
 	dev_warn(&akm->i2c->dev, "gpio(scl): number=%d, value=%d\n",SENSOR_I2C_SCL,akm09911_excep->scl_val);
 	dev_warn(&akm->i2c->dev, "gpio(sda): number=%d, value=%d\n",SENSOR_I2C_SDA,akm09911_excep->sda_val);
-/* DTS2014072201656 yangzhonghua 20140722 end > */
 
 	return;
 }
 #endif
-/* DTS2014071003025 hufeng 20140710 end> */
-/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 
 static int akm_report_data(struct akm_compass_data *akm)
@@ -2348,17 +2320,12 @@ static int akm_report_data(struct akm_compass_data *akm)
 	int mag_x, mag_y, mag_z;
 	int tmp;
 	int count = 10;
-	/* <DTS2014082204736 hufeng 20140822 begin */
 	static unsigned long total_delay_count = 0;
-	/* DTS2014082204736 hufeng 20140822 end> */
 
 	do {
 		/* The typical time for single measurement is 7.2ms */
-		ret = AKECS_GetData_Poll(akm, dat_buf, AKM_SENSOR_DATA_SIZE);
-		/* <DTS2014081101328 hufeng 20140810 begin */
+		ret = AKECS_GetData_Poll(akm, dat_buf, AKM_SENSOR_DATA_SIZE, false);
 		if (ret == -EAGAIN) {
-			/* <DTS2014080404019 hufeng 20140804 begin */
-			/* <DTS2014082204736 hufeng 20140822 begin */
 			int getdata_delay = 1000;
 			usleep(getdata_delay);
 			total_delay_count++;
@@ -2367,22 +2334,16 @@ static int akm_report_data(struct akm_compass_data *akm)
                 "Waited %d us before polling again, count=%d, total_delay_count=%lu.\n",
                         getdata_delay, count, total_delay_count);
 			}
-			/* DTS2014082204736 hufeng 20140822 end> */
-			/* DTS2014080404019 hufeng 20140804 end> */
 		}
-		/* DTS2014081101328 hufeng 20140810 end> */
 	} while ((ret == -EAGAIN) && (--count));
 
 	if (!count) {
 		dev_err(&akm->i2c->dev, "Timeout get valid data.\n");
 		return -EIO;
-
 	}
 
-	tmp = dat_buf[0] | dat_buf[8];
-	if (STATUS_ERROR(tmp)) {
-		dev_warn(&s_akm->i2c->dev, "Status error(0x%x). Reset...\n",
-			       tmp);
+	if (STATUS_ERROR(dat_buf[8])) {
+		dev_warn(&akm->i2c->dev, "Status error. Reset...\n");
 		AKECS_Reset(akm, 0);
 		return -EIO;
 	}
@@ -2399,12 +2360,12 @@ static int akm_report_data(struct akm_compass_data *akm)
 	tmp = tmp * akm->sense_conf[2] / 128 + tmp;
 	mag_z = tmp;
 
-	dev_dbg(&s_akm->i2c->dev, "mag_x:%d mag_y:%d mag_z:%d\n",
+	dev_dbg(&akm->i2c->dev, "mag_x:%d mag_y:%d mag_z:%d\n",
 			mag_x, mag_y, mag_z);
-	dev_dbg(&s_akm->i2c->dev, "raw data: %d %d %d %d %d %d %d %d\n",
+	dev_dbg(&akm->i2c->dev, "raw data: %d %d %d %d %d %d %d %d\n",
 			dat_buf[0], dat_buf[1], dat_buf[2], dat_buf[3],
 			dat_buf[4], dat_buf[5], dat_buf[6], dat_buf[7]);
-	dev_dbg(&s_akm->i2c->dev, "asa: %d %d %d\n", akm->sense_conf[0],
+	dev_dbg(&akm->i2c->dev, "asa: %d %d %d\n", akm->sense_conf[0],
 			akm->sense_conf[1], akm->sense_conf[2]);
 
 	switch (akm->layout) {
@@ -2448,32 +2409,32 @@ static int akm_report_data(struct akm_compass_data *akm)
 		break;
 	}
 
-	/* < DTS2014061000435 wanghang 20140623 begin */
 	if(mag_x == 0 && mag_y == 0 && mag_z == 0)
 	{
 		dev_err(&akm->i2c->dev, "Invalid data: x,y,z all is 0.\n");
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
-		/* <DTS2014071003025 hufeng 20140710 begin */
 #ifdef CONFIG_HUAWEI_DSM
-		/* < DTS2014072201656 yangzhonghua 20140722 begin */
 		ms_report_dsm_err(DSM_MS_DATA_ERROR,NULL);
-		/* DTS2014072201656 yangzhonghua 20140722 end > */
 #endif
-		/* DTS2014071003025 hufeng 20140710 end> */
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 	}
-	/* DTS2014061000435 wanghang 20140623 end > */
 
 	input_report_abs(akm->input, ABS_X, mag_x);
 	input_report_abs(akm->input, ABS_Y, mag_y);
 	input_report_abs(akm->input, ABS_Z, mag_z);
+
+	/* avoid eaten by input subsystem framework */
+	if ((mag_x == akm->last_x) && (mag_y == akm->last_y) &&
+			(mag_z == akm->last_z))
+		input_report_abs(akm->input, ABS_MISC, akm->rep_cnt++);
+
+	akm->last_x = mag_x;
+	akm->last_y = mag_y;
+	akm->last_z = mag_z;
+
 	input_sync(akm->input);
 
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	ms_dsm_check_val_same_times(mag_x, mag_y, mag_z);
 #endif
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 	return 0;
 }
@@ -2482,27 +2443,33 @@ static void akm_dev_poll(struct work_struct *work)
 {
 	struct akm_compass_data *akm;
 	int ret;
-
+	uint8_t mode;
 	akm = container_of((struct delayed_work *)work,
 			struct akm_compass_data,  dwork);
-	/* < DTS2014091200316 wanghang 20140923 begin */
 	mutex_lock(&akm->self_test_mutex);
-	/* DTS2014091200316 wanghang 20140923 end > */
 
 	ret = akm_report_data(akm);
-	if (ret < 0)
-		dev_warn(&s_akm->i2c->dev, "Failed to report data\n");
+	if (ret < 0){
+		dev_warn(&akm->i2c->dev, "Failed to report data\n");
+		/*if error occur, set compass mode to used mode*/
+		mode = akm_select_frequency(akm->delay[MAG_DATA_FLAG]);
+		/*before change compass mode, set to power down mode first*/
+		ret = AKECS_SetMode(akm, AKM_MODE_POWERDOWN);
+		if(ret < 0)
+		{
+			dev_err(&akm->i2c->dev, "Failed to set to power down mode\n");
+		}
+		ret = AKECS_SetMode(akm, mode);
+		if (ret < 0)
+		{
+			dev_err(&akm->i2c->dev, "Failed to set to mode(%x)\n", mode);
+		}		
+	}
 
-	ret = AKECS_SetMode(akm, AKM_MODE_SNG_MEASURE);
-	if ((ret < 0) && (ret != -EBUSY))
-		dev_warn(&s_akm->i2c->dev, "Failed to set mode\n");
-	/* <DTS2014080404019 hufeng 20140804 begin */
+	if (!akm->use_hrtimer)
 	queue_delayed_work(akm->work_queue, &akm->dwork,
 			(unsigned long)nsecs_to_jiffies64(akm->delay[MAG_DATA_FLAG]));
-	/* DTS2014080404019 hufeng 20140804 end> */
-	/* < DTS2014091200316 wanghang 20140923 begin */
 	mutex_unlock(&akm->self_test_mutex);
-	/* DTS2014091200316 wanghang 20140923 end > */
 }
 int
 TEST_DATA(const char testno[],
@@ -2566,14 +2533,10 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 	int asax, asay, asaz;
 	int count;
 	int ret;
-
-	/* < DTS2014091200316 wanghang 20140923 begin */
+	pr_err("%s:%d : akm self test begin \n", __FUNCTION__, __LINE__);
 	mutex_lock(&akm->self_test_mutex);
-	/* DTS2014091200316 wanghang 20140923 end > */
 
-	/* <DTS2014082204736 hufeng 20140822 begin */
 	/* Removed lines. */
-	/* DTS2014082204736 hufeng 20140822 end> */
 	asax = akm->sense_conf[0];
 	asay = akm->sense_conf[1];
 	asaz = akm->sense_conf[2];
@@ -2593,28 +2556,20 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 	ret = akm_compass_power_set(akm, true);
 	if (ret) {
 		pr_err("Sensor power resume fail!\n");
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"Sensor power resume fail!\n");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
 	// Reset device.
 	if (AKECS_Reset(akm, 0) < 0) {
 		dev_err(&akm->i2c->dev, "Reset failed.\n");
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"Reset failed.\n");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
@@ -2626,14 +2581,10 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 	// Set to PowerDown mode
 	if (AKECS_SetMode(akm, AK09911_MODE_POWERDOWN) < 0) {
 		pr_info("%s:%d Error.\n", __FUNCTION__, __LINE__);
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"AKECS_SetMode AK09911_MODE_POWERDOWN.\n");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
@@ -2644,14 +2595,10 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 	// Set to SNG measurement pattern (Set CNTL register)
 	if (AKECS_SetMode(akm, AK09911_MODE_SNG_MEASURE) < 0) {
 		pr_info("%s:%d Error.\n", __FUNCTION__, __LINE__);
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"AKECS_SetMode AK09911_MODE_SNG_MEASURE");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
@@ -2666,21 +2613,17 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 
 	do {
 		/* The typical time for single measurement is 7.2ms */
-		ret = AKECS_GetData_Poll(akm, i2cData, AKM_SENSOR_DATA_SIZE);
+		ret = AKECS_GetData_Poll(akm, i2cData, AKM_SENSOR_DATA_SIZE, true);
 		if (ret == -EAGAIN)
 			usleep_range(1000, 10000);
 	} while ((ret == -EAGAIN) && (--count));
 
 	if (!count) {
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		pr_err("%s:%d :Timeout get valid data.\n",__FUNCTION__,__LINE__);
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"Timeout get valid data.");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
@@ -2705,14 +2648,10 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 	// Set to Self-test mode (Set CNTL register)
 	if (AKECS_SetMode(akm, AK09911_MODE_SELF_TEST) < 0) {
 		pr_info("%s:%d Error.\n", __FUNCTION__, __LINE__);
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"AKECS_SetMode AK09911_MODE_SELF_TEST failed.\n");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
@@ -2727,21 +2666,17 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 
 	do {
 		/* The typical time for single measurement is 7.2ms */
-		ret = AKECS_GetData_Poll(akm, i2cData, AKM_SENSOR_DATA_SIZE);
+		ret = AKECS_GetData_Poll(akm, i2cData, AKM_SENSOR_DATA_SIZE, true);
 		if (ret == -EAGAIN)
 			usleep_range(1000, 10000);
 	} while ((ret == -EAGAIN) && (--count));
 
 	if (!count) {
-		/* < DTS2014091200316 wanghang 20140923 begin */
 		pr_err("%s:%d :Timeout get valid data.\n",__FUNCTION__,__LINE__);
 		mutex_unlock(&akm->self_test_mutex);
-		/* DTS2014091200316 wanghang 20140923 end > */
-		/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #ifdef CONFIG_HUAWEI_DSM
 		ms_report_dsm_err(DSM_MS_SELF_TEST_ERROR,"Timeout get valid data");
 #endif
-		/* DTS2014112604473 yangzhonghua 20141126 end> */
 		return false;
 	}
 
@@ -2793,19 +2728,46 @@ static int akm_self_test(struct sensors_classdev *sensors_cdev)
 			TLIMIT_HI_SLF_ST2_09911,
 			&pf_total
 		 );
+	pr_err("%s:%d : pf_total is : %d\n", __FUNCTION__,__LINE__, pf_total);
+	if(pf_total <= 0)
+	{
+		pr_err("%s:%d :self test compass data error, Whether there is a strong magnetic field near?\n",
+			__FUNCTION__,__LINE__);
+	}
 
-	akm_compass_power_set(akm, false);
+	if (AKM_IS_MAG_DATA_ENABLED() && akm->auto_report) {
+		uint8_t mode;
+		mode = akm_select_frequency(akm->delay[MAG_DATA_FLAG]);
+		ret = AKECS_SetMode(akm, mode);
+		if (ret < 0) {
+			pr_err("Failed to restore to mode(%d)\n", mode);
+		}
+		pr_err("restore from self test mode to mode(%d)\n", mode);
+	}else{
+		akm_compass_power_set(akm, false);
 
-	ret = pinctrl_select_state(akm->pinctrl, akm->pin_sleep);
-	if (ret)
-		pr_err("Can't select pinctrl state\n");
-	/* <DTS2014082204736 hufeng 20140822 begin */
+		ret = pinctrl_select_state(akm->pinctrl, akm->pin_sleep);
+		if (ret)
+			pr_err("Can't select pinctrl state\n");
+		
+		pr_err("after compass self test, restore power down mode\n");
+	}
 	/* Removed lines. */
-	/* DTS2014082204736 hufeng 20140822 end> */
-	/* < DTS2014091200316 wanghang 20140923 begin */
 	mutex_unlock(&akm->self_test_mutex);
-	/* DTS2014091200316 wanghang 20140923 end > */
 	return (pf_total > 0) ? true : false;
+}
+
+static enum hrtimer_restart akm_timer_func(struct hrtimer *timer)
+{
+	struct akm_compass_data *akm;
+
+	akm = container_of(timer, struct akm_compass_data, poll_timer);
+
+	queue_work(akm->work_queue, &akm->dwork.work);
+	hrtimer_forward_now(&akm->poll_timer,
+			ns_to_ktime(akm->delay[MAG_DATA_FLAG]));
+
+	return HRTIMER_RESTART;
 }
 
 int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -2840,18 +2802,13 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	mutex_init(&s_akm->accel_mutex);
 	mutex_init(&s_akm->val_mutex);
 	mutex_init(&s_akm->op_mutex);
-	/* < DTS2014091200316 wanghang 20140923 begin */
 	mutex_init(&s_akm->self_test_mutex);
-	/* DTS2014091200316 wanghang 20140923 end > */
 
 	atomic_set(&s_akm->active, 0);
 	atomic_set(&s_akm->drdy, 0);
 
-	s_akm->is_busy = 0;
 	s_akm->enable_flag = 0;
-	/* < DTS2014082103954  yangzhonghua 20140821 begin */
 	s_akm->device_exist = false;
-	/* DTS2014082103954  yangzhonghua 20140821 end > */
 
 	/* Set to 1G in Android coordination, AKSC format */
 	s_akm->accel_data[0] = 0;
@@ -2908,15 +2865,11 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	err = akm_compass_power_set(s_akm, 1);
 	if (err < 0)
 		goto exit3;
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
-	/* < DTS2014072201656 yangzhonghua 20140722 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	err = akm_dsm_excep_init(s_akm);
 	if(err < 0)
 		goto exit3;
 #endif
-	/* DTS2014072201656 yangzhonghua 20140722 end > */
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 
 	err = akm09911_i2c_check_device(client);
@@ -2952,10 +2905,19 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 			goto exit5;
 		}
 	} else if (s_akm->auto_report) {
-		INIT_DELAYED_WORK(&s_akm->dwork, akm_dev_poll);
-		/* <DTS2014080404019 hufeng 20140804 begin */
+		if (s_akm->use_hrtimer) {
+			hrtimer_init(&s_akm->poll_timer, CLOCK_MONOTONIC,
+					HRTIMER_MODE_REL);
+			s_akm->poll_timer.function = akm_timer_func;
+			s_akm->work_queue = alloc_workqueue("akm_poll_work",
+				WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
+			INIT_WORK(&s_akm->dwork.work, akm_dev_poll);
+		} else {
+			s_akm->work_queue = alloc_workqueue("akm_poll_work",
+					WQ_NON_REENTRANT, 0);
+			INIT_DELAYED_WORK(&s_akm->dwork, akm_dev_poll);
+		}
 		s_akm->work_queue = alloc_workqueue("akm_poll_work", WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
-		/* DTS2014080404019 hufeng 20140804 end> */
 	}
 
 	/***** misc *****/
@@ -2981,21 +2943,18 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	s_akm->delay[MAG_DATA_FLAG] = sensors_cdev.delay_msec * 1000000;
 
-	err = sensors_classdev_register(&client->dev, &s_akm->cdev);
+	err = sensors_classdev_register(&s_akm->input->dev, &s_akm->cdev);
 
 	if (err) {
 		dev_err(&client->dev, "class device create failed: %d\n", err);
 		goto exit8;
 	}
-	/* < DTS2014041705903 zhangmin 20140418 begin */
 	set_sensors_list(M_SENSOR);
-	/* < DTS2014052903087 wanghang 201400604 begin */
 	err = app_info_set("M-Sensor", "AKM09911");
 	if (err)
 	{
 		dev_err(&client->dev, "%s, line %d:set compass AKM09911 app_info error\n", __func__, __LINE__);
 	}
-	/* DTS2014052903087 wanghang 201400604 end > */
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 	set_hw_dev_flag(DEV_I2C_COMPASS);
 #endif
@@ -3003,16 +2962,10 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (err) {
 		dev_err(&client->dev, "%s set_sensor_input failed\n", __func__);
 	}
-	/* DTS2014041705903 zhangmin 20140418 end > */
 	akm_compass_power_set(s_akm, false);
 
-	/* <DTS2014082204736 hufeng 20140822 begin */
-	/* Removed lines. */
-	/* DTS2014082204736 hufeng 20140822 end> */
 	dev_info(&client->dev, "successfully probed.");
-	/* < DTS2014082103954  yangzhonghua 20140821 begin */
 	s_akm->device_exist = true;
-	/* DTS2014082103954  yangzhonghua 20140821 end > */
 	return 0;
 
 exit8:
@@ -3026,13 +2979,9 @@ exit5:
 	input_unregister_device(s_akm->input);
 exit4:
 	akm_compass_power_set(s_akm, 0);
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
-	/* < DTS2014072201656 yangzhonghua 20140722 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	akm_dsm_excep_exit();
 #endif
-	/* DTS2014072201656 yangzhonghua 20140722 end > */
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 exit3:
 	akm_compass_power_init(s_akm, 0);
@@ -3047,19 +2996,26 @@ static int akm_compass_remove(struct i2c_client *client)
 {
 	struct akm_compass_data *akm = i2c_get_clientdata(client);
 
+	if (akm->auto_report) {
+		if (akm->use_hrtimer) {
+			hrtimer_cancel(&akm->poll_timer);
+			cancel_work_sync(&akm->dwork.work);
+		} else {
+			cancel_delayed_work_sync(&akm->dwork);
+		}
+		destroy_workqueue(akm->work_queue);
+	}
+
 	if (akm_compass_power_set(akm, 0))
 		dev_err(&client->dev, "power set failed.");
-	/* <DTS2014112604473 yangzhonghua 20141126 begin */
-	/* < DTS2014072201656 yangzhonghua 20140722 begin */
 #ifdef CONFIG_HUAWEI_DSM
 	akm_dsm_excep_exit();
 #endif
-	/* DTS2014072201656 yangzhonghua 20140722 end > */
-	/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 	if (akm_compass_power_init(akm, 0))
 		dev_err(&client->dev, "power deinit failed.");
 	remove_sysfs_interfaces(akm);
+	sensors_classdev_unregister(&akm->cdev);
 	if (misc_deregister(&akm_compass_dev) < 0)
 		dev_err(&client->dev, "misc deregister failed.");
 	if (akm->irq)
@@ -3116,5 +3072,4 @@ module_exit(akm_compass_exit);
 MODULE_AUTHOR("viral wang <viral_wang@htc.com>");
 MODULE_DESCRIPTION("AKM compass driver");
 MODULE_LICENSE("GPL");
-/* DTS2014051405499 yangxiaomei 20140514 end > */
 

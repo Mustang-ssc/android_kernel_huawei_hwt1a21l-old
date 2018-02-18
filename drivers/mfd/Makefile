@@ -97,9 +97,12 @@ obj-$(CONFIG_WCD9320_CODEC)	+= wcd9xxx-core.o wcd9xxx-irq.o wcd9xxx-slimslave.o\
 						wcd9xxx-core-resource.o
 obj-$(CONFIG_WCD9306_CODEC)	+= wcd9xxx-core.o wcd9xxx-irq.o\
 						wcd9xxx-slimslave.o wcd9xxx-core-resource.o
+obj-$(CONFIG_WCD9330_CODEC)	+= wcd9xxx-core.o wcd9xxx-irq.o wcd9xxx-slimslave.o\
+						wcd9xxx-core-resource.o
 obj-$(CONFIG_SND_SOC_MSM8X16_WCD)	+= wcd9xxx-core.o wcd9xxx-irq.o\
 						wcd9xxx-slimslave.o wcd9xxx-core-resource.o
-
+obj-$(CONFIG_SND_SOC_MSM8909_WCD)	+= wcd9xxx-core.o wcd9xxx-irq.o\
+						wcd9xxx-slimslave.o wcd9xxx-core-resource.o
 
 ifeq ($(CONFIG_SA1100_ASSABET),y)
 obj-$(CONFIG_MCP_UCB1200)	+= ucb1x00-assabet.o
@@ -126,9 +129,7 @@ obj-$(CONFIG_MFD_MAX8925)	+= max8925.o
 obj-$(CONFIG_MFD_MAX8997)	+= max8997.o max8997-irq.o
 obj-$(CONFIG_MFD_MAX8998)	+= max8998.o max8998-irq.o
 
-#/* <DTS2014080900552 chenyuanquan 20140825 begin */
 obj-$(CONFIG_MFD_MAX77819)	+= max77819.o
-#/* DTS2014080900552 chenyuanquan 20140825 end> */
 pcf50633-objs			:= pcf50633-core.o pcf50633-irq.o
 obj-$(CONFIG_MFD_PCF50633)	+= pcf50633.o
 obj-$(CONFIG_PCF50633_ADC)	+= pcf50633-adc.o

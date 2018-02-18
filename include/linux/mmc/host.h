@@ -20,11 +20,9 @@
 #include <linux/mmc/core.h>
 #include <linux/mmc/pm.h>
 
-/* < DTS2014042606672 gaoxu 20140424 begin */
 #ifdef CONFIG_HW_MMC_TEST
-#define CARD_ADDR_MAGIC 0xA5A55A5A
+#define CARD_ADDR_MAGIC 0xA5A55A5AA5A55A5ALL
 #endif
-/* DTS2014042606672 gaoxu 20140424 end > */
 
 struct mmc_ios {
 	unsigned int	clock;			/* clock rate */
@@ -93,6 +91,7 @@ struct mmc_ios {
 /* states to represent load on the host */
 enum mmc_load {
 	MMC_LOAD_HIGH,
+	MMC_LOAD_INIT,
 	MMC_LOAD_LOW,
 };
 
@@ -336,15 +335,10 @@ struct mmc_host {
 #define MMC_CAP2_HS400		(MMC_CAP2_HS400_1_8V | \
 				 MMC_CAP2_HS400_1_2V)
 #define MMC_CAP2_NONHOTPLUG	(1 << 25)	/*Don't support hotplug*/
-
-/* < DTS2014102702713  zhanglei 20141027 begin */
-/* < DTS2014082208625  yuanxiaofeng 20140825 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 /* Add capabilities for custom functions, from 31 to 1 to avoid conflict with linux caps*/
 #define MMC_CAP2_POWER_OFF_NO_CARD	(1 << 31)        /* when there is no card, power off vdd and vddio*/
 #endif
-/* DTS2014082208625  yuanxiaofeng 20140825 end > */
-/* DTS2014102702713  zhanglei 20141027 end>*/
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
 	int			clk_requests;	/* internal reference counter */
@@ -450,11 +444,16 @@ struct mmc_host {
 	} perf;
 	bool perf_enable;
 #endif
-/* < DTS2014042606672 gaoxu 20140424 begin */
+
 #ifdef CONFIG_HW_MMC_TEST
     int test_status;            /* save mmc_test status */
 #endif
-/* DTS2014042606672 gaoxu 20140424 end > */
+
+
+#ifdef CONFIG_HUAWEI_KERNEL
+	bool is_polling;	/* save sd mount method */
+#endif
+
 	struct {
 		unsigned long	busy_time_us;
 		unsigned long	window_time;

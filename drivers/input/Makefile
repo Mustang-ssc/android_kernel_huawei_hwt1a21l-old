@@ -26,6 +26,6 @@ obj-$(CONFIG_INPUT_MISC)	+= misc/
 
 obj-$(CONFIG_INPUT_APMPOWER)	+= apm-power.o
 obj-$(CONFIG_INPUT_KEYRESET)	+= keyreset.o
-#/*<DTS2014071602538 wuliuzhen 20140716 begin*/
+obj-$(CONFIG_INPUT_KEYCOMBO)	+= keycombo.o
 obj-$(CONFIG_INPUT_HW_ATE)	+= ate.o
-#/*DTS2014071602538 wuliuzhen 20140716 end >*/
+obj-$(CONFIG_FINGERPRINT)	+= fingerprint/

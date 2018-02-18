@@ -36,6 +36,8 @@
 #include <asm/suspend.h>
 #include <asm/cacheflush.h>
 #include <asm/cputype.h>
+#include <asm/system_misc.h>
+#include <linux/irqchip/arm-gic.h>
 #ifdef CONFIG_VFP
 #include <asm/vfp.h>
 #endif
@@ -44,13 +46,10 @@
 #include "pm-boot.h"
 #include "../../../arch/arm/mach-msm/clock.h"
 
-/* < DTS2014051208585 xufeng 20140513 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/regulator/consumer.h>
 #endif
-/* DTS2014051208585 xufeng 20140513 end> */
-
 #define SCM_CMD_TERMINATE_PC	(0x2)
 #define SCM_CMD_CORE_HOTPLUGGED (0x10)
 #define SCM_FLUSH_FLAG_MASK	(0x3)
@@ -74,12 +73,10 @@ enum {
 	MSM_PM_DEBUG_IDLE = BIT(6),
 	MSM_PM_DEBUG_IDLE_LIMITS = BIT(7),
 	MSM_PM_DEBUG_HOTPLUG = BIT(8),
-/* < DTS2014051208585 xufeng 20140513 begin */
 #ifdef CONFIG_HUAWEI_KERNEL
 	MSM_PM_DEBUG_GPIO = BIT(16),
 	MSM_PM_DEBUG_REGULATOR=BIT(17),
 #endif
-/* DTS2014051208585 xufeng 20140513 end> */
 };
 
 enum msm_pc_count_offsets {
@@ -101,12 +98,6 @@ static long *msm_pc_debug_counters;
 
 static cpumask_t retention_cpus;
 static DEFINE_SPINLOCK(retention_lock);
-
-static inline void msm_arch_idle(void)
-{
-	mb();
-	wfi();
-}
 
 static bool msm_pm_is_L1_writeback(void)
 {
@@ -198,6 +189,7 @@ static bool msm_pm_pc_hotplug(void)
 {
 	uint32_t cpu = smp_processor_id();
 	enum msm_pm_l2_scm_flag flag;
+	struct scm_desc desc;
 
 	flag = lpm_cpu_pre_pc_cb(cpu);
 
@@ -207,18 +199,19 @@ static bool msm_pm_pc_hotplug(void)
 		else if (msm_pm_is_L1_writeback())
 			flush_cache_louis();
 	}
-
+	pr_err(" %s: called= %pS  cpu=%d line = %d\n", __func__, __builtin_return_address(0), cpu, __LINE__);
 	msm_pc_inc_debug_count(cpu, MSM_PC_ENTRY_COUNTER);
 
-	scm_call_atomic1(SCM_SVC_BOOT, SCM_CMD_TERMINATE_PC,
+	if (is_scm_armv8()) {
+		desc.args[0] = SCM_CMD_CORE_HOTPLUGGED |
+			       (flag & SCM_FLUSH_FLAG_MASK);
+		desc.arginfo = SCM_ARGS(1);
+		scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT,
+				 SCM_CMD_TERMINATE_PC), &desc);
+	} else {
+		scm_call_atomic1(SCM_SVC_BOOT, SCM_CMD_TERMINATE_PC,
 		SCM_CMD_CORE_HOTPLUGGED | (flag & SCM_FLUSH_FLAG_MASK));
-
-	/*DTS2014072802900 z00285045 20140728 begin*/
-	dsb();
-	asm("mcr p15, 0, %0, c8, c7, 0" : : "r" (0));
-	dsb();
-	isb();
-	/*DTS2014072802900 z00285045 20140728 end*/
+	}
 
 	/* Should not return here */
 	msm_pc_inc_debug_count(cpu, MSM_PC_FALLTHRU_COUNTER);
@@ -229,6 +222,7 @@ int msm_pm_collapse(unsigned long unused)
 {
 	uint32_t cpu = smp_processor_id();
 	enum msm_pm_l2_scm_flag flag;
+	struct scm_desc desc;
 
 	flag = lpm_cpu_pre_pc_cb(cpu);
 
@@ -240,14 +234,14 @@ int msm_pm_collapse(unsigned long unused)
 	}
 	msm_pc_inc_debug_count(cpu, MSM_PC_ENTRY_COUNTER);
 
-	scm_call_atomic1(SCM_SVC_BOOT, SCM_CMD_TERMINATE_PC, flag);
-
-	/*DTS2014072802900 z00285045 20140728 begin*/
-	dsb();
-	asm("mcr p15, 0, %0, c8, c7, 0" : : "r" (0));
-	dsb();
-	isb();
-	/*DTS2014072802900 z00285045 20140728 end*/
+	if (is_scm_armv8()) {
+		desc.args[0] = flag;
+		desc.arginfo = SCM_ARGS(1);
+		scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT,
+				 SCM_CMD_TERMINATE_PC), &desc);
+	} else {
+		scm_call_atomic1(SCM_SVC_BOOT, SCM_CMD_TERMINATE_PC, flag);
+	}
 
 	msm_pc_inc_debug_count(cpu, MSM_PC_FALLTHRU_COUNTER);
 
@@ -388,7 +382,6 @@ static bool msm_pm_power_collapse(bool from_idle)
 			|| (MSM_PM_DEBUG_IDLE_CLK & msm_pm_debug_mask))
 		clock_debug_print_enabled();
 
-	/* < DTS2014051208585 xufeng 20140513 begin */
 #ifdef  CONFIG_HUAWEI_KERNEL
 	if ((!from_idle && cpu_online(cpu))
 			&& (MSM_PM_DEBUG_GPIO & msm_pm_debug_mask))
@@ -398,7 +391,6 @@ static bool msm_pm_power_collapse(bool from_idle)
 			&& (MSM_PM_DEBUG_REGULATOR & msm_pm_debug_mask))
 		regulator_debug_print_enabled();
 #endif
-	/* DTS2014051208585 xufeng 20140513 end> */
 
 	avsdscr = avs_get_avsdscr();
 	avscsr = avs_get_avscsr();
@@ -689,7 +681,7 @@ static struct platform_driver msm_cpu_pm_snoc_client_driver = {
 };
 
 struct msm_pc_debug_counters_buffer {
-	int *reg;
+	long *reg;
 	u32 len;
 	char buf[MAX_BUF_SIZE];
 };
@@ -723,7 +715,7 @@ static int msm_pc_debug_counters_copy(
 
 		data->len += len;
 
-		for (j = 0; j < MSM_PC_NUM_COUNTERS; j++) {
+		for (j = 0; j < MSM_PC_NUM_COUNTERS - 1; j++) {
 			stat = data->reg[offset + j];
 			len = scnprintf(data->buf + data->len,
 					 sizeof(data->buf) - data->len,
@@ -731,7 +723,11 @@ static int msm_pc_debug_counters_copy(
 
 			data->len += len;
 		}
+		len = scnprintf(data->buf + data->len,
+			 sizeof(data->buf) - data->len,
+			"\n");
 
+		data->len += len;
 	}
 
 	return data->len;
@@ -780,7 +776,7 @@ static int msm_pc_debug_counters_file_open(struct inode *inode,
 	}
 
 	buf = file->private_data;
-	buf->reg = (int *)inode->i_private;
+	buf->reg = (long *)inode->i_private;
 
 	return 0;
 }
@@ -933,3 +929,12 @@ int __init msm_pm_sleep_status_init(void)
 	return platform_driver_register(&msm_cpu_status_driver);
 }
 arch_initcall(msm_pm_sleep_status_init);
+
+#ifdef CONFIG_ARM
+static int idle_initialize(void)
+{
+	arm_pm_idle = arch_idle;
+	return 0;
+}
+early_initcall(idle_initialize);
+#endif

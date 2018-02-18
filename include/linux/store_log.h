@@ -1,4 +1,3 @@
-/* < DTS2014042405184 duanhuan 20140611 begin */
 #ifndef __KERNEL_STORELOG__
 #define __KERNEL_STORELOG__
 
@@ -36,7 +35,6 @@
 #define LOG_MAX_NUMBER 3
 #define MSG_MAX_SIZE 200
 
-/* <DTS2014071001904 jiangfei 20140710 begin */
 #define CHARGE_ERROR_BASE	(8 << GROUP_SHIFT)
 #define TMEPERATURE_ERR		(1 << SUBGROUP_SHIFT)
 #define TMEPERATURE_OVERFLOW	(1)
@@ -45,7 +43,6 @@
 #define RECHARGE_ERR	(3 << SUBGROUP_SHIFT)
 #define CHARGER_ERR		(4 << SUBGROUP_SHIFT)
 #define BOOST_ERR		(5 << SUBGROUP_SHIFT)
-/* DTS2014071001904 jiangfei 20140710 end> */
 
 /**
  * MSG_WRAPPER() - wrapper storage error message, then log it
@@ -59,7 +56,6 @@
 		storage_log(no, msg); \
 	}while(0)
 
-/* < DTS2014071802831 duanhuan 20140717 begin */
 /**
  * LOG_STORE_AND_UPLOAD() - wrapper storage error message, then log and tag it for uploading
  * @no: error number
@@ -71,7 +67,6 @@
 		snprintf(msg, MSG_MAX_SIZE-1, "storage_log_upload: "fmt, ## a); \
 		storage_log(no, msg); \
 	}while(0)
-/* DTS2014071802831 duanhuan 20140717 end > */
 
 /**
  * storage_log() - log storage error message
@@ -92,6 +87,5 @@ bool is_log_partition_by_devname(const char* devname);
  * @devname: request start sector
  * return: true - is log partition, false - not log partiton
  */
-bool is_log_partition_by_addr(unsigned long sector);
+bool is_log_partition_by_addr(sector_t sector);
 #endif
-/* DTS2014042405184 duanhuan 20140611 end > */

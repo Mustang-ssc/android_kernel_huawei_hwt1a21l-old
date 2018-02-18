@@ -93,6 +93,17 @@ config INPUT_BMA150
 	  To compile this driver as a module, choose M here: the
 	  module will be called bma150.
 
+config INPUT_HBTP_INPUT
+	tristate "HBTP input driver support"
+	help
+	  This option enables an input driver for the host based touch
+	  processing.
+
+	  Say Y to enable HBTP input driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called hbtp_input.
+
 config INPUT_PCSPKR
 	tristate "PC Speaker support"
 	depends on PCSPKR_PLATFORM
@@ -216,17 +227,8 @@ config SENSORS_LIS3DH
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called lis3dh_acc.
-#/* < DTS2014042306752 yangxiaomei 20140424 begin */
-config SENSORS_KIONIX
-	tristate "ROHM_KX023 3-axis digital acceleromater"
-	depends on I2C
-	help
-	  Say Y here if you want to support ROHM_KX023
-	  accelerometer connected via an I2C bus.
+#delete huawei config
 
-	  To compile this driver as a module, choose M here: the
-	  module will be called kionix_accel.
-#/* DTS2014042306752 yangxiaomei 20140424 end > */
 config INPUT_APANEL
 	tristate "Fujitsu Lifebook Application Panel buttons"
 	depends on X86 && I2C && LEDS_CLASS
@@ -829,79 +831,7 @@ config SENSORS_BMI058
 	 If you say yes here, you get support for Bosch Sensortec's
 	 sensor driver of BMI058.
 
-#/* < DTS2014051304400 caowei 201400513 begin */
-# add APDS993X driver
-config APDS993X
-	tristate "Avago APDS993X combined als and proximity sensors"
-	depends on I2C
-	help
-	  Say Y here if you want to build a driver for Avago APDS993X
-	  combined ambient light and proximity sensor chip.
+#delete huawei config
 
-	  To compile this driver as a module, choose M here: the
-	  module will be called apds9950. If unsure, say N here.
-#/* DTS2014051304400 caowei 201400513 end >*/
-#/* < DTS2014072402059 wanghang 20140806 begin */
-config RPR521
-	tristate "ROHM RPR0521 combined als and proximity sensors"
-	depends on I2C
-	help
-	  Say Y here if you want to build a driver for ROHM RPR0521
-	  combined ambient light and proximity sensor chip.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called rpr0521. If unsure, say N here.
-#/* DTS2014072402059 wanghang 20140806 end > */
-#/* < DTS2015072707140 chendong wx241705 begin */
-config SENSORS_ADUX1050
-	tristate "Support for prox sensor adux1050"
-	depends on I2C
-	help
-	Say Y to enable support adux1050 prox sensor
-
-config ADUX1050_DEBUG
-	bool " Debug :To enable the Basic debug support for the driver"
-	depends on SENSORS_ADUX1050
-	default n
-	help
-		To add the basic debug support of the driver in the build. Used in printing the debug information on the console.
-
-config EVAL
-	bool "Eval : To enable the driver in evaluation mode for test "
-	depends on SENSORS_ADUX1050
-	default n
-	help
-		To use the generic sysfs path and modifications for the control attributes.
-
-config USE_FILP
-	bool "USE_FILP : To make use of the file access from the kernel driver "
-	depends on SENSORS_ADUX1050
-	default n
-	help
-		To enable the file access from the kernel for the purpose of storing and retrieving the calibration results in/from a file and further is enhanced for extraction of configuration during runtime.
-
-config ADUX1050_POLL
-	bool "POLL : To make use of the Polling method instead of ISR "
-	depends on SENSORS_ADUX1050
-	default n
-	help
-		To enable the polling and to set the sleep time through the sysfs
-#/* DTS2015072707140 chendong wx241705 end > */
-#/* < DTS2014052206888 yangxiaomei 20140523 begin */
-config HUAWEI_HALL_AK8789
-	tristate "Support for hall sensor AK8789"
-	depends on HUAWEI_KERNEL
-	default n
-	help
-	  Say Y to enable support ak8789 hall sensor
-#/* DTS2014052206888 yangxiaomei 20140523 end > */
-#/* < DTS2014081805982 yangxiaomei 20140829 begin */
-config HUAWEI_SENSOR_SELF_ADAPT
-	tristate "Support for sensor self_adapt"
-	depends on HUAWEI_KERNEL
-	default n
-	help
-	  Say Y to enable support self-adapt
-#/* DTS2014081805982 yangxiaomei 20140829 end > */
 endif
 

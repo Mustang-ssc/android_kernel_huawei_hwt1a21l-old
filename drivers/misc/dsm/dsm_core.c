@@ -1,4 +1,3 @@
-/* < DTS2014042900710 shenjinming 20140430 begin */
 /**********************************************************
  * Filename:	dsm_core.c
  *
@@ -25,21 +24,16 @@
 #include <linux/uaccess.h>
 #include "dsm_core.h"
 #include "dsm_lib.h"
-/* <DTS2014112604473 yangzhonghua 20141126 begin */
 #include <linux/dsm_pub.h>
 
-/* < DTS2014082509648 yangzhonghua 20140825 begin */
 /*set default value 0, if when debug, we set it 1*/
 int debug_output = 0;
 module_param_named(dsm_debug, debug_output, int, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(dsm_debug, "set dsm dubug on/off (off: debug_output == 0)");
-/* DTS2014082509648 yangzhonghua 20140825 end > */
 static struct dsm_server g_dsm_server;
 static struct work_struct dsm_work;
 
-/* <DTS2014112708134  yangzhonghua 20141127 begin */
 static struct semaphore dsm_wbs;
-/* DTS2014112708134  yangzhonghua 20141127 end> */
 static struct dsm_client *ext_dsm_client[EXTERN_DSM_CLIENT_MAX];
 static struct dsm_dev ext_dev[EXTERN_DSM_CLIENT_MAX];
 
@@ -115,7 +109,6 @@ out:
 	return ptr;
 }
 
-/* < DTS2014072201656 yangzhonghua 20140722 begin */
 
 /**
  * func - unregister dsm_client form server
@@ -148,7 +141,6 @@ void dsm_unregister_client (struct dsm_client *dsm_client,struct dsm_dev *dev)
 		}
 	}
 }
-/* DTS2014072201656 yangzhonghua 20140722 end > */
 
 /* set buff as busy, and judge it's status */
 inline int dsm_client_ocuppy(struct dsm_client *client)
@@ -373,12 +365,10 @@ static void dsm_work_func(struct work_struct *work)
 				continue;
 
 			client = g_dsm_server.client_list[i];
-			/* < DTS2014082103954  yangzhonghua 20140821 begin */
 			if(client == NULL){
 				DSM_LOG_INFO("%d client is null client.\n",i);
 				continue;
 			}
-			/* DTS2014082103954  yangzhonghua 20140821 end > */
 			/* wake up wait queue */
 			wake_up_interruptible_all(&client->waitq);
 			DSM_LOG_INFO("%s finish notify\n", client->client_name);
@@ -410,7 +400,7 @@ static ssize_t dsm_read(struct file *file, char __user *buf, size_t count, loff_
 		client->read_size += copy_size;
 		if(client->read_size >= client->used_size)
 			dsm_client_set_idle(client);
-		DSM_LOG_DEBUG("%d bytes read to user\n", copy_size);
+		DSM_LOG_DEBUG("%d bytes read to user\n", (int)copy_size);
 	}
 
 out:
@@ -418,7 +408,6 @@ out:
 	return copy_size;
 }
 
-/* < DTS2014080101151 shenjinming 20140801 begin */
 /* sysfs write function */
 static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
@@ -427,13 +416,10 @@ static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count
 	struct dsm_client *client = NULL;
 	char *buff = NULL;
 	char *ptr;
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 begin */
 	char  err_string[20] = {0};
 	int   err;
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 end */
 	DSM_LOG_INFO("%s enter\n",__func__);
 
-	/* <DTS2014112708134  yangzhonghua 20141127 begin */
 	/* try to get control of the write buffer */
 	if (down_trylock(&dsm_wbs)) {
 		/* somebody else has it now;
@@ -448,7 +434,6 @@ static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count
 			return -ERESTARTSYS;
 		}
 	}
-	/* DTS2014112708134  yangzhonghua 20141127 end> */
 
 	buff = (char *)kzalloc(count, GFP_KERNEL);
 	if(!buff){
@@ -461,9 +446,7 @@ static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count
 		goto out;
 	}
 
-	/* <DTS2014062507056 weiqiangqiang 20140625 begin */
 	buff[count-1] = '\0';
-	/* DTS2014062507056 weiqiangqiang 20140625 end> */
 	ptr = buff;
 	while(*ptr){
 		if(*ptr == '\n')
@@ -479,7 +462,6 @@ static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count
 		memcpy(client_name, buff, size);
 		DSM_LOG_INFO( "%s client name is: %s \n", __func__ ,client_name );
 		client = dsm_find_client(client_name);
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 begin */
 		if( client )
 		{
 			/* found client name */
@@ -526,14 +508,11 @@ static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count
 out:
 	if(buff)
 		kfree(buff);
-	DSM_LOG_DEBUG("%s exit\n", __func__);
-	/* <DTS2014112708134  yangzhonghua 20141127 begin */
+	DSM_LOG_DEBUG("%s exit\n",__func__);
 	/* release the write buffer and wake anyone who's waiting for it */
 	up(&dsm_wbs);
-	/* DTS2014112708134  yangzhonghua 20141127 end> */
 	return count;
 }
-/* DTS2014080101151 shenjinming 20140801 end > */
 
 /* poll function, noblock */
 static unsigned int dsm_poll(struct file *file, poll_table *wait)
@@ -676,7 +655,6 @@ static long dsm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	DSM_LOG_DEBUG("%s exit\n",__func__);
 	return ret;
 }
-/* DTS2014112604473 yangzhonghua 20141126 end> */
 
 
 static const struct file_operations dsm_fops = {
@@ -696,22 +674,11 @@ static struct dsm_dev dsm_pub_clients[] = {
 		.fops = NULL,
 		.buff_size = 1024,
 	},
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 begin */
-#ifdef CONFIG_HUAWEI_SDCARD_VOLD
 	[1] = {
 		.name = "sdcard_vold",
 		.fops = NULL,
 		.buff_size = 1024,
 	},
-#endif
-/* <DTS2014070104755 hangtianqi hwx220732 20140701 end */
-      /* < DTS2014111904638 sihongfang 20141120 begin */
-      [2] = {
-          .name = "dsm_bluetooth",
-          .fops = NULL,
-          .buff_size = 1024,
-      },
-      /* DTS2014111904638 sihongfang 20141120 end > */
 };
 
 /* registe public client */
@@ -766,10 +733,8 @@ static int __init dsm_init(void)
 	/* registe public client */
 	dsm_register_public_client();
 
-	/* <DTS2014112708134  yangzhonghua 20141127 begin */
 	/* init write semaphore for write func*/
 	sema_init(&dsm_wbs, 1);
-	/* DTS2014112708134  yangzhonghua 20141127 end> */
 
 out:
 	DSM_LOG_INFO("%s called, ret %d\n", __func__, ret);
@@ -780,5 +745,4 @@ subsys_initcall(dsm_init);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Device state monitor");
 
-/* DTS2014042900710 shenjinming 20140430 end > */
 

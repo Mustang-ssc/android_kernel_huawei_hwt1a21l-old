@@ -1,4 +1,3 @@
-/* < DTS2014042402686 sunlibin 20140424 begin */
 /*Add for huawei TP*/
 /*
  * Copyright (c) 2014 Huawei Device Company
@@ -39,4 +38,3 @@
 
 #endif
 
-/* DTS2014042402686 sunlibin 20140424 end> */

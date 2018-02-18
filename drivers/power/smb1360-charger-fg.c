@@ -215,6 +215,7 @@
 #define SHDW_FG_CURR_NOW		0x6B
 #define SHDW_FG_BATT_TEMP		0x6D
 
+#define VOLTAGE_PREDICTED_REG		0x80
 #define CC_TO_SOC_COEFF			0xBA
 #define NOMINAL_CAPACITY_REG		0xBC
 #define ACTUAL_CAPACITY_REG		0xBE
@@ -236,6 +237,7 @@
 #define MAX_8_BITS			255
 #define JEITA_WORK_MS			3000
 
+#define FG_RESET_THRESHOLD_MV		15
 #define SMB1360_REV_1			0x01
 
 enum {
@@ -325,12 +327,20 @@ struct smb1360_chip {
 	int				fg_cc_to_cv_mv;
 	int				fg_auto_recharge_soc;
 	bool				empty_soc_disabled;
+	int				fg_reset_threshold_mv;
+	bool				fg_reset_at_pon;
 	bool				rsense_10mohm;
 	bool				otg_fet_present;
 	bool				fet_gain_enabled;
 	int				otg_fet_enable_gpio;
 
 	/* status tracking */
+	int				voltage_now;
+	int				current_now;
+	int				resistance_now;
+	int				temp_now;
+	int				soc_now;
+	int				fcc_mah;
 	bool				usb_present;
 	bool				batt_present;
 	bool				batt_hot;
@@ -341,6 +351,7 @@ struct smb1360_chip {
 	bool				resume_completed;
 	bool				irq_waiting;
 	bool				empty_soc;
+	bool				awake_min_soc;
 	int				workaround_flags;
 	u8				irq_cfg_mask[3];
 	int				usb_psy_ma;
@@ -691,6 +702,11 @@ static int smb1360_enable_fg_access(struct smb1360_chip *chip)
 	return 0;
 }
 
+static inline bool is_device_suspended(struct smb1360_chip *chip)
+{
+	return !chip->resume_completed;
+}
+
 static int smb1360_disable_fg_access(struct smb1360_chip *chip)
 {
 	int rc;
@@ -870,6 +886,9 @@ static int smb1360_get_prop_batt_status(struct smb1360_chip *chip)
 	int rc;
 	u8 reg = 0, chg_type;
 
+	if (is_device_suspended(chip))
+		return POWER_SUPPLY_STATUS_UNKNOWN;
+
 	if (chip->batt_full)
 		return POWER_SUPPLY_STATUS_FULL;
 
@@ -911,6 +930,9 @@ static int smb1360_get_prop_charge_type(struct smb1360_chip *chip)
 	int rc;
 	u8 reg = 0;
 	u8 chg_type;
+
+	if (is_device_suspended(chip))
+		return POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
 
 	rc = smb1360_read(chip, STATUS_3_REG, &reg);
 	if (rc) {
@@ -962,6 +984,9 @@ static int smb1360_get_prop_batt_capacity(struct smb1360_chip *chip)
 		return 0;
 	}
 
+	if (is_device_suspended(chip))
+		return chip->soc_now;
+
 	rc = smb1360_read(chip, SHDW_FG_MSYS_SOC, &reg);
 	if (rc) {
 		pr_err("Failed to read FG_MSYS_SOC rc=%d\n", rc);
@@ -976,13 +1001,18 @@ static int smb1360_get_prop_batt_capacity(struct smb1360_chip *chip)
 	pr_debug("msys_soc_reg=0x%02x, fg_soc=%d batt_full = %d\n", reg,
 						soc, chip->batt_full);
 
-	return chip->batt_full ? 100 : bound(soc, 0, 100);
+	chip->soc_now = (chip->batt_full ? 100 : bound(soc, 0, 100));
+
+	return chip->soc_now;
 }
 
 static int smb1360_get_prop_chg_full_design(struct smb1360_chip *chip)
 {
 	u8 reg[2];
 	int rc, fcc_mah = 0;
+
+	if (is_device_suspended(chip))
+		return chip->fcc_mah;
 
 	rc = smb1360_read_bytes(chip, SHDW_FG_CAPACITY, reg, 2);
 	if (rc) {
@@ -994,13 +1024,18 @@ static int smb1360_get_prop_chg_full_design(struct smb1360_chip *chip)
 	pr_debug("reg[0]=0x%02x reg[1]=0x%02x fcc_mah=%d\n",
 				reg[0], reg[1], fcc_mah);
 
-	return fcc_mah * 1000;
+	chip->fcc_mah = fcc_mah * 1000;
+
+	return chip->fcc_mah;
 }
 
 static int smb1360_get_prop_batt_temp(struct smb1360_chip *chip)
 {
 	u8 reg[2];
 	int rc, temp = 0;
+
+	if (is_device_suspended(chip))
+		return chip->temp_now;
 
 	rc = smb1360_read_bytes(chip, SHDW_FG_BATT_TEMP, reg, 2);
 	if (rc) {
@@ -1015,13 +1050,18 @@ static int smb1360_get_prop_batt_temp(struct smb1360_chip *chip)
 	pr_debug("reg[0]=0x%02x reg[1]=0x%02x temperature=%d\n",
 					reg[0], reg[1], temp);
 
-	return temp;
+	chip->temp_now = temp;
+
+	return chip->temp_now;
 }
 
 static int smb1360_get_prop_voltage_now(struct smb1360_chip *chip)
 {
 	u8 reg[2];
 	int rc, temp = 0;
+
+	if (is_device_suspended(chip))
+		return chip->voltage_now;
 
 	rc = smb1360_read_bytes(chip, SHDW_FG_VTG_NOW, reg, 2);
 	if (rc) {
@@ -1035,7 +1075,9 @@ static int smb1360_get_prop_voltage_now(struct smb1360_chip *chip)
 	pr_debug("reg[0]=0x%02x reg[1]=0x%02x voltage=%d\n",
 				reg[0], reg[1], temp * 1000);
 
-	return temp * 1000;
+	chip->voltage_now = temp * 1000;
+
+	return chip->voltage_now;
 }
 
 static int smb1360_get_prop_batt_resistance(struct smb1360_chip *chip)
@@ -1044,6 +1086,9 @@ static int smb1360_get_prop_batt_resistance(struct smb1360_chip *chip)
 	u16 temp;
 	int rc;
 	int64_t resistance;
+
+	if (is_device_suspended(chip))
+		return chip->resistance_now;
 
 	rc = smb1360_read_bytes(chip, SHDW_FG_ESR_ACTUAL, reg, 2);
 	if (rc) {
@@ -1057,13 +1102,18 @@ static int smb1360_get_prop_batt_resistance(struct smb1360_chip *chip)
 	pr_debug("reg=0x%02x resistance=%lld\n", temp, resistance);
 
 	/* resistance in uohms */
-	return resistance;
+	chip->resistance_now = resistance;
+
+	return chip->resistance_now;
 }
 
 static int smb1360_get_prop_current_now(struct smb1360_chip *chip)
 {
 	u8 reg[2];
 	int rc, temp = 0;
+
+	if (is_device_suspended(chip))
+		return chip->current_now;
 
 	rc = smb1360_read_bytes(chip, SHDW_FG_CURR_NOW, reg, 2);
 	if (rc) {
@@ -1077,26 +1127,37 @@ static int smb1360_get_prop_current_now(struct smb1360_chip *chip)
 	pr_debug("reg[0]=0x%02x reg[1]=0x%02x current=%d\n",
 				reg[0], reg[1], temp * 1000);
 
-	return temp * 1000;
+	chip->current_now = temp * 1000;
+
+	return chip->current_now;
 }
 
 static int smb1360_set_minimum_usb_current(struct smb1360_chip *chip)
 {
 	int rc = 0;
 
-	pr_debug("set USB current to minimum\n");
-	/* set input current limit to minimum (300mA)*/
-	rc = smb1360_masked_write(chip, CFG_BATT_CHG_ICL_REG,
-					INPUT_CURR_LIM_MASK,
-					INPUT_CURR_LIM_300MA);
-	if (rc)
-		pr_err("Couldn't set ICL mA rc=%d\n", rc);
-
-	if (!(chip->workaround_flags & WRKRND_USB100_FAIL)) {
-		rc = smb1360_masked_write(chip, CMD_IL_REG,
-				USB_CTRL_MASK, USB_100_BIT);
+	if (chip->min_icl_usb100) {
+		pr_debug("USB min current set to 100mA\n");
+		/* set input current limit to minimum (300mA) */
+		rc = smb1360_masked_write(chip, CFG_BATT_CHG_ICL_REG,
+						INPUT_CURR_LIM_MASK,
+						INPUT_CURR_LIM_300MA);
 		if (rc)
-			pr_err("Couldn't configure for USB100 rc=%d\n", rc);
+			pr_err("Couldn't set ICL mA rc=%d\n", rc);
+
+		if (!(chip->workaround_flags & WRKRND_USB100_FAIL))
+			rc = smb1360_masked_write(chip, CMD_IL_REG,
+					USB_CTRL_MASK, USB_100_BIT);
+			if (rc)
+				pr_err("Couldn't configure for USB100 rc=%d\n",
+								rc);
+	} else {
+		pr_debug("USB min current set to 500mA\n");
+		rc = smb1360_masked_write(chip, CMD_IL_REG,
+				USB_CTRL_MASK, USB_500_BIT);
+		if (rc)
+			pr_err("Couldn't configure for USB100 rc=%d\n",
+							rc);
 	}
 
 	return rc;
@@ -1169,8 +1230,11 @@ static int smb1360_set_appropriate_usb_current(struct smb1360_chip *chip)
 	pr_debug("ICL set to = %d\n", input_current_limit[i]);
 
 	if ((current_ma <= CURRENT_100_MA) &&
-		(chip->workaround_flags & WRKRND_USB100_FAIL)) {
-		pr_debug("usb100 not supported\n");
+		((chip->workaround_flags & WRKRND_USB100_FAIL) ||
+				!chip->min_icl_usb100)) {
+		pr_debug("usb100 not supported: usb100_wrkrnd=%d min_icl_100=%d\n",
+			!!(chip->workaround_flags & WRKRND_USB100_FAIL),
+						chip->min_icl_usb100);
 		current_ma = CURRENT_500_MA;
 	}
 
@@ -1332,6 +1396,8 @@ static int smb1360_battery_set_property(struct power_supply *psy,
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		smb1360_charging_disable(chip, USER, !val->intval);
+		power_supply_changed(&chip->batt_psy);
+		power_supply_changed(chip->usb_psy);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		chip->fake_battery_soc = val->intval;
@@ -1629,6 +1695,13 @@ static int chg_term_handler(struct smb1360_chip *chip, u8 rt_stat)
 	return 0;
 }
 
+static int chg_fastchg_handler(struct smb1360_chip *chip, u8 rt_stat)
+{
+	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+
+	return 0;
+}
+
 static int usbin_uv_handler(struct smb1360_chip *chip, u8 rt_stat)
 {
 	bool usb_present = !rt_stat;
@@ -1671,7 +1744,10 @@ static int delta_soc_handler(struct smb1360_chip *chip, u8 rt_stat)
 
 static int min_soc_handler(struct smb1360_chip *chip, u8 rt_stat)
 {
-	pr_debug("SOC dropped below min SOC\n");
+	pr_debug("SOC dropped below min SOC, rt_stat = 0x%02x\n", rt_stat);
+
+	if (chip->awake_min_soc)
+		rt_stat ? pm_stay_awake(chip->dev) : pm_relax(chip->dev);
 
 	return 0;
 }
@@ -1982,6 +2058,7 @@ static struct irq_handler_info handlers[] = {
 			},
 			{
 				.name		= "fast_chg",
+				.smb_irq	= chg_fastchg_handler,
 			},
 		},
 	},
@@ -2571,7 +2648,7 @@ static int show_fg_regs(struct seq_file *m, void *data)
 	}
 
 	j = i * SMB1360_I2C_READ_LENGTH;
-	rem_length = (FG_SCRATCH_PAD_MAX % SMB1360_I2C_READ_LENGTH) + 1;
+	rem_length = (FG_SCRATCH_PAD_MAX % SMB1360_I2C_READ_LENGTH);
 	if (rem_length) {
 		rc = smb1360_read_bytes(chip, FG_SCRATCH_PAD_BASE_REG + j,
 						&reg[j], rem_length);
@@ -2874,6 +2951,9 @@ fail_profile:
 	return rc;
 }
 
+#define UPDATE_IRQ_STAT(irq_reg, value) \
+		handlers[irq_reg - IRQ_A_REG].prev_val = value;
+
 static int determine_initial_status(struct smb1360_chip *chip)
 {
 	int rc;
@@ -2889,6 +2969,8 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read IRQ_B_REG rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_B_REG, reg);
+
 	if (reg & IRQ_B_BATT_TERMINAL_BIT || reg & IRQ_B_BATT_MISSING_BIT)
 		chip->batt_present = false;
 
@@ -2897,6 +2979,8 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read IRQ_C_REG rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_C_REG, reg);
+
 	if (reg & IRQ_C_CHG_TERM)
 		chip->batt_full = true;
 
@@ -2905,6 +2989,7 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read irq A rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_A_REG, reg);
 
 	if (chip->workaround_flags & WRKRND_HARD_JEITA) {
 		schedule_delayed_work(&chip->jeita_work, 0);
@@ -2926,6 +3011,8 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read irq E rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_E_REG, reg);
+
 	chip->usb_present = (reg & IRQ_E_USBIN_UV_BIT) ? false : true;
 	power_supply_set_present(chip->usb_psy, chip->usb_present);
 
@@ -2937,13 +3024,72 @@ static int smb1360_fg_config(struct smb1360_chip *chip)
 	int rc = 0, temp, fcc_mah;
 	u8 reg = 0, reg2[2];
 
+	if (chip->fg_reset_at_pon) {
+		int v_predicted, v_now;
+
+		rc = smb1360_enable_fg_access(chip);
+		if (rc) {
+			pr_err("Couldn't enable FG access rc=%d\n", rc);
+			return rc;
+		}
+
+		rc = smb1360_read_bytes(chip, VOLTAGE_PREDICTED_REG, reg2, 2);
+		if (rc) {
+			pr_err("Failed to read VOLTAGE_PREDICTED rc=%d\n", rc);
+			goto disable_fg_reset;
+		}
+		v_predicted = (reg2[1] << 8) | reg2[0];
+		v_predicted = div_u64(v_predicted * 5000, 0x7FFF);
+
+		rc = smb1360_read_bytes(chip, SHDW_FG_VTG_NOW, reg2, 2);
+		if (rc) {
+			pr_err("Failed to read SHDW_FG_VTG_NOW rc=%d\n", rc);
+			goto disable_fg_reset;
+		}
+		v_now = (reg2[1] << 8) | reg2[0];
+		v_now = div_u64(v_now * 5000, 0x7FFF);
+
+		pr_debug("v_predicted=%d v_now=%d reset_threshold=%d\n",
+			v_predicted, v_now, chip->fg_reset_threshold_mv);
+
+		/*
+		 * Reset FG if the predicted voltage is off wrt
+		 * the real-time voltage.
+		 */
+		temp = abs(v_predicted - v_now);
+		if (temp >= chip->fg_reset_threshold_mv) {
+			pr_info("Reseting FG - v_delta=%d threshold=%d\n",
+					temp, chip->fg_reset_threshold_mv);
+			/* delay for the FG access to settle */
+			msleep(1500);
+
+			/* reset FG */
+			rc = smb1360_masked_write(chip, CMD_I2C_REG,
+					FG_RESET_BIT, FG_RESET_BIT);
+			if (rc) {
+				pr_err("Couldn't reset FG rc=%d\n", rc);
+				goto disable_fg_reset;
+			}
+
+			/* un-reset FG */
+			rc = smb1360_masked_write(chip, CMD_I2C_REG,
+						FG_RESET_BIT, 0);
+			if (rc) {
+				pr_err("Couldn't un-reset FG rc=%d\n", rc);
+				goto disable_fg_reset;
+			}
+		}
+disable_fg_reset:
+		smb1360_disable_fg_access(chip);
+	}
+
 	/*
 	 * The below IRQ thresholds are not accessible in REV_1
 	 * of SMB1360.
 	 */
 	if (!(chip->workaround_flags & WRKRND_FG_CONFIG_FAIL)) {
 		if (chip->delta_soc != -EINVAL) {
-			reg = DIV_ROUND_UP(chip->delta_soc * MAX_8_BITS, 100);
+			reg = abs(((chip->delta_soc * MAX_8_BITS) / 100) - 1);
 			pr_debug("delta_soc=%d reg=%x\n", chip->delta_soc, reg);
 			rc = smb1360_write(chip, SOC_DELTA_REG, reg);
 			if (rc) {
@@ -3586,9 +3732,8 @@ static int smb1360_hw_init(struct smb1360_chip *chip)
 
 	/* batt-id configuration */
 	if (chip->batt_id_disabled) {
-		mask = BATT_ID_ENABLED_BIT | CHG_BATT_ID_FAIL
-				| BATT_ID_FAIL_SELECT_PROFILE;
-		reg = CHG_BATT_ID_FAIL | BATT_ID_FAIL_SELECT_PROFILE;
+		mask = BATT_ID_ENABLED_BIT | CHG_BATT_ID_FAIL;
+		reg = CHG_BATT_ID_FAIL;
 		rc = smb1360_masked_write(chip, CFG_FG_BATT_CTRL_REG,
 						mask, reg);
 		if (rc < 0) {
@@ -3873,6 +4018,9 @@ static int smb_parse_dt(struct smb1360_chip *chip)
 	chip->shdn_after_pwroff = of_property_read_bool(node,
 						"qcom,shdn-after-pwroff");
 
+	chip->min_icl_usb100 = of_property_read_bool(node,
+						"qcom,min-icl-100ma");
+
 	if (of_find_property(node, "qcom,thermal-mitigation",
 					&chip->thermal_levels)) {
 		chip->thermal_mitigation = devm_kzalloc(chip->dev,
@@ -3915,6 +4063,9 @@ static int smb_parse_dt(struct smb1360_chip *chip)
 	rc = of_property_read_u32(node, "qcom,fg-soc-min", &chip->soc_min);
 	if (rc < 0)
 		chip->soc_min = -EINVAL;
+
+	chip->awake_min_soc = of_property_read_bool(node,
+					"qcom,awake-min-soc");
 
 	rc = of_property_read_u32(node, "qcom,fg-voltage-min-mv",
 					&chip->voltage_min_mv);
@@ -3971,6 +4122,16 @@ static int smb_parse_dt(struct smb1360_chip *chip)
 	if (rc < 0)
 		chip->fg_auto_recharge_soc = -EINVAL;
 
+	if (of_property_read_bool(node, "qcom,fg-reset-at-pon")) {
+		chip->fg_reset_at_pon = true;
+		rc = of_property_read_u32(node, "qcom,fg-reset-thresold-mv",
+						&chip->fg_reset_threshold_mv);
+		if (rc) {
+			pr_debug("FG reset voltage threshold not specified using 50mV\n");
+			chip->fg_reset_threshold_mv = FG_RESET_THRESHOLD_MV;
+		}
+	}
+
 	return 0;
 }
 
@@ -3994,6 +4155,7 @@ static int smb1360_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	chip->resume_completed = true;
 	chip->client = client;
 	chip->dev = &client->dev;
 	chip->usb_psy = usb_psy;
@@ -4020,7 +4182,6 @@ static int smb1360_probe(struct i2c_client *client,
 
 	device_init_wakeup(chip->dev, 1);
 	i2c_set_clientdata(client, chip);
-	chip->resume_completed = true;
 	mutex_init(&chip->irq_complete);
 	mutex_init(&chip->charging_disable_lock);
 	mutex_init(&chip->current_change_lock);

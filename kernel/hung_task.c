@@ -16,7 +16,6 @@
 #include <linux/export.h>
 #include <linux/sysctl.h>
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 
 #include <linux/proc_fs.h>
@@ -59,7 +58,6 @@ static struct tag_switch_count last_switch_count_table[NAME_NUM];
 static bool rcu_lock_break(struct task_struct *g, struct task_struct *t);
 
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 /*
  * The number of tasks checked:
@@ -113,7 +111,6 @@ static struct notifier_block panic_block = {
 	.notifier_call = hung_task_panic,
 };
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 static void findpname(struct task_struct *t)
 {
@@ -153,13 +150,11 @@ static int checklist(pid_t ht_pid, pid_t ht_ppid, unsigned int list_category)
 }
 
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 static void check_hung_task(struct task_struct *t, unsigned long timeout)
 {
 	unsigned long switch_count = t->nvcsw + t->nivcsw;
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 
 	int idx, first_empty_item = -1;
@@ -168,7 +163,6 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 	pid_t ht_pid, ht_ppid;
 
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 	/*
 	 * Ensure the task is not frozen.
@@ -185,7 +179,6 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 	if (unlikely(!switch_count))
 		return;
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 
 	/*
@@ -248,18 +241,15 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 	}
 
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 	if (!sysctl_hung_task_warnings)
 		return;
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 	/* sysctl_hung_task_warnings--;*/
 #else
 	sysctl_hung_task_warnings--;
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 	/*
 	 * Ok, the task did not get scheduled for more than 2 minutes,
@@ -273,11 +263,9 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 	debug_show_held_locks(t);
 
 	touch_nmi_watchdog();
-    /* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK	
 	schedule_timeout_interruptible(200);
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/	
-    /* DTS2014080500379 chenxi 20140808 end > */
 	if (sysctl_hung_task_panic) {
 		trigger_all_cpu_backtrace();
 		panic("hung_task: blocked tasks");
@@ -334,12 +322,10 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
 			if (!rcu_lock_break(g, t))
 				goto unlock;
 		}
-        /* < DTS2014080500379 chenxi 20140808 begin */
 		/* get pid for each name in WhiteList */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK		
 		findpname(t);
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-        /* DTS2014080500379 chenxi 20140808 end > */
 		/* use "==" to skip the TASK_KILLABLE tasks waiting on NFS */
 		if (t->state == TASK_UNINTERRUPTIBLE)
 			check_hung_task(t, timeout);
@@ -387,20 +373,17 @@ static int watchdog(void *dummy)
 		while (schedule_timeout_interruptible(timeout_jiffies(timeout)))
 			timeout = sysctl_hung_task_timeout_secs;
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 		if (hungtask_enable)
 			check_hung_uninterruptible_tasks(timeout);
 #else
 		check_hung_uninterruptible_tasks(timeout);
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 	}
 
 	return 0;
 }
 
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 
 /*
@@ -575,7 +558,7 @@ static int modify_pname(int num_count)
 *	hwht_monitor_proc_write	-  Called when 'write' method is
 *	used on entry 'p_name' in /proc fs.
 */
-static int hwht_monitor_proc_write(struct file *rfile,
+static ssize_t hwht_monitor_proc_write(struct file *rfile,
                 const char __user *buffer, size_t count, loff_t *ppos)
 {
 	int num_count;
@@ -597,7 +580,7 @@ static int hwht_monitor_proc_write(struct file *rfile,
 		return -EINVAL;
 	}
 
-	if (copy_from_user(tmp, buffer, count))
+	if (copy_from_user(tmp, buffer, (int)count))
 		return -EFAULT;
 
 	/* -1: remove '\n'	*/
@@ -646,7 +629,7 @@ static int hwht_enable_proc_open(struct inode *inode, struct file *file)
 }
 
 
-static int hwht_enable_proc_write(struct file *rfile,
+static ssize_t hwht_enable_proc_write(struct file *rfile,
 			const char __user *buffer, size_t count, loff_t *ppos)
 {
 	char tmp[6];
@@ -664,7 +647,7 @@ static int hwht_enable_proc_write(struct file *rfile,
 		tmp[count - 1] = '\0';
 	}
 
-	pr_err("hung_task:tmp=%s, count %d\n", tmp, count);
+	pr_err("hung_task:tmp=%s, count %d\n", tmp, (int)count);
 
 	if (strncmp(tmp, "on", strlen("on")) == 0) {
 		hungtask_enable = HT_ENABLE;
@@ -726,18 +709,15 @@ int create_proc(void)
 }
 
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 static int __init hung_task_init(void)
 {
-/* < DTS2014080500379 chenxi 20140808 begin */
 #ifdef CONFIG_HW_DETECT_HUNG_TASK
 	int ret;
 	ret = create_proc();
 	if (ret)
 		pr_err("hung_task: create_proc fail.\n");
 #endif /*CONFIG_HW_DETECT_HUNG_TASK*/
-/* DTS2014080500379 chenxi 20140808 end > */
 
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_block);
 	watchdog_task = kthread_run(watchdog, NULL, "khungtaskd");

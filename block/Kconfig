@@ -107,17 +107,10 @@ endmenu
 
 endif # BLOCK
 
-#/* < DTS2014061400183 jingbing 20140614 begin */
 config HW_SYSTEM_WR_PROTECT
 	bool "write protection function of system partitions."
 	depends on BLOCK && HUAWEI_KERNEL
 	default n
-
-config HW_SYSTEM_WR_PROTECT_ENABLE
-	bool "enable write protection function of system partitions."
-	depends on HW_SYSTEM_WR_PROTECT
-	default n
-#/* DTS2014061400183 jingbing 20140614 end > */
 
 config BLOCK_COMPAT
 	bool

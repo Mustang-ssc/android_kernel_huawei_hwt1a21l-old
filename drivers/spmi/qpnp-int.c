@@ -1,6 +1,3 @@
-/* < DTS2014082504105 fengsulin 20140826 begin */
-/* Revert DTS2014072210537 audio log change */
-/* DTS2014082504105 fengsulin 20140828 end > */
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify

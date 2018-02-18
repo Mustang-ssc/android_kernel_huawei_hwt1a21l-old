@@ -11,6 +11,7 @@ obj-$(CONFIG_MSM_VIDC_V4L2) := 	msm_v4l2_vidc.o \
 				hfi_packetization.o \
 				vidc_hfi.o \
 				q6_hfi.o \
-#/* < DTS2014111105636 Houzhipeng hwx231787 20141111 begin */
+				venus_boot.o
+
+obj-$(CONFIG_MSM_VIDC_VMEM) += vmem/
 obj-$(CONFIG_HUAWEI_DSM) += msm_camera_vid_dsm.o \
-#/* DTS2014111105636 Houzhipeng hwx231787 20141111 end > */

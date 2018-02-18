@@ -145,28 +145,21 @@ static bool migrate_one_irq(struct irq_desc *desc)
 {
 	struct irq_data *d = irq_desc_get_irq_data(desc);
 	const struct cpumask *affinity = d->affinity;
-	struct irq_chip *c;
-	bool ret = false;
 
 	/*
 	 * If this is a per-CPU interrupt, or the affinity does not
 	 * include this CPU, then we have nothing to do.
 	 */
-	if (irqd_is_per_cpu(d) || !cpumask_test_cpu(smp_processor_id(), affinity))
+	if (irqd_is_per_cpu(d) || !cpumask_test_cpu(smp_processor_id(), affinity)){
+		if(d->irq == 215)
+			trace_printk("%s Returning without calling GIC affinity for IRQ=0X%x\n", __func__, d->irq );
 		return false;
-
-	if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids) {
-		affinity = cpu_online_mask;
-		ret = true;
 	}
 
-	c = irq_data_get_irq_chip(d);
-	if (!c->irq_set_affinity)
-		pr_debug("IRQ%u: unable to set affinity\n", d->irq);
-	else if (c->irq_set_affinity(d, affinity, true) == IRQ_SET_MASK_OK && ret)
-		cpumask_copy(d->affinity, affinity);
+	if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids)
+		affinity = cpu_online_mask;
 
-	return ret;
+	return irq_set_affinity_locked(d, affinity, 0) == 0;
 }
 
 /*

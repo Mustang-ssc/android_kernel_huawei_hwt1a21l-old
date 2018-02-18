@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,6 +12,7 @@
 #define pr_fmt(fmt)	"ACC: %s: " fmt, __func__
 
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/types.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -30,7 +31,7 @@
 #define BYTES_PER_FUSE_ROW		8
 
 /* mem-acc config flags */
-#define MEM_ACC_SKIP_L1_CONFIG	BIT(0)
+#define MEM_ACC_SKIP_L1_CONFIG		BIT(0)
 #define MEM_ACC_OVERRIDE_CONFIG		BIT(1)
 
 enum {
@@ -71,11 +72,14 @@ struct mem_acc_regulator {
 	void __iomem		*efuse_base;
 };
 
+static DEFINE_MUTEX(mem_acc_memory_mutex);
+
 static u64 mem_acc_read_efuse_row(struct mem_acc_regulator *mem_acc_vreg,
 					u32 row_num, bool use_tz_api)
 {
 	int rc;
 	u64 efuse_bits;
+	struct scm_desc desc = {0};
 	struct mem_acc_read_req {
 		u32 row_address;
 		int addr_type;
@@ -92,13 +96,22 @@ static u64 mem_acc_read_efuse_row(struct mem_acc_regulator *mem_acc_vreg,
 		return efuse_bits;
 	}
 
-	req.row_address = mem_acc_vreg->efuse_addr +
+	desc.args[0] = req.row_address = mem_acc_vreg->efuse_addr +
 					row_num * BYTES_PER_FUSE_ROW;
-	req.addr_type = 0;
+	desc.args[1] = req.addr_type = 0;
+	desc.arginfo = SCM_ARGS(2);
 	efuse_bits = 0;
 
-	rc = scm_call(SCM_SVC_FUSE, SCM_FUSE_READ,
+	if (!is_scm_armv8()) {
+		rc = scm_call(SCM_SVC_FUSE, SCM_FUSE_READ,
 			&req, sizeof(req), &rsp, sizeof(rsp));
+	} else {
+		rc = scm_call2(SCM_SIP_FNID(SCM_SVC_FUSE, SCM_FUSE_READ),
+				&desc);
+		rsp.row_data[0] = desc.ret[0];
+		rsp.row_data[1] = desc.ret[1];
+		rsp.status = desc.ret[2];
+	}
 
 	if (rc) {
 		pr_err("read row %d failed, err code = %d", row_num, rc);
@@ -209,6 +222,7 @@ static int mem_acc_regulator_set_voltage(struct regulator_dev *rdev,
 		return 0;
 
 	/* go up or down one level at a time */
+	mutex_lock(&mem_acc_memory_mutex);
 	if (corner > mem_acc_vreg->corner) {
 		for (i = mem_acc_vreg->corner + 1; i <= corner; i++) {
 			pr_debug("UP: to corner %d\n", i);
@@ -220,6 +234,7 @@ static int mem_acc_regulator_set_voltage(struct regulator_dev *rdev,
 			update_acc_sel(mem_acc_vreg, i);
 		}
 	}
+	mutex_unlock(&mem_acc_memory_mutex);
 
 	pr_debug("new voltage corner set %d\n", corner);
 
@@ -358,6 +373,9 @@ static int mem_acc_sel_setup(struct mem_acc_regulator *mem_acc_vreg,
 		mem_select_str = "qcom,acc-sel-l2-bit-pos";
 		mem_select_size_str = "qcom,acc-sel-l2-bit-size";
 		break;
+	default:
+		pr_err("Invalid memory type: %d\n", mem_type);
+		return -EINVAL;
 	}
 
 	mem_acc_vreg->acc_sel_bit_size[mem_type] = MEM_ACC_DEFAULT_SEL_SIZE;

@@ -15,7 +15,11 @@
 #define __CAMERA2_H__
 
 #include <media/msm_cam_sensor.h>
-#include <mach/board.h>
+#include <linux/interrupt.h>
+#include <linux/of_platform.h>
+#include <linux/of_device.h>
+#include <linux/of.h>
+
 
 enum msm_camera_device_type_t {
 	MSM_CAMERA_I2C_DEVICE,
@@ -37,14 +41,17 @@ enum msm_bus_perf_setting {
 	S_EXIT
 };
 
-/* <DTS2014061204421 yangzhenxi/WX221546 20140612 begin */
 struct msm_camera_slave_info {
 	uint16_t sensor_slave_addr;
 	uint16_t sensor_id_reg_addr;
+    enum msm_camera_i2c_data_type sensor_id_data_type;
 	uint16_t sensor_id;
 	uint8_t mcam_id;
+	uint32_t otp_vendor_id;
+	
+	struct dump_reg_info_t *dump_reg_info;
+	uint16_t dump_reg_num;
 };
-/* <DTS2014061204421 yangzhenxi/WX221546 20140612 end */
 
 struct msm_cam_clk_info {
 	const char *clk_name;
@@ -72,6 +79,28 @@ struct v4l2_subdev_info {
 	uint16_t order;
 };
 
+struct msm_camera_gpio_num_info {
+	uint16_t gpio_num[SENSOR_GPIO_MAX];
+	uint8_t valid[SENSOR_GPIO_MAX];
+};
+
+struct msm_camera_gpio_conf {
+	void *cam_gpiomux_conf_tbl;
+	uint8_t cam_gpiomux_conf_tbl_size;
+	struct gpio *cam_gpio_common_tbl;
+	uint8_t cam_gpio_common_tbl_size;
+	struct gpio *cam_gpio_req_tbl;
+	uint8_t cam_gpio_req_tbl_size;
+	struct msm_gpio_set_tbl *cam_gpio_set_tbl;
+	uint8_t cam_gpio_set_tbl_size;
+	uint32_t gpio_no_mux;
+	uint32_t *camera_off_table;
+	uint8_t camera_off_table_size;
+	uint32_t *camera_on_table;
+	uint8_t camera_on_table_size;
+	struct msm_camera_gpio_num_info *gpio_num_info;
+};
+
 struct msm_camera_power_ctrl_t {
 	struct device *dev;
 	struct msm_sensor_power_setting *power_setting;
@@ -88,10 +117,42 @@ struct msm_camera_power_ctrl_t {
 	uint16_t clk_info_size;
 };
 
+enum msm_camera_actuator_name {
+	MSM_ACTUATOR_MAIN_CAM_0,
+	MSM_ACTUATOR_MAIN_CAM_1,
+	MSM_ACTUATOR_MAIN_CAM_2,
+	MSM_ACTUATOR_MAIN_CAM_3,
+	MSM_ACTUATOR_MAIN_CAM_4,
+	MSM_ACTUATOR_MAIN_CAM_5,
+	MSM_ACTUATOR_WEB_CAM_0,
+	MSM_ACTUATOR_WEB_CAM_1,
+	MSM_ACTUATOR_WEB_CAM_2,
+};
+
+struct msm_actuator_info {
+	struct i2c_board_info const *board_info;
+	enum msm_camera_actuator_name cam_name;
+	int bus_id;
+	int vcm_pwd;
+	int vcm_enable;
+};
+enum msm_camera_i2c_mux_mode {
+	MODE_R,
+	MODE_L,
+	MODE_DUAL
+};
+
+struct msm_camera_i2c_conf {
+	uint8_t use_i2c_mux;
+	struct platform_device *mux_dev;
+	enum msm_camera_i2c_mux_mode i2c_mux_mode;
+};
+
 struct msm_camera_sensor_board_info {
 	const char *sensor_name;
 	const char *eeprom_name;
 	const char *actuator_name;
+	const char *ois_name;
 	struct msm_camera_slave_info *slave_info;
 	struct msm_camera_csi_lane_params *csi_lane_params;
 	struct msm_camera_sensor_strobe_flash_data *strobe_flash_data;
@@ -162,6 +223,7 @@ struct msm_eeprom_board_info {
 	uint16_t i2c_slaveaddr;
 	struct msm_camera_power_ctrl_t power_info;
 	struct msm_eeprom_cmm_t cmm_data;
+	enum i2c_freq_mode_t i2c_freq_mode;
 };
 
 #endif

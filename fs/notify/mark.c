@@ -152,27 +152,10 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 
 	if (inode && (mark->flags & FSNOTIFY_MARK_FLAG_OBJECT_PINNED))
 		iput(inode);
-	/* release lock temporarily */
-	mutex_unlock(&group->mark_mutex);
-
 	spin_lock(&destroy_lock);
 	list_add(&mark->destroy_list, &destroy_list);
 	spin_unlock(&destroy_lock);
 	wake_up(&destroy_waitq);
-	/*
-	 * We don't necessarily have a ref on mark from caller so the above destroy
-	 * may have actually freed it, unless this group provides a 'freeing_mark'
-	 * function which must be holding a reference.
-	 */
-
-	/*
-	 * Some groups like to know that marks are being freed.  This is a
-	 * callback to the group function to let it know that this mark
-	 * is being freed.
-	 */
-	if (group->ops->freeing_mark)
-		group->ops->freeing_mark(mark, group);
-
 	/*
 	 * __fsnotify_update_child_dentry_flags(inode);
 	 *
@@ -186,8 +169,6 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 	 */
 
 	atomic_dec(&group->num_marks);
-
-	mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
 }
 
 void fsnotify_destroy_mark(struct fsnotify_mark *mark,
@@ -299,16 +280,36 @@ void fsnotify_clear_marks_by_group_flags(struct fsnotify_group *group,
 					 unsigned int flags)
 {
 	struct fsnotify_mark *lmark, *mark;
+	LIST_HEAD(to_free);
 
+	/*
+	 * We have to be really careful here. Anytime we drop mark_mutex, e.g.
+	 * fsnotify_clear_marks_by_inode() can come and free marks. Even in our
+	 * to_free list so we have to use mark_mutex even when accessing that
+	 * list. And freeing mark requires us to drop mark_mutex. So we can
+	 * reliably free only the first mark in the list. That's why we first
+	 * move marks to free to to_free list in one go and then free marks in
+	 * to_free list one by one.
+	 */
 	mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
 	list_for_each_entry_safe(mark, lmark, &group->marks_list, g_list) {
-		if (mark->flags & flags) {
-			fsnotify_get_mark(mark);
-			fsnotify_destroy_mark_locked(mark, group);
-			fsnotify_put_mark(mark);
-		}
+		if (mark->flags & flags)
+			list_move(&mark->g_list, &to_free);
 	}
 	mutex_unlock(&group->mark_mutex);
+
+	while (1) {
+		mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
+		if (list_empty(&to_free)) {
+			mutex_unlock(&group->mark_mutex);
+			break;
+		}
+		mark = list_first_entry(&to_free, struct fsnotify_mark, g_list);
+		fsnotify_get_mark(mark);
+		fsnotify_destroy_mark_locked(mark, group);
+		mutex_unlock(&group->mark_mutex);
+		fsnotify_put_mark(mark);
+	}
 }
 
 /*
@@ -347,6 +348,7 @@ static int fsnotify_mark_destroy(void *ignored)
 {
 	struct fsnotify_mark *mark, *next;
 	LIST_HEAD(private_destroy_list);
+	struct fsnotify_group *group;
 
 	for (;;) {
 		spin_lock(&destroy_lock);
@@ -358,6 +360,14 @@ static int fsnotify_mark_destroy(void *ignored)
 
 		list_for_each_entry_safe(mark, next, &private_destroy_list, destroy_list) {
 			list_del_init(&mark->destroy_list);
+			group = mark->group;
+			/*
+			 * Some groups like to know that marks are being freed.
+			 * This is a callback to the group function to let it
+			 * know that this mark is being freed.
+			 */
+			if (group && group->ops->freeing_mark)
+				group->ops->freeing_mark(mark, group);
 			fsnotify_put_mark(mark);
 		}
 

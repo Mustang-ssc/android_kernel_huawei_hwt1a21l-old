@@ -4,6 +4,7 @@
 
 # Each configuration option enables a list of files.
 KBUILD_CFLAGS += -DTTHE_TUNER_SUPPORT
+
 obj-$(CONFIG_CYPRESS_CYTTSP5_BUS) += cyttsp5_bus.o
 obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5) += cyttsp5_core.o
 obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5) += cyttsp5_platform.o
@@ -18,7 +19,7 @@ obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_DEVICE_ACCESS)	+= cyttsp5_device_access
 obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_LOADER)	+= cyttsp5_loader.o
 obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_DEBUG_MODULE)	+= cyttsp5_debug.o
 obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_DEVICETREE_SUPPORT)	+= cyttsp5_devtree.o
-obj-y	+= cyttsp5_mmi_test.o
+#obj-y	+= cyttsp5_mmi_test.o
 ifeq ($(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_DEBUG),y)
 CFLAGS_cyttsp5_bus.o += -DDEBUG
 CFLAGS_cyttsp5_core.o += -DDEBUG
